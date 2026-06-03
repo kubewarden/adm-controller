@@ -78,6 +78,7 @@
       "description": "Update all jemalloc packages together",
       "groupName": "Rust jemalloc packages",
       "matchPackageNames": [
+        "tikv-jemallocator",
         "tikv-jemalloc-ctl",
         "jemalloc_pprof"
       ]
