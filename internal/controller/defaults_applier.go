@@ -68,6 +68,11 @@ func (r *DefaultsApplierReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			continue
 		}
 
+		if !isSupportedType(clientObj) {
+			log.Info("Unsupported resource type, skipping", "key", key, "type", fmt.Sprintf("%T", clientObj))
+			continue
+		}
+
 		// Track this resource as desired
 		rk := resourceKey{
 			gvk:       gvk.String(),
@@ -104,28 +109,20 @@ func (r *DefaultsApplierReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-// applyResource creates or updates the resource, always injecting the ownership label.
+// applyResource creates or updates the resource, managing user-defined metadata from ConfigMap.
 func (r *DefaultsApplierReconciler) applyResource(ctx context.Context, desired client.Object) error {
 	log := r.Log.WithValues("resource", client.ObjectKeyFromObject(desired), "kind", desired.GetObjectKind().GroupVersionKind().Kind)
 
 	// CreateOrPatch GETs the existing object into desired, overwriting the
-	// decoded state. Save a copy so the mutate function can restore the spec.
+	// decoded state. Save a copy so the mutate function can restore everything.
 	desiredCopy, ok := desired.DeepCopyObject().(client.Object)
 	if !ok {
 		return errors.New("failed to cast deep copied object to client.Object")
 	}
 
 	_, err := controllerutil.CreateOrPatch(ctx, r.Client, desired, func() error {
-		// Restore the spec from the decoded YAML
 		copySpec(desiredCopy, desired)
-
-		// Inject the ownership label
-		labels := desired.GetLabels()
-		if labels == nil {
-			labels = make(map[string]string)
-		}
-		labels[constants.DefaultsManagedByLabelKey] = constants.DefaultsManagedByLabelValue
-		desired.SetLabels(labels)
+		applyManagedMetadata(desiredCopy, desired)
 
 		return nil
 	})
@@ -135,6 +132,20 @@ func (r *DefaultsApplierReconciler) applyResource(ctx context.Context, desired c
 
 	log.V(1).Info("Resource applied successfully")
 	return nil
+}
+
+// isSupportedType returns true if the object is a known Kubewarden resource type.
+func isSupportedType(obj client.Object) bool {
+	switch obj.(type) {
+	case *policiesv1.PolicyServer,
+		*policiesv1.ClusterAdmissionPolicy,
+		*policiesv1.AdmissionPolicy,
+		*policiesv1.ClusterAdmissionPolicyGroup,
+		*policiesv1.AdmissionPolicyGroup:
+		return true
+	default:
+		return false
+	}
 }
 
 // copySpec copies the Spec field from src to dst for all supported resource types.
@@ -161,6 +172,18 @@ func copySpec(src, dst client.Object) {
 			d.Spec = s.Spec
 		}
 	}
+}
+
+// applyManagedMetadata restores labels and annotations from the ConfigMap YAML
+// into the live object, and injects the ownership label.
+func applyManagedMetadata(desired, live client.Object) {
+	labels := desired.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[constants.DefaultsManagedByLabelKey] = constants.DefaultsManagedByLabelValue
+	live.SetLabels(labels)
+	live.SetAnnotations(desired.GetAnnotations())
 }
 
 // cleanupStale removes managed resources that are not in the desired set.

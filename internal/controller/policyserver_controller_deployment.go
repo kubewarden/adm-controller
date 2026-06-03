@@ -338,7 +338,7 @@ func configuresInsecureSources(policyServer *policiesv1.PolicyServer, admissionC
 //
 // Parameters:
 //   - existing: the current annotation/label map on the object (mutated in-place).
-//   - desired: the user-defined map from spec (may be nil).
+//   - desired: the helm-defined map from spec (may be nil).
 //   - trackingAnnotations: the annotation map where the tracking key is stored (may differ from
 //     existing when we track label keys inside the annotation map).
 //   - trackingKey: the annotation key used to store the comma-separated list of managed keys.
