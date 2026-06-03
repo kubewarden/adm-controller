@@ -52,7 +52,7 @@ url = { workspace = true }
 validator = { version = "0.20", features = ["derive"] }
 wapc = "2.1"
 wasi-common = { workspace = true }
-wasmparser = "0.250"
+wasmparser = "0.251"
 wasmtime-provider = { version = "2.20.0", features = ["cache"] }
 wasmtime-wasi = { workspace = true }
 webpki-roots = "1"

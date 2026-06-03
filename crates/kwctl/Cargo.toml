@@ -64,7 +64,7 @@ sha2           = { workspace = true }
 tempfile       = { workspace = true }
 testcontainers = { version = "0.27", features = ["blocking"] }
 tower-test     = "0.4"
-wasm-encoder   = "0.250"
+wasm-encoder   = "0.251"
 
 
 [features]
