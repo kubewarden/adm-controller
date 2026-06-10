@@ -179,7 +179,7 @@ impl Reflector {
     }
 }
 
-fn modify_object(
+pub(crate) fn modify_object(
     obj: &mut kube::core::DynamicObject,
     field_masker: Option<&field_mask::FieldMaskNode>,
 ) {

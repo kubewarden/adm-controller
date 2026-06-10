@@ -162,6 +162,7 @@ pub(crate) mod tests {
                         kind,
                         label_selector,
                         field_selector,
+                        disable_cache: _,
                         field_masks: _,
                     } => {
                         assert_eq!(api_version, expected_resource.api_version);
@@ -323,6 +324,7 @@ pub(crate) mod tests {
                         kind,
                         label_selector,
                         field_selector,
+                        disable_cache: _,
                         field_masks: _,
                     } => {
                         assert_eq!(api_version, expected_resource.api_version);
