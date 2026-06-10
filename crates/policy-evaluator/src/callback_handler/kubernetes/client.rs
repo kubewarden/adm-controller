@@ -13,10 +13,7 @@ use kube::{
 use kubewarden_policy_sdk::host_capabilities::kubernetes::SubjectAccessReview as KWSubjectAccessReview;
 use tokio::{sync::RwLock, time::Instant};
 
-use crate::callback_handler::kubernetes::{
-    ApiVersionKind, KubeResource, field_mask,
-    reflector::{Reflector, modify_object},
-};
+use crate::callback_handler::kubernetes::{ApiVersionKind, KubeResource, field_mask, reflector::Reflector};
 
 #[derive(Clone)]
 pub(crate) struct Client {
@@ -411,7 +408,7 @@ async fn list_resources_direct(
     let field_masker: Option<field_mask::FieldMaskNode> =
         field_masks.map(field_mask::FieldMaskNode::new);
     for item in &mut list.items {
-        modify_object(item, field_masker.as_ref());
+        field_mask::modify_object(item, field_masker.as_ref());
     }
 
     Ok(list)

@@ -127,7 +127,7 @@ impl Reflector {
 
         let stream = watcher(api, filter).map_ok(move |ev| {
             ev.modify(|obj| {
-                modify_object(obj, field_masker.as_ref());
+                field_mask::modify_object(obj, field_masker.as_ref());
             })
         });
 
@@ -179,24 +179,10 @@ impl Reflector {
     }
 }
 
-pub(crate) fn modify_object(
-    obj: &mut kube::core::DynamicObject,
-    field_masker: Option<&field_mask::FieldMaskNode>,
-) {
-    // clear managed fields to reduce memory usage
-    obj.managed_fields_mut().clear();
-    // clear last-applied-configuration to reduce memory usage
-    obj.annotations_mut()
-        .remove("kubectl.kubernetes.io/last-applied-configuration");
-    // apply field masks, if any
-    if let Some(mask) = field_masker {
-        field_mask::prune_in_place(&mut obj.data, mask);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use field_mask::modify_object;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ManagedFieldsEntry;
     use kube::core::{DynamicObject, ObjectMeta};
     use serde_json::json;

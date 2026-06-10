@@ -2,6 +2,25 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
+/// Prepares a Kubernetes object for caching/returning to a policy: clears
+/// fields that are not useful outside of the API server (managed fields,
+/// the last-applied-configuration annotation) and, if a field mask is
+/// provided, prunes the object down to only the masked fields.
+pub(crate) fn modify_object(
+    obj: &mut kube::core::DynamicObject,
+    field_masker: Option<&FieldMaskNode>,
+) {
+    // clear managed fields to reduce memory usage
+    obj.managed_fields_mut().clear();
+    // clear last-applied-configuration to reduce memory usage
+    obj.annotations_mut()
+        .remove("kubectl.kubernetes.io/last-applied-configuration");
+    // apply field masks, if any
+    if let Some(mask) = field_masker {
+        prune_in_place(&mut obj.data, mask);
+    }
+}
+
 /// Represents a node in a field mask tree.
 ///
 /// This structure is used to define and operate on masks that specify which parts of a JSON object should
