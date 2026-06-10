@@ -49,6 +49,7 @@ fn get_all_resources_by_type(
         kind: resource_type.kind.to_owned(),
         label_selector: None,
         field_selector: None,
+        disable_cache: false,
         field_masks: None,
     };
 
@@ -199,6 +200,7 @@ pub(crate) mod tests {
                     kind,
                     label_selector,
                     field_selector,
+                    disable_cache: _,
                     field_masks: _,
                 } => {
                     assert_eq!(api_version, expected_resource.api_version);

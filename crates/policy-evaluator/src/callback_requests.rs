@@ -141,6 +141,16 @@ pub enum CallbackRequestType {
         /// A selector to restrict the list of returned objects by their fields.
         /// Defaults to everything if `None`
         field_selector: Option<String>,
+        /// Disable the use of a watch-based reflector to serve and cache this query.
+        /// By default, list queries are served by a reflector that keeps an in-memory,
+        /// continuously updated copy of the matching resources running for the lifetime
+        /// of the policy server process.
+        /// When set to `true`, the query is performed directly against the Kubernetes API
+        /// Server and no reflector is created. This avoids the memory and connection cost
+        /// of a long-lived watch for queries that are rarely repeated, at the cost of
+        /// hitting the Kubernetes API Server on every call.
+        #[serde(default)]
+        disable_cache: bool,
         /// A list of fields to include in the response.
         ///
         /// If strictly defined, the host will prune the Kubernetes resource to contain *only*
@@ -179,6 +189,16 @@ pub enum CallbackRequestType {
         /// A selector to restrict the list of returned objects by their fields.
         /// Defaults to everything if `None`
         field_selector: Option<String>,
+        /// Disable the use of a watch-based reflector to serve and cache this query.
+        /// By default, list queries are served by a reflector that keeps an in-memory,
+        /// continuously updated copy of the matching resources running for the lifetime
+        /// of the policy server process.
+        /// When set to `true`, the query is performed directly against the Kubernetes API
+        /// Server and no reflector is created. This avoids the memory and connection cost
+        /// of a long-lived watch for queries that are rarely repeated, at the cost of
+        /// hitting the Kubernetes API Server on every call.
+        #[serde(default)]
+        disable_cache: bool,
         /// A list of fields to include in the response.
         ///
         /// If strictly defined, the host will prune the Kubernetes resource to contain *only*
@@ -440,6 +460,9 @@ impl From<kubewarden_policy_sdk::host_capabilities::kubernetes::ListResourcesByN
             namespace: req.namespace,
             label_selector: req.label_selector,
             field_selector: req.field_selector,
+            // kubewarden-policy-sdk does not expose a `disable_cache` field for this
+            // request yet, so list queries always go through the reflector for now.
+            disable_cache: false,
             field_masks: req.field_masks,
         }
     }
@@ -456,6 +479,9 @@ impl From<kubewarden_policy_sdk::host_capabilities::kubernetes::ListAllResources
             kind: req.kind,
             label_selector: req.label_selector,
             field_selector: req.field_selector,
+            // kubewarden-policy-sdk does not expose a `disable_cache` field for this
+            // request yet, so list queries always go through the reflector for now.
+            disable_cache: false,
             field_masks: req.field_masks,
         }
     }
