@@ -143,7 +143,7 @@ kwctl: $(KWCTL_SRCS) lint-rust
 	cp ./target/$(RUST_TARGET)/release/kwctl ./bin/kwctl
 
 .PHONY: generate
-generate: generate-controller generate-chart generate-crd-docs generate-kwctl-cli-docs
+generate: generate-controller generate-chart generate-crd-docs generate-kwctl-cli-docs generate-policyserver-cli-docs
 
 .PHONY: generate-controller
 generate-controller: manifests  ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -156,6 +156,10 @@ generate-crd-docs:
 .PHONY: generate-kwctl-cli-docs
 generate-kwctl-cli-docs:
 	$(MAKE) -C crates/kwctl build-docs
+	
+.PHONY: generate-policyserver-cli-docs
+generate-policyserver-cli-docs:
+	$(MAKE) -C crates/policy-server build-docs
 
 .PHONY: manifests
 manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.

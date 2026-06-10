@@ -1,45 +1,46 @@
-# Command-Line Help for `kwctl`
+= Command-Line Help for `kwctl`
 
 This document contains the help content for the `kwctl` command-line program.
 
-**Command Overview:**
+*Command Overview:*
 
-* [`kwctl`↴](#kwctl)
-* [`kwctl annotate`↴](#kwctl-annotate)
-* [`kwctl bench`↴](#kwctl-bench)
-* [`kwctl completions`↴](#kwctl-completions)
-* [`kwctl digest`↴](#kwctl-digest)
-* [`kwctl docs`↴](#kwctl-docs)
-* [`kwctl info`↴](#kwctl-info)
-* [`kwctl inspect`↴](#kwctl-inspect)
-* [`kwctl load`↴](#kwctl-load)
-* [`kwctl policies`↴](#kwctl-policies)
-* [`kwctl pull`↴](#kwctl-pull)
-* [`kwctl push`↴](#kwctl-push)
-* [`kwctl rm`↴](#kwctl-rm)
-* [`kwctl run`↴](#kwctl-run)
-* [`kwctl save`↴](#kwctl-save)
-* [`kwctl scaffold`↴](#kwctl-scaffold)
-* [`kwctl scaffold admission-request`↴](#kwctl-scaffold-admission-request)
-* [`kwctl scaffold artifacthub`↴](#kwctl-scaffold-artifacthub)
-* [`kwctl scaffold manifest`↴](#kwctl-scaffold-manifest)
-* [`kwctl scaffold vap`↴](#kwctl-scaffold-vap)
-* [`kwctl scaffold verification-config`↴](#kwctl-scaffold-verification-config)
-* [`kwctl verify`↴](#kwctl-verify)
+* <<kwctl,`kwctl`>>
+* <<kwctl-annotate,`kwctl annotate`>>
+* <<kwctl-bench,`kwctl bench`>>
+* <<kwctl-completions,`kwctl completions`>>
+* <<kwctl-digest,`kwctl digest`>>
+* <<kwctl-docs,`kwctl docs`>>
+* <<kwctl-info,`kwctl info`>>
+* <<kwctl-inspect,`kwctl inspect`>>
+* <<kwctl-load,`kwctl load`>>
+* <<kwctl-policies,`kwctl policies`>>
+* <<kwctl-pull,`kwctl pull`>>
+* <<kwctl-push,`kwctl push`>>
+* <<kwctl-rm,`kwctl rm`>>
+* <<kwctl-run,`kwctl run`>>
+* <<kwctl-save,`kwctl save`>>
+* <<kwctl-scaffold,`kwctl scaffold`>>
+* <<kwctl-scaffold-admission-request,`kwctl scaffold admission-request`>>
+* <<kwctl-scaffold-artifacthub,`kwctl scaffold artifacthub`>>
+* <<kwctl-scaffold-manifest,`kwctl scaffold manifest`>>
+* <<kwctl-scaffold-vap,`kwctl scaffold vap`>>
+* <<kwctl-scaffold-verification-config,`kwctl scaffold verification-config`>>
+* <<kwctl-verify,`kwctl verify`>>
 
-## `kwctl`
+[[kwctl]]
+== `kwctl`
 
 Tool to manage Kubewarden policies
 
-**Usage:** `kwctl [OPTIONS] <COMMAND>`
+*Usage:* `kwctl [OPTIONS] <COMMAND>`
 
-###### **Subcommands:**
+=== *Subcommands:*
 
 * `annotate` — Add Kubewarden metadata to a WebAssembly module
 * `bench` — Benchmarks a Kubewarden policy
 * `completions` — Generate shell completions
 * `digest` — Fetch digest from the OCI manifest of a policy
-* `docs` — Generates the markdown documentation for kwctl commands
+* `docs` — Generates documentation for kwctl commands. The output format is determined by the file extension: .md for Markdown, AsciiDoc otherwise
 * `info` — Display system information
 * `inspect` — Inspect Kubewarden policy
 * `load` — load policies from a tar.gz file
@@ -52,24 +53,25 @@ Tool to manage Kubewarden policies
 * `scaffold` — Scaffold a Kubernetes resource or configuration file
 * `verify` — Verify a Kubewarden policy from a given URI using Sigstore
 
-###### **Options:**
+=== *Options:*
 
 * `-v`, `--verbose <VERBOSE>` — Increase verbosity
 * `--no-color <NO-COLOR>` — Disable colorful output
 
 
 
-## `kwctl annotate`
+[[kwctl-annotate]]
+== `kwctl annotate`
 
 Add Kubewarden metadata to a WebAssembly module
 
-**Usage:** `kwctl annotate [OPTIONS] --metadata-path <PATH> --output-path <PATH> <wasm-path>`
+*Usage:* `kwctl annotate [OPTIONS] --metadata-path <PATH> --output-path <PATH> <wasm-path>`
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<WASM-PATH>` — Path to WebAssembly module to be annotated
 
-###### **Options:**
+=== *Options:*
 
 * `-m`, `--metadata-path <PATH>` — File containing the metadata
 * `-o`, `--output-path <PATH>` — Output file
@@ -77,7 +79,8 @@ Add Kubewarden metadata to a WebAssembly module
 
 
 
-## `kwctl bench`
+[[kwctl-bench]]
+== `kwctl bench`
 
 Benchmarks a Kubewarden policy.
 
@@ -106,26 +109,26 @@ A YAML file may contain multiple Custom Resource declarations. In this case, `kw
 each policy in the file using the same request during each evaluation.
 
 
-**Usage:** `kwctl bench [OPTIONS] --request-path <PATH> <uri_or_sha_prefix_or_yaml_file>`
+*Usage:* `kwctl bench [OPTIONS] --request-path <PATH> <uri_or_sha_prefix_or_yaml_file>`
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<URI_OR_SHA_PREFIX_OR_YAML_FILE>` — Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.
 
-###### **Options:**
+=== *Options:*
 
 * `--allow-context-aware <ALLOW-CONTEXT-AWARE>` — Grant access to the Kubernetes resources defined inside of the policy's `contextAwareResources` section. Warning: review the list of resources carefully to avoid abuses. Disabled by default
 * `--allowed-host-capabilities <ALLOWED-HOST-CAPABILITIES>` — Host capabilities the policy is allowed to use. Use '*' to allow all. Can be repeated multiple times. Examples: 'oci/*', 'net/v1/dns_lookup_host'
-
-  Default value: `*`
++
+Default value: `*`
 * `--cert-email <VALUE>` — Expected email in Fulcio certificate
 * `--cert-oidc-issuer <VALUE>` — Expected OIDC issuer in Fulcio certificates
 * `--disable-wasmtime-cache <DISABLE-WASMTIME-CACHE>` — Turn off usage of wasmtime cache
 * `--docker-config-json-path <PATH>` — Path to a directory containing the Docker 'config.json' file. Can be used to indicate registry authentication details
 * `--dump-results-to-disk <DUMP_RESULTS_TO_DISK>` — Puts results in target/tiny-bench/label/.. if target can be found. used for comparing previous runs
 * `-e`, `--execution-mode <MODE>` — The runtime to use to execute this policy
-
-  Possible values: `opa`, `gatekeeper`, `kubewarden`, `wasi`
++
+Possible values: `opa`, `gatekeeper`, `kubewarden`, `wasi`
 
 * `--github-owner <VALUE>` — GitHub owner expected in the certificates generated in CD pipelines
 * `--github-repo <VALUE>` — GitHub repository expected in the certificates generated in CD pipelines
@@ -133,8 +136,8 @@ each policy in the file using the same request during each evaluation.
 * `--num-resamples <NUM>` — How many resamples should be done
 * `--num-samples <NUM>` — How many resamples should be done. Recommended at least 50, above 100 doesn't seem to yield a significantly different result
 * `--raw <RAW>` — Validate a raw request
-
-  Default value: `false`
++
+Default value: `false`
 * `--record-host-capabilities-interactions <FILE>` — Record all the policy and host capabilities
    communications to the given file.
    Useful to be combined later with '--replay-host-capabilities-interactions' flag
@@ -154,116 +157,124 @@ each policy in the file using the same request during each evaluation.
 
 
 
-## `kwctl completions`
+[[kwctl-completions]]
+== `kwctl completions`
 
 Generate shell completions
 
-**Usage:** `kwctl completions --shell <VALUE>`
+*Usage:* `kwctl completions --shell <VALUE>`
 
-###### **Options:**
+=== *Options:*
 
 * `-s`, `--shell <VALUE>` — Shell type
-
-  Possible values: `bash`, `elvish`, `fish`, `powershell`, `zsh`
-
-
++
+Possible values: `bash`, `elvish`, `fish`, `powershell`, `zsh`
 
 
-## `kwctl digest`
+
+
+[[kwctl-digest]]
+== `kwctl digest`
 
 Fetch digest from the OCI manifest of a policy
 
-**Usage:** `kwctl digest [OPTIONS] <uri>`
+*Usage:* `kwctl digest [OPTIONS] <uri>`
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<URI>` — Policy URI
 
-###### **Options:**
+=== *Options:*
 
 * `--docker-config-json-path <PATH>` — Path to a directory containing the Docker 'config.json' file. Can be used to indicate registry authentication details
 * `--sources-path <PATH>` — YAML file holding source information (https, registry insecure hosts, custom CA's...)
 
 
 
-## `kwctl docs`
+[[kwctl-docs]]
+== `kwctl docs`
 
-Generates the markdown documentation for kwctl commands
+Generates documentation for kwctl commands. The output format is determined by the file extension: .md for Markdown, AsciiDoc otherwise
 
-**Usage:** `kwctl docs --output <FILE>`
+*Usage:* `kwctl docs --output <FILE>`
 
-###### **Options:**
+=== *Options:*
 
 * `-o`, `--output <FILE>` — path where the documentation file will be stored
 
 
 
-## `kwctl info`
+[[kwctl-info]]
+== `kwctl info`
 
 Display system information
 
-**Usage:** `kwctl info`
+*Usage:* `kwctl info`
 
 
 
-## `kwctl inspect`
+[[kwctl-inspect]]
+== `kwctl inspect`
 
 Inspect Kubewarden policy
 
-**Usage:** `kwctl inspect [OPTIONS] <uri_or_sha_prefix>`
+*Usage:* `kwctl inspect [OPTIONS] <uri_or_sha_prefix>`
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<URI_OR_SHA_PREFIX>` — Policy URI or SHA prefix. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.
 
-###### **Options:**
+=== *Options:*
 
 * `--docker-config-json-path <PATH>` — Path to a directory containing the Docker 'config.json' file. Can be used to indicate registry authentication details
 * `-o`, `--output <FORMAT>` — Output format
-
-  Possible values: `yaml`
++
+Possible values: `yaml`
 
 * `--show-signatures <SHOW-SIGNATURES>` — Show sigstore signatures
 * `--sources-path <PATH>` — YAML file holding source information (https, registry insecure hosts, custom CA's...)
 
 
 
-## `kwctl load`
+[[kwctl-load]]
+== `kwctl load`
 
 load policies from a tar.gz file
 
-**Usage:** `kwctl load --input <input>`
+*Usage:* `kwctl load --input <input>`
 
-###### **Options:**
+=== *Options:*
 
 * `--input <INPUT>` — load policies from tarball
 
 
 
-## `kwctl policies`
+[[kwctl-policies]]
+== `kwctl policies`
 
 Lists all downloaded policies
 
-**Usage:** `kwctl policies`
+*Usage:* `kwctl policies`
 
 
 
-## `kwctl pull`
+[[kwctl-pull]]
+== `kwctl pull`
 
 Pulls a Kubewarden policy from a given URI
 
-**Usage:** `kwctl pull [OPTIONS] <uri>`
+*Usage:* `kwctl pull [OPTIONS] <uri>`
 
 It respects standard proxy environment variables when downloading policies:
 - HTTP_PROXY or http_proxy: proxy server for HTTP requests
 - HTTPS_PROXY or https_proxy: proxy server for HTTPS requests
 - NO_PROXY or no_proxy: comma-separated list of hosts to exclude from proxying
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<URI>` — Policy URI. Supported schemes: registry://, https://, file://
 
-###### **Options:**
+=== *Options:*
 
 * `--cert-email <VALUE>` — Expected email in Fulcio certificate
 * `--cert-oidc-issuer <VALUE>` — Expected OIDC issuer in Fulcio certificates
@@ -279,11 +290,12 @@ It respects standard proxy environment variables when downloading policies:
 
 
 
-## `kwctl push`
+[[kwctl-push]]
+== `kwctl push`
 
 Pushes a Kubewarden policy to an OCI registry
 
-**Usage:** `kwctl push [OPTIONS] <policy> <uri>`
+*Usage:* `kwctl push [OPTIONS] <policy> <uri>`
 
 The annotations found inside of policy's metadata are going to be part of the OCI manifest.
 The multi-line annotations are skipped because they are not compatible with the OCI specification.
@@ -295,38 +307,40 @@ It respects standard proxy environment variables when downloading policies:
 - HTTPS_PROXY or https_proxy: proxy server for HTTPS requests
 - NO_PROXY or no_proxy: comma-separated list of hosts to exclude from proxying
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<POLICY>` — Policy to push. Can be the path to a local file, a policy URI or the SHA prefix of a policy in the store.
 * `<URI>` — Policy URI. Supported schemes: registry://
 
-###### **Options:**
+=== *Options:*
 
 * `--docker-config-json-path <PATH>` — Path to a directory containing the Docker 'config.json' file. Can be used to indicate registry authentication details
 * `-f`, `--force <FORCE>` — Push also a policy that is not annotated
 * `-o`, `--output <PATH>` — Output format
-
-  Default value: `text`
-
-  Possible values: `text`, `json`
++
+Default value: `text`
++
+Possible values: `text`, `json`
 
 * `--sources-path <PATH>` — YAML file holding source information (https, registry insecure hosts, custom CA's...)
 
 
 
-## `kwctl rm`
+[[kwctl-rm]]
+== `kwctl rm`
 
 Removes a Kubewarden policy from the store
 
-**Usage:** `kwctl rm <uri_or_sha_prefix>`
+*Usage:* `kwctl rm <uri_or_sha_prefix>`
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<URI_OR_SHA_PREFIX>` — Policy URI or SHA prefix
 
 
 
-## `kwctl run`
+[[kwctl-run]]
+== `kwctl run`
 
 Run one or more Kubewarden policies locally.
 
@@ -355,36 +369,36 @@ A YAML file may contain multiple Custom Resource declarations. In this case, `kw
 each policy in the file using the same request during each evaluation.
 
 
-**Usage:** `kwctl run [OPTIONS] --request-path <PATH> <uri_or_sha_prefix_or_yaml_file>`
+*Usage:* `kwctl run [OPTIONS] --request-path <PATH> <uri_or_sha_prefix_or_yaml_file>`
 
 It respects standard proxy environment variables when downloading policies:
 - HTTP_PROXY or http_proxy: proxy server for HTTP requests
 - HTTPS_PROXY or https_proxy: proxy server for HTTPS requests
 - NO_PROXY or no_proxy: comma-separated list of hosts to exclude from proxying
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<URI_OR_SHA_PREFIX_OR_YAML_FILE>` — Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.
 
-###### **Options:**
+=== *Options:*
 
 * `--allow-context-aware <ALLOW-CONTEXT-AWARE>` — Grant access to the Kubernetes resources defined inside of the policy's `contextAwareResources` section. Warning: review the list of resources carefully to avoid abuses. Disabled by default
 * `--allowed-host-capabilities <ALLOWED-HOST-CAPABILITIES>` — Host capabilities the policy is allowed to use. Use '*' to allow all. Can be repeated multiple times. Examples: 'oci/*', 'net/v1/dns_lookup_host'
-
-  Default value: `*`
++
+Default value: `*`
 * `--cert-email <VALUE>` — Expected email in Fulcio certificate
 * `--cert-oidc-issuer <VALUE>` — Expected OIDC issuer in Fulcio certificates
 * `--disable-wasmtime-cache <DISABLE-WASMTIME-CACHE>` — Turn off usage of wasmtime cache
 * `--docker-config-json-path <PATH>` — Path to a directory containing the Docker 'config.json' file. Can be used to indicate registry authentication details
 * `-e`, `--execution-mode <MODE>` — The runtime to use to execute this policy
-
-  Possible values: `opa`, `gatekeeper`, `kubewarden`, `wasi`
++
+Possible values: `opa`, `gatekeeper`, `kubewarden`, `wasi`
 
 * `--github-owner <VALUE>` — GitHub owner expected in the certificates generated in CD pipelines
 * `--github-repo <VALUE>` — GitHub repository expected in the certificates generated in CD pipelines
 * `--raw <RAW>` — Validate a raw request
-
-  Default value: `false`
++
+Default value: `false`
 * `--record-host-capabilities-interactions <FILE>` — Record all the policy and host capabilities
    communications to the given file.
    Useful to be combined later with '--replay-host-capabilities-interactions' flag
@@ -403,29 +417,31 @@ It respects standard proxy environment variables when downloading policies:
 
 
 
-## `kwctl save`
+[[kwctl-save]]
+== `kwctl save`
 
 save policies to a tar.gz file
 
-**Usage:** `kwctl save --output <FILE> <policies>...`
+*Usage:* `kwctl save --output <FILE> <policies>...`
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<POLICIES>` — list of policies to save
 
-###### **Options:**
+=== *Options:*
 
 * `-o`, `--output <FILE>` — path where the file will be stored
 
 
 
-## `kwctl scaffold`
+[[kwctl-scaffold]]
+== `kwctl scaffold`
 
 Scaffold a Kubernetes resource or configuration file
 
-**Usage:** `kwctl scaffold <COMMAND>`
+*Usage:* `kwctl scaffold <COMMAND>`
 
-###### **Subcommands:**
+=== *Subcommands:*
 
 * `admission-request` — Scaffold an AdmissionRequest object
 * `artifacthub` — Output an artifacthub-pkg.yml file from a metadata.yml file
@@ -435,30 +451,32 @@ Scaffold a Kubernetes resource or configuration file
 
 
 
-## `kwctl scaffold admission-request`
+[[kwctl-scaffold-admission-request]]
+== `kwctl scaffold admission-request`
 
 Scaffold an AdmissionRequest object
 
-**Usage:** `kwctl scaffold admission-request [OPTIONS] --operation <TYPE>`
+*Usage:* `kwctl scaffold admission-request [OPTIONS] --operation <TYPE>`
 
-###### **Options:**
+=== *Options:*
 
 * `--object <PATH>` — The file containing the new object being admitted
 * `--old-object <PATH>` — The file containing the existing object
 * `-o`, `--operation <TYPE>` — Kubewarden Custom Resource type
-
-  Possible values: `CREATE`
-
-
++
+Possible values: `CREATE`
 
 
-## `kwctl scaffold artifacthub`
+
+
+[[kwctl-scaffold-artifacthub]]
+== `kwctl scaffold artifacthub`
 
 Output an artifacthub-pkg.yml file from a metadata.yml file
 
-**Usage:** `kwctl scaffold artifacthub [OPTIONS]`
+*Usage:* `kwctl scaffold artifacthub [OPTIONS]`
 
-###### **Options:**
+=== *Options:*
 
 * `-m`, `--metadata-path <PATH>` — File containing the metadata of the policy
 * `-o`, `--output <FILE>` — Path where the artifact-pkg.yml file will be stored
@@ -467,17 +485,18 @@ Output an artifacthub-pkg.yml file from a metadata.yml file
 
 
 
-## `kwctl scaffold manifest`
+[[kwctl-scaffold-manifest]]
+== `kwctl scaffold manifest`
 
 Output a Kubernetes resource manifest
 
-**Usage:** `kwctl scaffold manifest [OPTIONS] --type <VALUE> <uri_or_sha_prefix>`
+*Usage:* `kwctl scaffold manifest [OPTIONS] --type <VALUE> <uri_or_sha_prefix>`
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<URI_OR_SHA_PREFIX>` — Policy URI or SHA prefix. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.
 
-###### **Options:**
+=== *Options:*
 
 * `--allow-context-aware <ALLOW-CONTEXT-AWARE>` — Uses the policy metadata to define which Kubernetes resources can be accessed by the policy. Warning: review the list of resources carefully to avoid abuses. Disabled by default
 * `--cert-email <VALUE>` — Expected email in Fulcio certificate
@@ -491,8 +510,8 @@ Output a Kubernetes resource manifest
 * `--sources-path <PATH>` — YAML file holding source information (https, registry insecure hosts, custom CA's...)
 * `--title <VALUE>` — Policy title
 * `-t`, `--type <VALUE>` — Kubewarden Custom Resource type
-
-  Possible values: `ClusterAdmissionPolicy`, `AdmissionPolicy`
++
+Possible values: `ClusterAdmissionPolicy`, `AdmissionPolicy`
 
 * `-a`, `--verification-annotation <KEY=VALUE>` — Annotation in key=value format. Can be repeated multiple times
 * `--verification-config-path <PATH>` — YAML file holding verification config information (signatures, public keys...)
@@ -500,46 +519,49 @@ Output a Kubernetes resource manifest
 
 
 
-## `kwctl scaffold vap`
+[[kwctl-scaffold-vap]]
+== `kwctl scaffold vap`
 
 Convert a Kubernetes `ValidatingAdmissionPolicy` into a Kubewarden `ClusterAdmissionPolicy`
 
-**Usage:** `kwctl scaffold vap [OPTIONS] --binding <VALIDATING-ADMISSION-POLICY-BINDING.yaml> --policy <VALIDATING-ADMISSION-POLICY.yaml>`
+*Usage:* `kwctl scaffold vap [OPTIONS] --binding <VALIDATING-ADMISSION-POLICY-BINDING.yaml> --policy <VALIDATING-ADMISSION-POLICY.yaml>`
 
-###### **Options:**
+=== *Options:*
 
 * `-b`, `--binding <VALIDATING-ADMISSION-POLICY-BINDING.yaml>` — The file containing the ValidatingAdmissionPolicyBinding definition
 * `--cel-policy <URI>` — The CEL policy module to use
-
-  Default value: `ghcr.io/kubewarden/policies/cel-policy:latest`
++
+Default value: `ghcr.io/kubewarden/policies/cel-policy:latest`
 * `-p`, `--policy <VALIDATING-ADMISSION-POLICY.yaml>` — The file containing the ValidatingAdmissionPolicy definition
 
 
 
-## `kwctl scaffold verification-config`
+[[kwctl-scaffold-verification-config]]
+== `kwctl scaffold verification-config`
 
 Output a default Sigstore verification configuration file
 
-**Usage:** `kwctl scaffold verification-config`
+*Usage:* `kwctl scaffold verification-config`
 
 
 
-## `kwctl verify`
+[[kwctl-verify]]
+== `kwctl verify`
 
 Verify a Kubewarden policy from a given URI using Sigstore
 
-**Usage:** `kwctl verify [OPTIONS] <uri>`
+*Usage:* `kwctl verify [OPTIONS] <uri>`
 
 It respects standard proxy environment variables when downloading policies:
 - HTTP_PROXY or http_proxy: proxy server for HTTP requests
 - HTTPS_PROXY or https_proxy: proxy server for HTTPS requests
 - NO_PROXY or no_proxy: comma-separated list of hosts to exclude from proxying
 
-###### **Arguments:**
+=== *Arguments:*
 
 * `<URI>` — Policy URI. Supported schemes: registry://
 
-###### **Options:**
+=== *Options:*
 
 * `--cert-email <VALUE>` — Expected email in Fulcio certificate
 * `--cert-oidc-issuer <VALUE>` — Expected OIDC issuer in Fulcio certificates
@@ -554,9 +576,3 @@ It respects standard proxy environment variables when downloading policies:
 
 
 
-<hr/>
-
-<small><i>
-    This document was generated automatically by
-    <a href="https://crates.io/crates/clap-markdown"><code>clap-markdown</code></a>.
-</i></small>

@@ -228,7 +228,7 @@ pub(crate) fn build_cli() -> Command {
         .args(args)
         .subcommand(
             Command::new("docs")
-                .about("Generates the markdown documentation for policy-server commands")
+                .about("Generates documentation for policy-server commands. The output format is determined by the file extension: .md for Markdown, AsciiDoc otherwise")
                 .arg(
                     Arg::new("output")
                         .long("output")

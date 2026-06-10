@@ -373,7 +373,11 @@ async fn main() -> Result<()> {
                 let output = matches.get_one::<String>("output").unwrap();
                 let mut file = std::fs::File::create(output)
                     .map_err(|e| anyhow!("cannot create file {}: {}", output, e))?;
-                let docs_content = clap_markdown::help_markdown_command(&cli::build_cli());
+                let docs_content = if output.ends_with(".md") {
+                    clap_documentation::help_markdown_command(&cli::build_cli())
+                } else {
+                    clap_documentation::help_asciidoc_command(&cli::build_cli())
+                };
                 file.write_all(docs_content.as_bytes())
                     .map_err(|e| anyhow!("cannot write to file {}: {}", output, e))?;
             }

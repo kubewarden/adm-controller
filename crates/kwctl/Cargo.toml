@@ -10,7 +10,7 @@ version     = "1.36.0"
 [dependencies]
 anyhow             = { workspace = true }
 clap               = { workspace = true }
-clap-markdown      = { workspace = true }
+clap-documentation = { workspace = true }
 clap_complete      = "4.5"
 color-print        = "0.3"
 directories        = "6.0.0"

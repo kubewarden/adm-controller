@@ -441,24 +441,6 @@ jobs:
       - name: Run validation script
         run: ./scripts/validate-hauler-manifest.sh
 
-  kwctl-docs:
-    name: Check if the kwctl reference documentation is up to date
-    needs: changes
-    if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-
-      - run: |
-          make -C crates/kwctl build-docs
-          if ! git diff --quiet crates/kwctl/cli-docs.md; then
-            echo "Changes detected in cli-docs.md. Please run `make -C crates/kwctl build-docs` and commit the changes."
-            gh run cancel ${{ github.run_id }}
-          fi
-
   check-kwctl-cross-platform:
     name: Check kwctl (${{ matrix.os }})
     needs: changes
@@ -516,7 +498,6 @@ jobs:
       - spelling
       - charts
       - validate-hauler-manifest
-      - kwctl-docs
       - check-kwctl-cross-platform
       - check-generated-code
     runs-on: ubuntu-latest

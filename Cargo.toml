@@ -5,8 +5,9 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = "1.0"
 base64 = "0.22"
-clap = { version = "4.5", features = ["cargo", "env"] }
-clap-markdown = "0.1.5"
+clap   = { version = "4.5", features = ["cargo", "env"] }
+# Customized crate that generate CLI reference documentation in Asciidoc format
+clap-documentation = "0.1.0"
 futures = "0.3"
 hex = "0.4"
 itertools = "0.14.0"

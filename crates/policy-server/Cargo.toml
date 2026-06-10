@@ -16,7 +16,7 @@ anyhow = { workspace = true }
 axum = { version = "0.8.8", features = ["macros", "query"] }
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 clap = { workspace = true }
-clap-markdown = { workspace = true }
+clap-documentation = { workspace = true }
 daemonize = "0.5"
 futures = { workspace = true }
 hex = { workspace = true }
