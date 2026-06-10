@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use kube::ResourceExt;
 use serde_json::Value;
 
 /// Prepares a Kubernetes object for caching/returning to a policy: clears

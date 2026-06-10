@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, hash::Hash};
 use anyhow::Result;
 use futures::{Stream, StreamExt, TryStreamExt, future::ready};
 use kube::{
-    Resource, ResourceExt,
+    Resource,
     runtime::{
         WatchStreamExt,
         reflector::store::{self, Writer},
