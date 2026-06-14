@@ -44,20 +44,18 @@ const (
 	defaultOtelCertificateMountMode  = 420
 )
 
-// reconcilePolicyServerDeployment reconciles the Deployment that runs the PolicyServer.
-func (r *PolicyServerReconciler) reconcilePolicyServerDeployment(ctx context.Context, policyServer *policiesv1.PolicyServer) error {
-	configMapVersion, err := r.policyServerConfigMapVersion(ctx, policyServer)
-	if err != nil {
-		return fmt.Errorf("cannot get policy-server ConfigMap version: %w", err)
-	}
-
+// reconcilePolicyServerDeployment reconciles the Deployment that runs the
+// PolicyServer. configMapVersion is the resourceVersion of the PolicyServer
+// ConfigMap as observed during the same reconcile loop; it is stamped onto the
+// Deployment so that a configuration change triggers a rollout.
+func (r *PolicyServerReconciler) reconcilePolicyServerDeployment(ctx context.Context, policyServer *policiesv1.PolicyServer, configMapVersion string) error {
 	policyServerDeployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      policyServer.NameWithPrefix(),
 			Namespace: r.DeploymentsNamespace,
 		},
 	}
-	_, err = controllerutil.CreateOrPatch(ctx, r.Client, policyServerDeployment, func() error {
+	_, err := controllerutil.CreateOrPatch(ctx, r.Client, policyServerDeployment, func() error {
 		return r.updatePolicyServerDeployment(ctx, policyServer, policyServerDeployment, configMapVersion)
 	})
 	if err != nil {

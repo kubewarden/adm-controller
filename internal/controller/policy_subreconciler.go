@@ -24,6 +24,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,14 +52,29 @@ func (r *policySubReconciler) reconcile(ctx context.Context, policy policiesv1.P
 		return ctrl.Result{}, r.removePolicyWebhooksAndFinalizers(ctx, policy)
 	}
 
+	// Snapshot the policy before reconciliation so we can (a) skip the API write
+	// when the status did not change and (b) compute a merge patch against this
+	// base. A policy waiting for its PolicyServer to become ready requeues every
+	// couple of seconds; without the guard every requeue would send an identical
+	// status update, which is the bulk of the status-update churn reported in
+	// issue #743.
+	original := policy.DeepCopyObject().(policiesv1.Policy)
+
 	reconcileResult, reconcileErr := r.reconcilePolicy(ctx, policy)
 
 	if err := r.setPolicyModeStatus(ctx, policy); err != nil {
 		return ctrl.Result{}, fmt.Errorf("error setting policy status: %w", err)
 	}
 
-	if err := r.Status().Update(ctx, policy); err != nil {
-		return ctrl.Result{}, fmt.Errorf("update admission policy status error: %w", err)
+	// Use a merge patch rather than an update. The cached client can hand back a
+	// momentarily stale policy right after our own previous write; a full update
+	// then fails the optimistic-lock check with "the object has been modified",
+	// the status update error reported in issue #743. A merge patch carries no
+	// resourceVersion precondition, so it applies cleanly from a stale base.
+	if !equality.Semantic.DeepEqual(original.GetStatus(), policy.GetStatus()) {
+		if err := r.Status().Patch(ctx, policy, client.MergeFrom(original)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("update admission policy status error: %w", err)
+		}
 	}
 
 	// record policy count metric

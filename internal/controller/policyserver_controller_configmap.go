@@ -8,11 +8,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -124,11 +121,14 @@ type policyServerSourcesEntry struct {
 }
 
 // Reconciles the ConfigMap that holds the configuration of the Policy Server.
+// It returns the ConfigMap resourceVersion as observed after the create/patch,
+// so callers can stamp it onto the Deployment without issuing a separate,
+// uncached GET against the API server.
 func (r *PolicyServerReconciler) reconcilePolicyServerConfigMap(
 	ctx context.Context,
 	policyServer *policiesv1.PolicyServer,
 	policies []policiesv1.Policy,
-) error {
+) (string, error) {
 	cfg := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      policyServer.NameWithPrefix(),
@@ -140,9 +140,11 @@ func (r *PolicyServerReconciler) reconcilePolicyServerConfigMap(
 		return r.updateConfigMapData(cfg, policyServer, policies)
 	})
 	if err != nil {
-		return fmt.Errorf("cannot create or update PolicyServer ConfigMap: %w", err)
+		return "", fmt.Errorf("cannot create or update PolicyServer ConfigMap: %w", err)
 	}
-	return nil
+	// CreateOrPatch updates cfg in place with the object returned by the API
+	// server, so cfg.ResourceVersion is the authoritative current version.
+	return cfg.ResourceVersion, nil
 }
 
 // Function used to update the ConfigMap data when creating or updating it.
@@ -172,25 +174,6 @@ func (r *PolicyServerReconciler) updateConfigMapData(cfg *corev1.ConfigMap, poli
 		return errors.Join(errors.New("failed to set policy server configmap owner reference"), err)
 	}
 	return nil
-}
-
-func (r *PolicyServerReconciler) policyServerConfigMapVersion(ctx context.Context, policyServer *policiesv1.PolicyServer) (string, error) {
-	// By using Unstructured data we force the client to fetch fresh, uncached
-	// data from the API server
-	unstructuredObj := &unstructured.Unstructured{}
-	unstructuredObj.SetGroupVersionKind(schema.GroupVersionKind{
-		Kind:    "ConfigMap", //nolint:goconst
-		Version: "v1",
-	})
-	err := r.Client.Get(ctx, client.ObjectKey{
-		Namespace: r.DeploymentsNamespace,
-		Name:      policyServer.NameWithPrefix(),
-	}, unstructuredObj)
-	if err != nil {
-		return "", fmt.Errorf("cannot retrieve existing policies ConfigMap: %w", err)
-	}
-
-	return unstructuredObj.GetResourceVersion(), nil
 }
 
 func buildPolicyGroupMembersWithContext(policies policiesv1.PolicyGroupMembersWithContext, hostCaps []string) map[string]policyGroupMemberWithContext {

@@ -26,6 +26,7 @@ import (
 
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -106,8 +107,15 @@ func (r *PolicyServerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
+	// Snapshot the object so we only write the status back when it actually
+	// changed, and so we can patch against this base. Both the steady-state and
+	// the deletion paths can requeue every couple of seconds; without this guard
+	// each requeue would send an identical status update to the API server
+	// (issue #743).
+	original := policyServer.DeepCopy()
+
 	if policyServer.ObjectMeta.DeletionTimestamp != nil {
-		return r.reconcileDeletion(ctx, &policyServer)
+		return r.reconcileDeletion(ctx, &policyServer, original)
 	}
 
 	err := r.reconcilePolicyServerCertSecret(ctx, &policyServer)
@@ -120,7 +128,8 @@ func (r *PolicyServerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, errors.Join(errors.New("could not get policies"), err)
 	}
 
-	if err = r.reconcilePolicyServerConfigMap(ctx, &policyServer, policies); err != nil {
+	configMapVersion, err := r.reconcilePolicyServerConfigMap(ctx, &policyServer, policies)
+	if err != nil {
 		setFalseConditionType(
 			&policyServer.Status.Conditions,
 			string(policiesv1.PolicyServerConfigMapReconciled),
@@ -148,7 +157,7 @@ func (r *PolicyServerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		string(policiesv1.PolicyServerPodDisruptionBudgetReconciled),
 	)
 
-	if err = r.reconcilePolicyServerDeployment(ctx, &policyServer); err != nil {
+	if err = r.reconcilePolicyServerDeployment(ctx, &policyServer, configMapVersion); err != nil {
 		setFalseConditionType(
 			&policyServer.Status.Conditions,
 			string(policiesv1.PolicyServerDeploymentReconciled),
@@ -176,11 +185,27 @@ func (r *PolicyServerReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		string(policiesv1.PolicyServerServiceReconciled),
 	)
 
-	if err = r.Client.Status().Update(ctx, &policyServer); err != nil {
-		return ctrl.Result{}, fmt.Errorf("update policy server status error: %w", err)
+	if err = r.updateStatusIfChanged(ctx, &policyServer, original); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// updateStatusIfChanged writes the PolicyServer status back to the API server
+// only when it differs from the snapshot taken at the start of the reconcile
+// loop. This avoids the redundant status update requests that a requeue-based
+// wait would otherwise generate on every cycle. It uses a merge patch so that a
+// momentarily stale cached object does not cause "object has been modified"
+// conflicts (issue #743).
+func (r *PolicyServerReconciler) updateStatusIfChanged(ctx context.Context, policyServer, original *policiesv1.PolicyServer) error {
+	if equality.Semantic.DeepEqual(original.Status, policyServer.Status) {
+		return nil
+	}
+	if err := r.Client.Status().Patch(ctx, policyServer, client.MergeFrom(original)); err != nil {
+		return fmt.Errorf("update policy server status error: %w", err)
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -368,7 +393,7 @@ func (r *PolicyServerReconciler) getPolicies(ctx context.Context, policyServer *
 //   - False: webhooks still exist; requeue with a short delay.
 //   - True: all webhooks gone; remove finalizers on the next reconcile loop so
 //     the fresh resourceVersion from the status update is used.
-func (r *PolicyServerReconciler) reconcileDeletion(ctx context.Context, policyServer *policiesv1.PolicyServer) (ctrl.Result, error) {
+func (r *PolicyServerReconciler) reconcileDeletion(ctx context.Context, policyServer, original *policiesv1.PolicyServer) (ctrl.Result, error) {
 	// If the condition is already True the previous reconcile already confirmed
 	// all webhooks are gone. Remove the finalizers using the freshly-fetched
 	// object (guaranteed by Reconcile calling r.Get before reaching here).
@@ -411,8 +436,8 @@ func (r *PolicyServerReconciler) reconcileDeletion(ctx context.Context, policySe
 			string(policiesv1.PolicyServerPolicyWebhooksCleanedUp),
 			fmt.Sprintf("Waiting for webhook cleanup of policies: %s", strings.Join(remaining, ", ")),
 		)
-		if err = r.Client.Status().Update(ctx, policyServer); err != nil {
-			return ctrl.Result{}, fmt.Errorf("cannot update policy server status: %w", err)
+		if err = r.updateStatusIfChanged(ctx, policyServer, original); err != nil {
+			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: constants.TimeToRequeuePolicyReconciliation}, nil
 	}
@@ -421,8 +446,8 @@ func (r *PolicyServerReconciler) reconcileDeletion(ctx context.Context, policySe
 		&policyServer.Status.Conditions,
 		string(policiesv1.PolicyServerPolicyWebhooksCleanedUp),
 	)
-	if err = r.Client.Status().Update(ctx, policyServer); err != nil {
-		return ctrl.Result{}, fmt.Errorf("cannot update policy server status: %w", err)
+	if err = r.updateStatusIfChanged(ctx, policyServer, original); err != nil {
+		return ctrl.Result{}, err
 	}
 	// Requeue so the next reconcile fetches the object with the updated
 	// resourceVersion before calling r.Update to remove the finalizers.
