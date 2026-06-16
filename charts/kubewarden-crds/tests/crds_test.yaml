@@ -12,6 +12,9 @@ tests:
       - equal:
           path: spec.group
           value: policies.kubewarden.io
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
 
   - it: "admissionpolicygroups CRD should be a CustomResourceDefinition"
     template: templates/crds/policies.kubewarden.io_admissionpolicygroups.yaml
@@ -25,6 +28,9 @@ tests:
       - equal:
           path: spec.group
           value: policies.kubewarden.io
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
 
   - it: "clusteradmissionpolicies CRD should be a CustomResourceDefinition"
     template: templates/crds/policies.kubewarden.io_clusteradmissionpolicies.yaml
@@ -38,6 +44,9 @@ tests:
       - equal:
           path: spec.group
           value: policies.kubewarden.io
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
 
   - it: "clusteradmissionpolicygroups CRD should be a CustomResourceDefinition"
     template: templates/crds/policies.kubewarden.io_clusteradmissionpolicygroups.yaml
@@ -51,6 +60,9 @@ tests:
       - equal:
           path: spec.group
           value: policies.kubewarden.io
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
 
   - it: "policyservers CRD should be a CustomResourceDefinition"
     template: templates/crds/policies.kubewarden.io_policyservers.yaml
@@ -64,3 +76,6 @@ tests:
       - equal:
           path: spec.group
           value: policies.kubewarden.io
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
