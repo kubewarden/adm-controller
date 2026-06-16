@@ -5,6 +5,7 @@ metadata:
     {{- include "kubewarden-defaults.labels" . | nindent 4 }}
     app.kubernetes.io/component: policy-server
   annotations:
+    helm.sh/resource-policy: keep
     {{- include "kubewarden-defaults.annotations" . | nindent 4 }}
   name: {{ .Values.policyServer.serviceAccountName }}
   namespace: {{ .Release.Namespace }}
@@ -16,6 +17,7 @@ metadata:
     {{- include "kubewarden-defaults.labels" . | nindent 4 }}
     app.kubernetes.io/component: policy-server
   annotations:
+    helm.sh/resource-policy: keep
     {{- include "kubewarden-defaults.annotations" . | nindent 4 }}
   name: kubewarden-context-watcher
 rules:
@@ -40,6 +42,7 @@ metadata:
     {{- include "kubewarden-defaults.labels" . | nindent 4 }}
     app.kubernetes.io/component: policy-server
   annotations:
+    helm.sh/resource-policy: keep
     {{- include "kubewarden-defaults.annotations" . | nindent 4 }}
   name: kubewarden-context-watcher
 subjects:

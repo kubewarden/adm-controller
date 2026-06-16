@@ -8,6 +8,7 @@ metadata:
   annotations:
     io.kubewarden.policy.category: PSP
     io.kubewarden.policy.severity: medium
+    helm.sh/resource-policy: keep
     {{- include "kubewarden-defaults.annotations" . | nindent 4 }}
   name: {{ $.Values.recommendedPolicies.podPrivilegedPolicy.name }}
 spec:

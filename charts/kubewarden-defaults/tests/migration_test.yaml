@@ -1,0 +1,73 @@
+suite: zero-downtime migration patches
+release:
+  name: kubewarden-defaults
+  namespace: kubewarden
+
+tests:
+  - it: "default PolicyServer should carry the helm.sh/resource-policy keep annotation"
+    template: policyserver-default.yaml
+    set:
+      policyServer.enabled: true
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: "policy-server ServiceAccount should carry the helm.sh/resource-policy keep annotation"
+    template: policy-server-rbac.yaml
+    documentSelector:
+      path: kind
+      value: ServiceAccount
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: "kubewarden-context-watcher ClusterRole should carry the helm.sh/resource-policy keep annotation"
+    template: policy-server-rbac.yaml
+    documentSelector:
+      path: kind
+      value: ClusterRole
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: "kubewarden-context-watcher ClusterRoleBinding should carry the helm.sh/resource-policy keep annotation"
+    template: policy-server-rbac.yaml
+    documentSelector:
+      path: kind
+      value: ClusterRoleBinding
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: "recommended policies should carry keep annotation when enabled"
+    templates:
+      - allow-privileged-escalation-policy.yaml
+      - capabilities-policy.yaml
+      - host-namespace-policy.yaml
+      - host-path-policy.yaml
+      - pod-privileged-policy.yaml
+      - user-group-policy.yaml
+    set:
+      recommendedPolicies.enabled: true
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: "recommended policies should not render when disabled"
+    templates:
+      - allow-privileged-escalation-policy.yaml
+      - capabilities-policy.yaml
+      - host-namespace-policy.yaml
+      - host-path-policy.yaml
+      - pod-privileged-policy.yaml
+      - user-group-policy.yaml
+    set:
+      recommendedPolicies.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
