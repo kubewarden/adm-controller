@@ -36,7 +36,7 @@ spec:
       containers:
         - name: pre-delete-job
           image: '{{ template "system_default_registry" . }}{{ .Values.preDeleteJob.image.repository }}:{{ .Values.preDeleteJob.image.tag }}'
-          command: ["kubectl", "delete", "--all", "--wait", "policyservers.policies.kubewarden.io"]
+          command: ["kubectl", "delete", "--wait", "--selector=app.kubernetes.io/instance={{ .Release.Name }}", "policyservers.policies.kubewarden.io"]
           env:
             - name: KUBERLR_ALLOWDOWNLOAD
               value: "1"

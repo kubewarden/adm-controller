@@ -1,0 +1,43 @@
+suite: zero-downtime migration patches
+release:
+  name: kubewarden-controller
+  namespace: kubewarden
+
+tests:
+  - it: "kubewarden-ca Secret should carry the helm.sh/resource-policy keep annotation"
+    template: webhooks.yaml
+    documentSelector:
+      path: metadata.name
+      value: kubewarden-ca
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: "kubewarden-webhook-server-cert Secret should NOT carry the keep annotation"
+    template: webhooks.yaml
+    documentSelector:
+      path: metadata.name
+      value: kubewarden-webhook-server-cert
+    asserts:
+      - notExists:
+          path: metadata.annotations["helm.sh/resource-policy"]
+
+  - it: "kubewarden-audit-scanner-client-cert Secret should NOT carry the keep annotation"
+    template: webhooks.yaml
+    documentSelector:
+      path: metadata.name
+      value: kubewarden-audit-scanner-client-cert
+    asserts:
+      - notExists:
+          path: metadata.annotations["helm.sh/resource-policy"]
+
+  - it: "pre-delete hook should use --selector instead of --all"
+    template: pre-delete-hook.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].command
+          content: "--selector=app.kubernetes.io/instance=kubewarden-controller"
+      - notContains:
+          path: spec.template.spec.containers[0].command
+          content: "--all"
