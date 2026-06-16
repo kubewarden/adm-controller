@@ -255,6 +255,7 @@ type PolicyServerStatus struct {
 //+kubebuilder:printcolumn:name="Replicas",type=string,JSONPath=`.spec.replicas`,description="Policy Server replicas"
 //+kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="Policy Server image"
 //+kubebuilder:storageversion
+//+kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 
 // PolicyServer is the Schema for the policyservers API.
 type PolicyServer struct {
