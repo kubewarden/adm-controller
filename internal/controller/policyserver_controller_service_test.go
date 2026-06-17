@@ -72,7 +72,7 @@ func findServicePort(ports []corev1.ServicePort, name string) *corev1.ServicePor
 // TestUpdateServiceMetricsPortPriorityChain validates the 3-tier priority
 // chain for the metrics Service Port:
 //
-//	CRD field (spec.metricsPort) > env var (PolicyServerMetricsPort) > constant (8080)
+//	CRD field (spec.metricsPort) > --policy-server-metrics-port CLI flag > deprecated env var > constant (8080)
 //
 // It also verifies that the Service TargetPort is always fixed at the
 // controller-wide PolicyServerMetricsPort regardless of any CRD override.
@@ -87,14 +87,14 @@ func TestUpdateServiceMetricsPortPriorityChain(t *testing.T) {
 	tests := []struct {
 		name                   string
 		metricsEnabled         bool
-		policyServerMetricPort int32 // simulates env var / constant
+		policyServerMetricPort int32 // simulates controller-wide CLI flag / env var / constant
 		crdMetricsPort         *int32
 		expectMetricsPort      bool
 		expectedPort           int32 // Service Port
 		expectedTargetPort     int32 // Service TargetPort
 	}{
 		{
-			name:                   "env var only (no CRD override)",
+			name:                   "CLI flag only (no CRD override)",
 			metricsEnabled:         true,
 			policyServerMetricPort: 9090,
 			crdMetricsPort:         nil,
@@ -103,7 +103,7 @@ func TestUpdateServiceMetricsPortPriorityChain(t *testing.T) {
 			expectedTargetPort:     9090,
 		},
 		{
-			name:                   "CRD overrides env var",
+			name:                   "CRD overrides CLI flag",
 			metricsEnabled:         true,
 			policyServerMetricPort: 9090,
 			crdMetricsPort:         int32Ptr(9091),
@@ -170,7 +170,7 @@ func TestUpdateServiceMetricsPortPriorityChain(t *testing.T) {
 
 			require.NotNil(t, metricsPort, "metrics port must exist when metrics are enabled")
 			assert.Equal(t, tc.expectedPort, metricsPort.Port,
-				"Service Port should respect CRD > env var > constant priority")
+				"Service Port should respect CRD > CLI flag > constant priority")
 			assert.Equal(t, intstr.FromInt32(tc.expectedTargetPort), metricsPort.TargetPort,
 				"Service TargetPort must always equal the global PolicyServerMetricsPort (fixed regardless of spec.metricsPort, to avoid breaking OTel sidecar mode)")
 			assert.Equal(t, corev1.ProtocolTCP, metricsPort.Protocol)

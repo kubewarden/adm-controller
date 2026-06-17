@@ -75,8 +75,10 @@ type PolicyServerReconciler struct {
 	// so that in-cluster DNS resolution keeps working.
 	HostNetwork bool
 	// PolicyServerMetricsPort is the global default metrics port for PolicyServer
-	// Service objects. It is populated from the KUBEWARDEN_POLICY_SERVER_SERVICES_METRICS_PORT
-	// environment variable at startup, falling back to constants.PolicyServerMetricsPort.
+	// Service objects. It is populated from the --policy-server-metrics-port CLI
+	// flag at startup, falling back to the deprecated
+	// KUBEWARDEN_POLICY_SERVER_SERVICES_METRICS_PORT env var and then to
+	// constants.PolicyServerMetricsPort.
 	// A per-PolicyServer CRD field (spec.metricsPort) always takes priority.
 	PolicyServerMetricsPort int32
 }

@@ -175,7 +175,7 @@ type PolicyServerSpec struct {
 
 	// Port exposed by the metrics Service for this policy server.
 	// When unset, defaults to the controller-wide default
-	// (KUBEWARDEN_POLICY_SERVER_SERVICES_METRICS_PORT env var, or 8080).
+	// (--policy-server-metrics-port CLI flag, deprecated KUBEWARDEN_POLICY_SERVER_SERVICES_METRICS_PORT env var, or 8080).
 	// Only relevant when metrics are enabled.
 	//
 	// Use this field to customize which port Prometheus scrapes for this

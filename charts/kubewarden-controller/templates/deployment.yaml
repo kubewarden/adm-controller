@@ -83,6 +83,9 @@ spec:
        {{- if and (eq .Values.telemetry.mode "sidecar") }}
         - --enable-otel-sidecar
        {{- end }}
+       {{- if and .Values.telemetry.metrics (eq .Values.telemetry.mode "sidecar") }}
+        - --policy-server-metrics-port={{ .Values.telemetry.sidecar.metrics.port | default 8080 }}
+       {{- end }}
        {{- if .Values.telemetry.metrics }}
         - --enable-metrics
        {{- end }}
@@ -100,8 +103,6 @@ spec:
         - /controller
         env:
         {{- if and .Values.telemetry.metrics (eq .Values.telemetry.mode "sidecar") }}
-          - name: KUBEWARDEN_POLICY_SERVER_SERVICES_METRICS_PORT
-            value: "{{ .Values.telemetry.sidecar.metrics.port | default 8080 }}"
           - name: OTEL_EXPORTER_OTLP_ENDPOINT
             value: "https://localhost:4317"
           - name: OTEL_EXPORTER_OTLP_INSECURE

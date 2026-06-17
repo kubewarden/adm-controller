@@ -117,10 +117,16 @@ func main() {
 	var openTelemetryClientCertificateSecret string
 	var openTelemetryCertificateSecret string
 	var imagePullSecretsFlag string
+	var policyServerMetricsPort int
 
 	flag.StringVar(&mgrOpts.MetricsAddr, "metrics-bind-address", ":8088", "The address the controller-runtime metric endpoint binds to.")
 	flag.StringVar(&mgrOpts.ProbeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.IntVar(&mgrOpts.WebhookServerPort, "webhook-server-port", 9443, "The port the webhook server listens on.")
+	flag.IntVar(&policyServerMetricsPort,
+		"policy-server-metrics-port",
+		constants.PolicyServerMetricsPort,
+		"The default port exposed by every PolicyServer metrics Service. "+
+			"Per-PolicyServer overrides (spec.metricsPort) always take priority.")
 	flag.BoolVar(&mgrOpts.EnableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -164,6 +170,12 @@ func main() {
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+	policyServerMetricsPortFlagSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "policy-server-metrics-port" {
+			policyServerMetricsPortFlagSet = true
+		}
+	})
 	mgrOpts.EnableMutualTLS = config.ClientCAConfigMapName != ""
 	config.ImagePullSecrets = parseImagePullSecrets(imagePullSecretsFlag)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
@@ -200,30 +212,54 @@ func main() {
 			"Use only when the Kubernetes API server cannot reach pod-network webhook endpoints.")
 	}
 
-	// Read the global default metrics port for PolicyServer services from the
-	// environment variable, falling back to the hardcoded constant.
-	policyServerMetricsPort := int32(constants.PolicyServerMetricsPort)
+	// Validate --policy-server-metrics-port range.
+	if int64(policyServerMetricsPort) < minAllowedPort ||
+		int64(policyServerMetricsPort) > maxAllowedPort {
+		setupLog.Error(
+			errors.New("port must be between 1 and 65535"),
+			"invalid policy server metrics port",
+			"flag", "--policy-server-metrics-port",
+			"value", policyServerMetricsPort,
+			"min", minAllowedPort,
+			"max", maxAllowedPort,
+		)
+		retcode = 1
+		return
+	}
 	if envPort := os.Getenv(constants.PolicyServerMetricsPortEnvVar); envPort != "" {
-		parsed, err := strconv.ParseInt(envPort, 10, 32)
-		if err != nil {
-			setupLog.Error(err, "cannot parse env var as integer port",
-				"envVar", constants.PolicyServerMetricsPortEnvVar, "value", envPort)
-			retcode = 1
-			return
-		}
-		if parsed < minAllowedPort || parsed > maxAllowedPort {
-			setupLog.Error(
-				errors.New("port must be between 1 and 65535"),
-				"invalid env var port value",
+		if policyServerMetricsPortFlagSet {
+			setupLog.Info(
+				"WARNING: deprecated environment variable ignored because --policy-server-metrics-port was set",
 				"envVar", constants.PolicyServerMetricsPortEnvVar,
-				"value", envPort,
-				"min", minAllowedPort,
-				"max", maxAllowedPort,
+				"flag", "--policy-server-metrics-port",
 			)
-			retcode = 1
-			return
+		} else {
+			envPortParsed, err := strconv.ParseInt(envPort, 10, 32)
+			if err != nil {
+				setupLog.Error(err, "invalid policy server metrics port environment variable",
+					"envVar", constants.PolicyServerMetricsPortEnvVar, "value", envPort)
+				retcode = 1
+				return
+			}
+			policyServerMetricsPort = int(envPortParsed)
+			setupLog.Info(
+				"WARNING: deprecated environment variable used as fallback; use --policy-server-metrics-port instead",
+				"envVar", constants.PolicyServerMetricsPortEnvVar,
+				"flag", "--policy-server-metrics-port",
+			)
 		}
-		policyServerMetricsPort = int32(parsed)
+	}
+	if int64(policyServerMetricsPort) < minAllowedPort ||
+		int64(policyServerMetricsPort) > maxAllowedPort {
+		setupLog.Error(
+			errors.New("port must be between 1 and 65535"),
+			"invalid policy server metrics port",
+			"value", policyServerMetricsPort,
+			"min", minAllowedPort,
+			"max", maxAllowedPort,
+		)
+		retcode = 1
+		return
 	}
 
 	if enableMetrics {
@@ -272,7 +308,7 @@ func main() {
 		mgrOpts.DeploymentsNamespace,
 		config,
 		otelConfiguration,
-		policyServerMetricsPort,
+		int32(policyServerMetricsPort),
 	); err != nil {
 		setupLog.Error(err, "unable to create controllers")
 		retcode = 1
