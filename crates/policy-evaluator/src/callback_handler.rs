@@ -9,12 +9,14 @@ use crate::callback_handler::kubernetes::field_mask;
 use crate::callback_requests::{CallbackRequest, CallbackRequestType, CallbackResponse};
 
 mod builder;
+pub mod cache;
 mod crypto;
 mod kubernetes;
 mod oci;
 mod sigstore_verification;
 
 pub use builder::CallbackHandlerBuilder;
+pub use cache::{Cache, InMemoryCache};
 
 use sigstore_verification::{
     get_sigstore_certificate_verification_cached, get_sigstore_github_actions_verification_cached,
@@ -29,6 +31,9 @@ pub struct CallbackHandler {
     oci_client: Arc<oci::Client>,
     sigstore_client: sigstore_verification::Client,
     kubernetes_client: Option<kubernetes::Client>,
+    /// Backend shared by the `cache` host capability. Injected by policy-server
+    /// so the backend can be selected at runtime.
+    cache: Arc<dyn cache::Cache>,
     rx: mpsc::Receiver<CallbackRequest>,
     tx: mpsc::Sender<CallbackRequest>,
     shutdown_channel: oneshot::Receiver<()>,
@@ -94,6 +99,7 @@ impl CallbackHandler {
         let oci_client = self.oci_client.clone();
         let mut sigstore_client = self.sigstore_client.clone();
         let mut kubernetes_client = self.kubernetes_client.clone();
+        let cache = self.cache.clone();
 
         tokio::spawn(async move {
             match req.request {
@@ -200,6 +206,21 @@ impl CallbackHandler {
                         })
                         .map_err(anyhow::Error::new);
 
+                    if let Err(e) = req.response_channel.send(response) {
+                        warn!("callback handler: cannot send response back: {:?}", e);
+                    }
+                }
+                CallbackRequestType::CacheSet { key, value, ttl } => {
+                    debug!(key, ttl, "Cache set");
+                    let response =
+                        cache::handle_set(cache.as_ref(), cache::CacheSetRequest { key, value, ttl });
+                    if let Err(e) = req.response_channel.send(response) {
+                        warn!("callback handler: cannot send response back: {:?}", e);
+                    }
+                }
+                CallbackRequestType::CacheGet { key } => {
+                    debug!(key, "Cache get");
+                    let response = cache::handle_get(cache.as_ref(), cache::CacheGetRequest { key });
                     if let Err(e) = req.response_channel.send(response) {
                         warn!("callback handler: cannot send response back: {:?}", e);
                     }

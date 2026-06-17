@@ -69,6 +69,13 @@ static CAPABILITY_TREE: LazyLock<CapabilityNode> = LazyLock::new(|| {
                 ("can_i", CapabilityNode::leaf()),
             ])),
         ),
+        (
+            "cache",
+            CapabilityNode::node(HashMap::from([
+                ("set", CapabilityNode::leaf()),
+                ("get", CapabilityNode::leaf()),
+            ])),
+        ),
     ]))
 });
 
@@ -443,6 +450,9 @@ mod tests {
             "kubernetes/list_resources_all",
             "kubernetes/list_resources_by_namespace",
             "kubernetes/*",
+            "cache/set",
+            "cache/get",
+            "cache/*",
         ];
         let result = HostCapabilities::new(patterns);
         assert!(
@@ -483,6 +493,8 @@ mod tests {
 
         // The expected complete set of leaf paths, kept in sync with CAPABILITY_TREE.
         let mut expected: Vec<(String, String)> = vec![
+            ("cache", "get"),
+            ("cache", "set"),
             ("crypto", "v1/is_certificate_trusted"),
             ("kubernetes", "can_i"),
             ("kubernetes", "get_resource"),
