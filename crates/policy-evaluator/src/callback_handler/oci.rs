@@ -1,5 +1,6 @@
+use std::time::Duration;
+
 use anyhow::Result;
-use cached::macros::cached;
 use kubewarden_policy_sdk::host_capabilities::oci::ManifestDigestResponse;
 use policy_fetcher::{
     oci_client::{
@@ -10,6 +11,12 @@ use policy_fetcher::{
     sources::Sources,
 };
 use serde::{Deserialize, Serialize};
+
+use super::cache;
+
+/// Interacting with a remote OCI registry is expensive, so the results are kept
+/// in the shared cache for this long.
+const OCI_CACHE_TTL: Duration = Duration::from_secs(60);
 
 /// Helper struct to interact with an OCI registry
 pub(crate) struct Client {
@@ -77,67 +84,51 @@ impl Client {
 
 // Interacting with a remote OCI registry is time expensive, this can cause a massive slow down
 // of policy evaluations, especially inside of PolicyServer.
-// Because of that we will keep a cache of the digests results.
+// Because of that we keep the results in the shared cache backend.
 //
 // Details about this cache:
 //   * only the image "url" is used as key. oci::Client is not hashable, plus
 //     the client is always the same
 //   * the cache is time bound: cached values are purged after 60 seconds
 //   * only successful results are cached
-#[cached(
-    ttl = 60,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("{}", img) }"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_oci_digest_cached(
+    cache: &dyn cache::Cache,
     oci_client: &Client,
     img: &str,
 ) -> Result<cached::Return<ManifestDigestResponse>> {
-    oci_client
-        .digest(img)
-        .await
-        .map(|digest| ManifestDigestResponse { digest })
-        .map(cached::Return::new)
+    cache::internal_cached(cache, &format!("oci_digest:{img}"), OCI_CACHE_TTL, || async {
+        oci_client
+            .digest(img)
+            .await
+            .map(|digest| ManifestDigestResponse { digest })
+    })
+    .await
 }
 
-// Interacting with a remote OCI registry is time expensive, this can cause a massive slow down
-// of policy evaluations, especially inside of PolicyServer.
-// Because of that we will keep a cache of the manifest results.
-//
-// Details about this cache:
-//   * only the image "url" is used as key. oci::Client is not hashable, plus
-//     the client is always the same
-//   * the cache is time bound: cached values are purged after 60 seconds
-//   * only successful results are cached
-#[cached(
-    ttl = 60,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("{}", img) }"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_oci_manifest_cached(
+    cache: &dyn cache::Cache,
     oci_client: &Client,
     img: &str,
 ) -> Result<cached::Return<OciManifest>> {
-    oci_client.manifest(img).await.map(cached::Return::new)
+    cache::internal_cached(
+        cache,
+        &format!("oci_manifest:{img}"),
+        OCI_CACHE_TTL,
+        || async { oci_client.manifest(img).await },
+    )
+    .await
 }
 
-#[cached(
-    ttl = 60,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("{}", img) }"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_oci_manifest_and_config_cached(
+    cache: &dyn cache::Cache,
     oci_client: &Client,
     img: &str,
 ) -> Result<cached::Return<ManifestAndConfigResponse>> {
-    oci_client
-        .manifest_and_config(img)
-        .await
-        .map(cached::Return::new)
+    cache::internal_cached(
+        cache,
+        &format!("oci_manifest_and_config:{img}"),
+        OCI_CACHE_TTL,
+        || async { oci_client.manifest_and_config(img).await },
+    )
+    .await
 }

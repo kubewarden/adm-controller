@@ -13,11 +13,13 @@
 // leaves the door open for shared/distributed backends (e.g. Redis) in the
 // future without touching the host capability or any policy.
 
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use cached::{Cached, Expires, ExpiringCache};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::callback_requests::CallbackResponse;
@@ -199,6 +201,50 @@ pub fn handle_get(cache: &dyn Cache, req: CacheGetRequest) -> Result<CallbackRes
     let payload = serde_json::to_vec(&response)
         .map_err(|e| anyhow!("error serializing cache.get response: {e:?}"))?;
     Ok(CallbackResponse { payload })
+}
+
+/// Look up a framework-internal entry in the shared cache, computing and
+/// storing it on a miss.
+///
+/// This backs the built-in host capabilities (OCI, sigstore, Kubernetes) so they
+/// share the single cache backend instead of each owning a private store (which
+/// is what the `#[cached]` macro used to do). `sub_key` is namespaced with
+/// [`RESERVED_KEY_PREFIX`], so these entries can never collide with
+/// policy-authored keys. The returned `cached::Return` carries the `was_cached`
+/// flag the `#[cached]` macro used to provide for logging.
+///
+/// Only successful results are cached. A (de)serialization failure is treated as
+/// a cache miss rather than an error, so it never changes the call's outcome.
+pub(crate) async fn internal_cached<T, Fut>(
+    cache: &dyn Cache,
+    sub_key: &str,
+    ttl: Duration,
+    compute: impl FnOnce() -> Fut,
+) -> Result<cached::Return<T>>
+where
+    T: Serialize + DeserializeOwned,
+    Fut: Future<Output = Result<T>>,
+{
+    let key = format!("{RESERVED_KEY_PREFIX}{sub_key}");
+
+    if let Some(bytes) = cache.get(&key) {
+        if let Ok(value) = serde_json::from_slice::<T>(&bytes) {
+            return Ok(cached::Return {
+                was_cached: true,
+                value,
+            });
+        }
+    }
+
+    let value = compute().await?;
+    if let Ok(bytes) = serde_json::to_vec(&value) {
+        cache.set(key, bytes, ttl);
+    }
+
+    Ok(cached::Return {
+        was_cached: false,
+        value,
+    })
 }
 
 /// Spawn a background task that periodically evicts expired entries.

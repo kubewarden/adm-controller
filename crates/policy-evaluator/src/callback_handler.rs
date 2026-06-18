@@ -105,17 +105,17 @@ impl CallbackHandler {
             match req.request {
                 CallbackRequestType::OciManifestDigest { image } => {
                     handle_callback!(req, image, "Image digest computed", {
-                        oci::get_oci_digest_cached(&oci_client, &image)
+                        oci::get_oci_digest_cached(cache.as_ref(), &oci_client, &image)
                     });
                 }
                 CallbackRequestType::OciManifest { image } => {
                     handle_callback!(req, image, "Image manifest computed", {
-                        oci::get_oci_manifest_cached(&oci_client, &image)
+                        oci::get_oci_manifest_cached(cache.as_ref(), &oci_client, &image)
                     });
                 }
                 CallbackRequestType::OciManifestAndConfig { image } => {
                     handle_callback!(req, image, "Image manifest computed", {
-                        oci::get_oci_manifest_and_config_cached(&oci_client, &image)
+                        oci::get_oci_manifest_and_config_cached(cache.as_ref(), &oci_client, &image)
                     });
                 }
                 CallbackRequestType::SigstorePubKeyVerify {
@@ -125,6 +125,7 @@ impl CallbackHandler {
                 } => {
                     handle_callback!(req, image, "Sigstore pub key verification done", {
                         get_sigstore_pub_key_verification_cached(
+                            cache.as_ref(),
                             &mut sigstore_client,
                             image.clone(),
                             pub_keys,
@@ -139,6 +140,7 @@ impl CallbackHandler {
                 } => {
                     handle_callback!(req, image, "Sigstore keyless verification done", {
                         get_sigstore_keyless_verification_cached(
+                            cache.as_ref(),
                             &mut sigstore_client,
                             image.clone(),
                             keyless,
@@ -153,6 +155,7 @@ impl CallbackHandler {
                 } => {
                     handle_callback!(req, image, "Sigstore keyless prefix verification done", {
                         get_sigstore_keyless_prefix_verification_cached(
+                            cache.as_ref(),
                             &mut sigstore_client,
                             image.clone(),
                             keyless_prefix,
@@ -168,6 +171,7 @@ impl CallbackHandler {
                 } => {
                     handle_callback!(req, image, "Sigstore GitHub Action verification done", {
                         get_sigstore_github_actions_verification_cached(
+                            cache.as_ref(),
                             &mut sigstore_client,
                             image.clone(),
                             owner,
@@ -185,6 +189,7 @@ impl CallbackHandler {
                 } => {
                     handle_callback!(req, image, "Sigstore GitHub Action verification done", {
                         get_sigstore_certificate_verification_cached(
+                            cache.as_ref(),
                             &mut sigstore_client,
                             &image,
                             &certificate,
@@ -313,6 +318,7 @@ impl CallbackHandler {
                             "Get Kubernetes resource",
                             {
                                 let res = kubernetes::get_resource_cached(
+                                    cache.as_ref(),
                                     kubernetes_client.as_mut(),
                                     &api_version,
                                     &kind,
@@ -389,7 +395,7 @@ impl CallbackHandler {
                             req,
                             "can_i".to_owned(),
                             "Check if user or service account has permission to perform operation",
-                            { kubernetes::can_i_cached(kubernetes_client.as_mut(), request) }
+                            { kubernetes::can_i_cached(cache.as_ref(), kubernetes_client.as_mut(), request) }
                         )
                     }
                 }
