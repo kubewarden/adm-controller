@@ -460,8 +460,6 @@ impl From<kubewarden_policy_sdk::host_capabilities::kubernetes::ListResourcesByN
             namespace: req.namespace,
             label_selector: req.label_selector,
             field_selector: req.field_selector,
-            // kubewarden-policy-sdk does not expose a `disable_cache` field for this
-            // request yet, so list queries always go through the reflector for now.
             disable_cache: false,
             field_masks: req.field_masks,
         }
@@ -479,8 +477,6 @@ impl From<kubewarden_policy_sdk::host_capabilities::kubernetes::ListAllResources
             kind: req.kind,
             label_selector: req.label_selector,
             field_selector: req.field_selector,
-            // kubewarden-policy-sdk does not expose a `disable_cache` field for this
-            // request yet, so list queries always go through the reflector for now.
             disable_cache: false,
             field_masks: req.field_masks,
         }
