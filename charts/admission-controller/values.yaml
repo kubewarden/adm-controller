@@ -413,7 +413,7 @@ policyServer:
   image:
     # The registry is defined in the global.cattle.systemDefaultRegistry value
     repository: "kubewarden/adm-controller/policy-server"
-    tag: v1.36.0
+    tag: v1.37.0-alpha
   serviceAccountName: policy-server
   # Configmap containing a Sigstore verification configuration under a key
   # named `verification-config`. Must be on the same ns as the PolicyServer.
