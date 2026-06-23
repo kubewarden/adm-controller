@@ -333,7 +333,7 @@ auditScanner:
     # The registry is defined in the common.cattle.systemDefaultRegistry value
     # kubectl image to be used in the pre-delete helm hook
     repository: "kubewarden/adm-controller/audit-scanner"
-    tag: v1.36.0
+    tag: v1.37.0-alpha
     pullPolicy: IfNotPresent
   cronJob:
     schedule: "0 * * * *" # every 60 minutes
@@ -403,7 +403,6 @@ installPolicyReportCRDs: false # @schema deprecated
 # Set to false if they are already defined inside of the cluster
 installOpenReportsCRDs: true
 
-
 # Policy Server settings
 policyServer:
   enabled: true
@@ -461,7 +460,7 @@ policyServer:
   #insecureSources:
   #  - "source1"
   #  - "source2"
-  insecureSources: [] # @schema item: string
+  insecureSources: []
   # sourceAuthorities is a list of the URIs and their PEM encoded certificates
   # used to authenticate them
   #
@@ -477,7 +476,7 @@ policyServer:
   #   - uri: "uri3"
   #     certs:
   #       - "cert4"
-  sourceAuthorities: [] # @schema type:[array]
+  sourceAuthorities: []
   # namespacedPoliciesCapabilities lists host capability API calls allowed
   # for namespaced policies running on this PolicyServer.
   # Supported patterns: [] (none), "*" (all), "category/*",
@@ -529,7 +528,7 @@ recommendedPolicies:
   # Additional namespaces that recommended policies will not apply to:
   skipAdditionalNamespaces: []
   defaultPolicyMode: "monitor"
-  
+
   allowPrivilegeEscalationPolicy:
     module:
       repository: "kubewarden/policies/allow-privilege-escalation-psp"
@@ -537,7 +536,7 @@ recommendedPolicies:
     name: "no-privilege-escalation"
     settings:
       allowPrivilegeEscalation: false
-      
+
   hostNamespacePolicy:
     module:
       repository: "kubewarden/policies/host-namespaces-psp"
@@ -548,7 +547,7 @@ recommendedPolicies:
       allow_host_network: false
       allow_host_pid: false
       allow_host_ports: []
-      
+
   podPrivilegedPolicy:
     module:
       repository: "kubewarden/policies/pod-privileged"
@@ -557,7 +556,7 @@ recommendedPolicies:
     settings:
       skip_init_containers: false
       skip_ephemeral_containers: false
-      
+
   userGroupPolicy:
     module:
       repository: "kubewarden/policies/user-group-psp"
@@ -571,7 +570,7 @@ recommendedPolicies:
       supplemental_groups:
         rule: "RunAsAny"
       validate_container_image_configuration: false
-      
+
   hostPathsPolicy:
     module:
       repository: "kubewarden/policies/hostpaths-psp"
@@ -581,7 +580,7 @@ recommendedPolicies:
       allowedHostPaths:
         - pathPrefix: "/tmp"
           readOnly: true
-          
+
   capabilitiesPolicy:
     module:
       repository: "kubewarden/policies/capabilities-psp"
