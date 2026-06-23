@@ -291,10 +291,7 @@
                     "type": "string"
                 },
                 "insecureSources": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                    "type": "array"
                 },
                 "limits": {
                     "type": "object"
