@@ -256,7 +256,7 @@ image:
   # controller image to be used
   repository: "kubewarden/adm-controller/controller"
   # image tag
-  tag: v1.36.0
+  tag: v1.37.0-alpha
   pullPolicy: IfNotPresent
 preDeleteJob:
   image:
