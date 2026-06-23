@@ -34,7 +34,7 @@ spec:
     - name: ghcr.io/kubewarden/policies/capabilities-psp:v1.0.11
     - name: ghcr.io/kubewarden/policies/host-namespaces-psp:v1.1.8
     - name: ghcr.io/kubewarden/policies/hostpaths-psp:v1.1.7
-    - name: ghcr.io/kubewarden/policies/pod-privileged:v1.0.11
+    - name: ghcr.io/kubewarden/policies/pod-privileged:v1.0.10
     - name: ghcr.io/kubewarden/policies/user-group-psp:v1.1.5
 ---
 # The policy reporter and kuberlr images are defined in the dedicated manifest section because
