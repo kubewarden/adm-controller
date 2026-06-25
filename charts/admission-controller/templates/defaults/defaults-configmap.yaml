@@ -15,27 +15,27 @@ data:
     {{- include "kubewarden.defaults.policyserverDefault" . | nindent 4 }}
   {{- end }}
   {{- if .Values.recommendedPolicies.enabled }}
-  {{- if .Values.recommendedPolicies.allowPrivilegeEscalationPolicy }}
+  {{- if (.Values.recommendedPolicies.allowPrivilegeEscalationPolicy).name }}
   allow-privilege-escalation.yaml: |
     {{- include "kubewarden.defaults.allowPrivilegeEscalation" . | nindent 4 }}
   {{- end }}
-  {{- if .Values.recommendedPolicies.capabilitiesPolicy }}
+  {{- if (.Values.recommendedPolicies.capabilitiesPolicy).name }}
   capabilities.yaml: |
     {{- include "kubewarden.defaults.capabilities" . | nindent 4 }}
   {{- end }}
-  {{- if .Values.recommendedPolicies.hostNamespacePolicy }}
+  {{- if (.Values.recommendedPolicies.hostNamespacePolicy).name }}
   host-namespace.yaml: |
     {{- include "kubewarden.defaults.hostNamespace" . | nindent 4 }}
   {{- end }}
-  {{- if .Values.recommendedPolicies.hostPathsPolicy }}
+  {{- if (.Values.recommendedPolicies.hostPathsPolicy).name }}
   host-paths.yaml: |
     {{- include "kubewarden.defaults.hostPaths" . | nindent 4 }}
   {{- end }}
-  {{- if .Values.recommendedPolicies.podPrivilegedPolicy }}
+  {{- if (.Values.recommendedPolicies.podPrivilegedPolicy).name }}
   pod-privileged.yaml: |
     {{- include "kubewarden.defaults.podPrivileged" . | nindent 4 }}
   {{- end }}
-  {{- if .Values.recommendedPolicies.userGroupPolicy }}
+  {{- if (.Values.recommendedPolicies.userGroupPolicy).name }}
   user-group.yaml: |
     {{- include "kubewarden.defaults.userGroup" . | nindent 4 }}
   {{- end }}

@@ -32,18 +32,30 @@ It is ready to run any `clusteradmissionpolicies.policies.kubewarden.io` or
 {{- if .Values.recommendedPolicies.enabled }}
 
 Installed recommended policies:
+{{- if (.Values.recommendedPolicies.allowPrivilegeEscalationPolicy).name }}
 - {{ .Values.recommendedPolicies.allowPrivilegeEscalationPolicy.name }}
   module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.allowPrivilegeEscalationPolicy.module.repository }}:{{ .Values.recommendedPolicies.allowPrivilegeEscalationPolicy.module.tag }}
+{{- end }}
+{{- if (.Values.recommendedPolicies.hostNamespacePolicy).name }}
 - {{ .Values.recommendedPolicies.hostNamespacePolicy.name }}
   module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.hostNamespacePolicy.module.repository }}:{{ .Values.recommendedPolicies.hostNamespacePolicy.module.tag }}
+{{- end }}
+{{- if (.Values.recommendedPolicies.podPrivilegedPolicy).name }}
 - {{ .Values.recommendedPolicies.podPrivilegedPolicy.name }}
   module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.podPrivilegedPolicy.module.repository }}:{{ .Values.recommendedPolicies.podPrivilegedPolicy.module.tag }}
+{{- end }}
+{{- if (.Values.recommendedPolicies.userGroupPolicy).name }}
 - {{ .Values.recommendedPolicies.userGroupPolicy.name }}
   module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.userGroupPolicy.module.repository }}:{{ .Values.recommendedPolicies.userGroupPolicy.module.tag }}
+{{- end }}
+{{- if (.Values.recommendedPolicies.hostPathsPolicy).name }}
 - {{ .Values.recommendedPolicies.hostPathsPolicy.name }}
   module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.hostPathsPolicy.module.repository }}:{{ .Values.recommendedPolicies.hostPathsPolicy.module.tag }}
+{{- end }}
+{{- if (.Values.recommendedPolicies.capabilitiesPolicy).name }}
 - {{ .Values.recommendedPolicies.capabilitiesPolicy.name }}
   module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.capabilitiesPolicy.module.repository }}:{{ .Values.recommendedPolicies.capabilitiesPolicy.module.tag }}
+{{- end }}
 {{- if eq .Values.recommendedPolicies.defaultPolicyMode "monitor" }}
 
 Note: all these policies have been installed in `monitor` mode, you can enforce them
