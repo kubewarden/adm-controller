@@ -305,3 +305,139 @@ cause port conflicts in host-network mode.
 {{- fail "hostNetwork and telemetry.mode=sidecar are incompatible: OpenTelemetry sidecar injection causes port conflicts in host-network mode. Use telemetry.mode=custom with a remote collector instead." -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Shared scaffold for all recommended ClusterAdmissionPolicy resources.
+Callers pass a dict with:
+  ctx      - the Helm context (.)
+  policy   - the policy sub-object from .Values.recommendedPolicies.*
+  mutating - bool
+  rules    - list of rule objects (apiGroups/apiVersions/resources/operations)
+*/}}
+{{- define "kubewarden.defaults.policy" -}}
+{{- $ctx := .ctx -}}
+{{- $policy := .policy -}}
+apiVersion: {{ $ctx.Values.crdVersion }}
+kind: ClusterAdmissionPolicy
+metadata:
+  name: {{ $policy.name }}
+  labels:
+    {{- include "admission-controller.policyLabels" $ctx | nindent 4 }}
+  annotations:
+    io.kubewarden.policy.severity: medium
+    io.kubewarden.policy.category: PSP
+    {{- include "admission-controller.defaults.annotations" $ctx | nindent 4 }}
+spec:
+  mode: {{ $ctx.Values.recommendedPolicies.defaultPolicyMode | default "monitor" }}
+  failurePolicy: {{ include "policy_failure_policy" $ctx | trim }}
+  module: {{ template "policy_default_registry" $ctx }}{{ $policy.module.repository }}:{{ $policy.module.tag }}
+  mutating: {{ .mutating }}
+  rules:
+    {{- toYaml .rules | nindent 4 }}
+  {{- include "policy-namespace-selector" $ctx | nindent 2 }}
+  settings: {{ $policy.settings | toYaml | nindent 4 }}
+{{- end -}}
+
+{{- define "kubewarden.defaults.allowPrivilegeEscalation" -}}
+{{- include "kubewarden.defaults.policy" (dict
+    "ctx"      .
+    "policy"   .Values.recommendedPolicies.allowPrivilegeEscalationPolicy
+    "mutating" true
+    "rules"    (list (dict
+        "apiGroups"   (list "")
+        "apiVersions" (list "v1")
+        "resources"   (list "pods")
+        "operations"  (list "CREATE")
+    ))
+) -}}
+{{- end -}}
+
+{{- define "kubewarden.defaults.capabilities" -}}
+{{- include "kubewarden.defaults.policy" (dict
+    "ctx"      .
+    "policy"   .Values.recommendedPolicies.capabilitiesPolicy
+    "mutating" true
+    "rules"    (list (dict
+        "apiGroups"   (list "")
+        "apiVersions" (list "v1")
+        "resources"   (list "pods")
+        "operations"  (list "CREATE" "UPDATE")
+    ))
+) -}}
+{{- end -}}
+
+{{- define "kubewarden.defaults.hostNamespace" -}}
+{{- include "kubewarden.defaults.policy" (dict
+    "ctx"      .
+    "policy"   .Values.recommendedPolicies.hostNamespacePolicy
+    "mutating" false
+    "rules"    (list (dict
+        "apiGroups"   (list "")
+        "apiVersions" (list "v1")
+        "resources"   (list "pods")
+        "operations"  (list "CREATE" "UPDATE")
+    ))
+) -}}
+{{- end -}}
+
+{{- define "kubewarden.defaults.hostPaths" -}}
+{{- include "kubewarden.defaults.policy" (dict
+    "ctx"      .
+    "policy"   .Values.recommendedPolicies.hostPathsPolicy
+    "mutating" false
+    "rules"    (list (dict
+        "apiGroups"   (list "")
+        "apiVersions" (list "v1")
+        "resources"   (list "pods")
+        "operations"  (list "CREATE" "UPDATE")
+    ))
+) -}}
+{{- end -}}
+
+{{- define "kubewarden.defaults.podPrivileged" -}}
+{{- include "kubewarden.defaults.policy" (dict
+    "ctx"      .
+    "policy"   .Values.recommendedPolicies.podPrivilegedPolicy
+    "mutating" false
+    "rules"    (list
+        (dict
+            "apiGroups"   (list "")
+            "apiVersions" (list "v1")
+            "resources"   (list "pods")
+            "operations"  (list "CREATE")
+        )
+        (dict
+            "apiGroups"   (list "")
+            "apiVersions" (list "v1")
+            "resources"   (list "replicationcontrollers")
+            "operations"  (list "CREATE" "UPDATE")
+        )
+        (dict
+            "apiGroups"   (list "apps")
+            "apiVersions" (list "v1")
+            "resources"   (list "deployments" "replicasets" "statefulsets" "daemonsets")
+            "operations"  (list "CREATE" "UPDATE")
+        )
+        (dict
+            "apiGroups"   (list "batch")
+            "apiVersions" (list "v1")
+            "resources"   (list "jobs" "cronjobs")
+            "operations"  (list "CREATE" "UPDATE")
+        )
+    )
+) -}}
+{{- end -}}
+
+{{- define "kubewarden.defaults.userGroup" -}}
+{{- include "kubewarden.defaults.policy" (dict
+    "ctx"      .
+    "policy"   .Values.recommendedPolicies.userGroupPolicy
+    "mutating" true
+    "rules"    (list (dict
+        "apiGroups"   (list "")
+        "apiVersions" (list "v1")
+        "resources"   (list "pods")
+        "operations"  (list "CREATE")
+    ))
+) -}}
+{{- end -}}
