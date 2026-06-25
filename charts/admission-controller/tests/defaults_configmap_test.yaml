@@ -193,7 +193,7 @@ tests:
     asserts:
       - matchRegex:
           path: data["allow-privilege-escalation.yaml"]
-          pattern: 'operations: \["CREATE"\]'
+          pattern: "operations:\n      - CREATE"
       - notMatchRegex:
           path: data["allow-privilege-escalation.yaml"]
           pattern: "UPDATE"
