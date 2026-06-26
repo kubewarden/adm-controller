@@ -23,7 +23,7 @@ hex = { workspace = true }
 itertools = { workspace = true }
 json-patch = "4.1"
 k8s-openapi = { workspace = true }
-kube = { version = "3.0.1", default-features = false, features = [
+kube = { version = "4.0.0", default-features = false, features = [
   "client",
   "runtime",
   "rustls-tls",

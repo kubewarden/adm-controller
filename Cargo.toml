@@ -32,9 +32,9 @@ tokio = { version = "^1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 url = { version = "2.5", features = ["serde"] }
-wasi-common = "45.0"
+wasi-common = "46.0"
 # We need to disable the default features here to be able to provide a specific
 # set of features for kwctl on macOS x86_64
 # Workaround for https://github.com/bytecodealliance/wasmtime/issues/12217
-wasmtime      = { version = "45.0", default-features = false }
-wasmtime-wasi = "45.0"
+wasmtime      = { version = "46.0", default-features = false }
+wasmtime-wasi = "46.0"
