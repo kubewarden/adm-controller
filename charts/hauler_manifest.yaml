@@ -30,7 +30,7 @@ metadata:
     hauler.dev/certificate-identity-regexp: https://github.com/kubewarden/policies/.github/workflows/release.yml@refs/tags/.*
 spec:
   images:
-    - name: ghcr.io/kubewarden/policies/allow-privilege-escalation-psp:v1.0.11
+    - name: ghcr.io/kubewarden/policies/allow-privilege-escalation-psp:v1.0.12
     - name: ghcr.io/kubewarden/policies/capabilities-psp:v1.0.11
     - name: ghcr.io/kubewarden/policies/host-namespaces-psp:v1.1.9
     - name: ghcr.io/kubewarden/policies/hostpaths-psp:v1.1.9
