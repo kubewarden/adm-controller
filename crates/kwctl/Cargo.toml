@@ -3,7 +3,7 @@ authors     = ["Kubewarden Developers <cncf-kubewarden-maintainers@lists.cncf.io
 description = "Tool to manage Kubewarden policies"
 edition     = "2024"
 name        = "kwctl"
-version     = "1.37.0-rc.2"
+version     = "1.37.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
