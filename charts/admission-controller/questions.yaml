@@ -249,7 +249,7 @@ questions:
     group: "Default PolicyServer"
   - variable: "policyServer.image.tag"
     type: string
-    default: "v1.37.0"
+    default: "v1.37.1"
     show_if: policyServer.enabled=true
     label: PolicyServer image tag
     description: |
