@@ -537,7 +537,7 @@ recommendedPolicies:
   allowPrivilegeEscalationPolicy:
     module:
       repository: "kubewarden/policies/allow-privilege-escalation-psp"
-      tag: v1.0.12
+      tag: v1.0.13
     name: "no-privilege-escalation"
     settings:
       allowPrivilegeEscalation: false
