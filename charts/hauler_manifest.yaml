@@ -32,7 +32,7 @@ spec:
   images:
     - name: ghcr.io/kubewarden/policies/allow-privilege-escalation-psp:v1.0.13
     - name: ghcr.io/kubewarden/policies/capabilities-psp:v1.0.13
-    - name: ghcr.io/kubewarden/policies/host-namespaces-psp:v1.1.10
+    - name: ghcr.io/kubewarden/policies/host-namespaces-psp:v1.1.11
     - name: ghcr.io/kubewarden/policies/hostpaths-psp:v1.1.10
     - name: ghcr.io/kubewarden/policies/pod-privileged:v1.0.13
     - name: ghcr.io/kubewarden/policies/user-group-psp:v1.1.5
