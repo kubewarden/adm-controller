@@ -556,7 +556,7 @@ recommendedPolicies:
   podPrivilegedPolicy:
     module:
       repository: "kubewarden/policies/pod-privileged"
-      tag: v1.0.12
+      tag: v1.0.13
     name: "no-privileged-pod"
     settings:
       skip_init_containers: false
