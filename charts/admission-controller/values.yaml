@@ -579,7 +579,7 @@ recommendedPolicies:
   hostPathsPolicy:
     module:
       repository: "kubewarden/policies/hostpaths-psp"
-      tag: v1.1.9
+      tag: v1.1.10
     name: "do-not-share-host-paths"
     settings:
       allowedHostPaths:
