@@ -1,7 +1,6 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow};
-use cached::macros::cached;
 use itertools::Itertools;
 use kubewarden_policy_sdk::host_capabilities::verification::{
     KeylessInfo, KeylessPrefixInfo, VerificationResponse,
@@ -24,6 +23,12 @@ use sigstore::{
 };
 use tokio::sync::Mutex;
 use tracing::warn;
+
+use super::cache;
+
+/// Sigstore verifications are expensive, so the results are kept in the shared
+/// cache for this long.
+const SIGSTORE_CACHE_TTL: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub(crate) struct Client {
@@ -265,23 +270,18 @@ impl Client {
 // Details about this cache:
 //   * the cache is time bound: cached values are purged after 60 seconds
 //   * only successful results are cached
-#[cached(
-    ttl = 60,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("{}{:?}{:?}", image, pub_keys, annotations)}"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_sigstore_pub_key_verification_cached(
+    cache: &dyn cache::Cache,
     client: &mut Client,
     image: String,
     pub_keys: Vec<String>,
     annotations: Option<BTreeMap<String, String>>,
 ) -> Result<cached::Return<VerificationResponse>> {
-    client
-        .verify_public_key(image, pub_keys, annotations)
-        .await
-        .map(cached::Return::new)
+    let sub_key = format!("sigstore_pubkey:{image}{pub_keys:?}{annotations:?}");
+    cache::internal_cached(cache, &sub_key, SIGSTORE_CACHE_TTL, || async move {
+        client.verify_public_key(image, pub_keys, annotations).await
+    })
+    .await
 }
 
 // Sigstore verifications are time expensive, this can cause a massive slow down
@@ -291,23 +291,18 @@ pub(crate) async fn get_sigstore_pub_key_verification_cached(
 // Details about this cache:
 //   * the cache is time bound: cached values are purged after 60 seconds
 //   * only successful results are cached
-#[cached(
-    ttl = 60,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("{}{:?}{:?}", image, keyless, annotations)}"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_sigstore_keyless_verification_cached(
+    cache: &dyn cache::Cache,
     client: &mut Client,
     image: String,
     keyless: Vec<KeylessInfo>,
     annotations: Option<BTreeMap<String, String>>,
 ) -> Result<cached::Return<VerificationResponse>> {
-    client
-        .verify_keyless(image, keyless, annotations)
-        .await
-        .map(cached::Return::new)
+    let sub_key = format!("sigstore_keyless:{image}{keyless:?}{annotations:?}");
+    cache::internal_cached(cache, &sub_key, SIGSTORE_CACHE_TTL, || async move {
+        client.verify_keyless(image, keyless, annotations).await
+    })
+    .await
 }
 
 // Sigstore verifications are time expensive, this can cause a massive slow down
@@ -317,23 +312,20 @@ pub(crate) async fn get_sigstore_keyless_verification_cached(
 // Details about this cache:
 //   * the cache is time bound: cached values are purged after 60 seconds
 //   * only successful results are cached
-#[cached(
-    ttl = 60,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("{}{:?}{:?}", image, keyless_prefix, annotations)}"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_sigstore_keyless_prefix_verification_cached(
+    cache: &dyn cache::Cache,
     client: &mut Client,
     image: String,
     keyless_prefix: Vec<KeylessPrefixInfo>,
     annotations: Option<BTreeMap<String, String>>,
 ) -> Result<cached::Return<VerificationResponse>> {
-    client
-        .verify_keyless_prefix(image, keyless_prefix, annotations)
-        .await
-        .map(cached::Return::new)
+    let sub_key = format!("sigstore_keyless_prefix:{image}{keyless_prefix:?}{annotations:?}");
+    cache::internal_cached(cache, &sub_key, SIGSTORE_CACHE_TTL, || async move {
+        client
+            .verify_keyless_prefix(image, keyless_prefix, annotations)
+            .await
+    })
+    .await
 }
 
 // Sigstore verifications are time expensive, this can cause a massive slow down
@@ -343,24 +335,21 @@ pub(crate) async fn get_sigstore_keyless_prefix_verification_cached(
 // Details about this cache:
 //   * the cache is time bound: cached values are purged after 60 seconds
 //   * only successful results are cached
-#[cached(
-    ttl = 60,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("{}{:?}{:?}{:?}", image, owner, repo, annotations)}"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_sigstore_github_actions_verification_cached(
+    cache: &dyn cache::Cache,
     client: &mut Client,
     image: String,
     owner: String,
     repo: Option<String>,
     annotations: Option<BTreeMap<String, String>>,
 ) -> Result<cached::Return<VerificationResponse>> {
-    client
-        .verify_github_actions(image, owner, repo, annotations)
-        .await
-        .map(cached::Return::new)
+    let sub_key = format!("sigstore_github_actions:{image}{owner}{repo:?}{annotations:?}");
+    cache::internal_cached(cache, &sub_key, SIGSTORE_CACHE_TTL, || async move {
+        client
+            .verify_github_actions(image, owner, repo, annotations)
+            .await
+    })
+    .await
 }
 
 fn get_sigstore_certificate_verification_cache_key(
@@ -398,14 +387,8 @@ fn get_sigstore_certificate_verification_cache_key(
     hex::encode(hasher.finalize())
 }
 
-#[cached(
-    ttl = 60,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("{}", get_sigstore_certificate_verification_cache_key(image, certificate, certificate_chain, require_rekor_bundle, annotations.as_ref()))}"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_sigstore_certificate_verification_cached(
+    cache: &dyn cache::Cache,
     client: &mut Client,
     image: &str,
     certificate: &[u8],
@@ -413,14 +396,26 @@ pub(crate) async fn get_sigstore_certificate_verification_cached(
     require_rekor_bundle: bool,
     annotations: Option<BTreeMap<String, String>>,
 ) -> Result<cached::Return<VerificationResponse>> {
-    client
-        .verify_certificate(
+    let sub_key = format!(
+        "sigstore_certificate:{}",
+        get_sigstore_certificate_verification_cache_key(
             image,
             certificate,
             certificate_chain,
             require_rekor_bundle,
-            annotations,
+            annotations.as_ref(),
         )
-        .await
-        .map(cached::Return::new)
+    );
+    cache::internal_cached(cache, &sub_key, SIGSTORE_CACHE_TTL, || async move {
+        client
+            .verify_certificate(
+                image,
+                certificate,
+                certificate_chain,
+                require_rekor_bundle,
+                annotations,
+            )
+            .await
+    })
+    .await
 }

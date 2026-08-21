@@ -125,6 +125,24 @@ pub enum CallbackRequestType {
     /// Lookup the addresses for a given hostname via DNS
     DNSLookupHost { host: String },
 
+    /// Store arbitrary data inside of the policy-author-controlled cache.
+    /// See RFC 0024 (cache host capability).
+    CacheSet {
+        /// The unique identifier for the data being stored
+        key: String,
+        /// The arbitrary data to be stored in the cache
+        value: Vec<u8>,
+        /// The lifespan of the data, in seconds
+        ttl: u64,
+    },
+
+    /// Retrieve data from the policy-author-controlled cache.
+    /// A cache miss is not an error: an empty value is returned instead.
+    CacheGet {
+        /// The key of the data to retrieve
+        key: String,
+    },
+
     /// Get all the Kubernetes resources defined inside of the given
     /// namespace
     /// Note: cannot be used with cluster-wide resources

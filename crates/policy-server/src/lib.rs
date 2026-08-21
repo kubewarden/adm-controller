@@ -24,7 +24,7 @@ use axum_server::tls_rustls::RustlsConfig;
 use certs::create_tls_config_and_watch_certificate_changes;
 use evaluation::EvaluationEnvironmentBuilder;
 use policy_evaluator::{
-    callback_handler::{CallbackHandler, CallbackHandlerBuilder},
+    callback_handler::{CallbackHandler, CallbackHandlerBuilder, cache},
     kube,
     policy_fetcher::sigstore::trust::sigstore::SigstoreTrustRoot,
     wasmtime,
@@ -91,10 +91,17 @@ impl PolicyServer {
             }
         };
 
+        // Backend for the `cache` host capability (RFC 0024). policy-server owns
+        // the backend so it can also drive the background eviction task; it is
+        // injected into the callback handler below.
+        let cache_backend: Arc<dyn cache::Cache> = Arc::new(cache::InMemoryCache::new());
+        cache::spawn_eviction_task(cache_backend.clone(), cache::DEFAULT_EVICTION_INTERVAL);
+
         let mut callback_handler_builder =
             CallbackHandlerBuilder::new(callback_handler_shutdown_channel_rx)
                 .registry_config(config.sources.clone())
-                .trust_root(sigstore_trust_root.clone());
+                .trust_root(sigstore_trust_root.clone())
+                .cache(cache_backend);
 
         let kube_client: Option<kube::Client> = match kube::Client::try_default().await {
             Ok(client) => Some(client),

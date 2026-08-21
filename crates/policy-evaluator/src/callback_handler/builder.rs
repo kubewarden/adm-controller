@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 use super::CallbackHandler;
+use super::cache::{Cache, InMemoryCache};
 use super::{oci, sigstore_verification};
 use crate::callback_requests::CallbackRequest;
 
@@ -17,6 +18,7 @@ pub struct CallbackHandlerBuilder {
     shutdown_channel: oneshot::Receiver<()>,
     trust_root: Option<Arc<SigstoreTrustRoot>>,
     kube_client: Option<kube::Client>,
+    cache: Option<Arc<dyn Cache>>,
 }
 
 impl CallbackHandlerBuilder {
@@ -27,6 +29,7 @@ impl CallbackHandlerBuilder {
             channel_buffer_size: DEFAULT_CHANNEL_BUFF_SIZE,
             trust_root: None,
             kube_client: None,
+            cache: None,
         }
     }
 
@@ -56,6 +59,14 @@ impl CallbackHandlerBuilder {
         self
     }
 
+    /// Set the backend used by the `cache` host capability. Optional: when not
+    /// provided, an in-memory backend is used. policy-server injects the backend
+    /// it owns (so it can also drive the eviction task).
+    pub fn cache(mut self, cache: Arc<dyn Cache>) -> Self {
+        self.cache = Some(cache);
+        self
+    }
+
     /// Create a CallbackHandler object
     pub async fn build(self) -> Result<CallbackHandler> {
         let (tx, rx) = mpsc::channel::<CallbackRequest>(self.channel_buffer_size);
@@ -67,10 +78,15 @@ impl CallbackHandlerBuilder {
 
         let kubernetes_client = self.kube_client.map(super::kubernetes::Client::new);
 
+        let cache = self
+            .cache
+            .unwrap_or_else(|| Arc::new(InMemoryCache::new()));
+
         Ok(CallbackHandler {
             oci_client,
             sigstore_client,
             kubernetes_client,
+            cache,
             tx,
             rx,
             shutdown_channel: self.shutdown_channel,

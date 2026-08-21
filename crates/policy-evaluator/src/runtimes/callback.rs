@@ -365,6 +365,64 @@ pub(crate) fn host_callback(
             }
             _ => unknown_operation(namespace, operation),
         },
+        "cache" => match operation {
+            "set" => {
+                let req: crate::callback_handler::cache::CacheSetRequest =
+                    serde_json::from_slice(payload)?;
+                debug!(
+                    eval_ctx.policy_id,
+                    binding,
+                    namespace,
+                    operation,
+                    key = req.key,
+                    ttl = req.ttl,
+                    "Sending request via callback channel"
+                );
+                let (tx, rx) = oneshot::channel::<Result<CallbackResponse>>();
+                let req = CallbackRequest {
+                    request: CallbackRequestType::CacheSet {
+                        key: req.key,
+                        value: req.value,
+                        ttl: req.ttl,
+                    },
+                    response_channel: tx,
+                };
+                send_request_and_wait_for_response(
+                    &eval_ctx.policy_id,
+                    binding,
+                    operation,
+                    req,
+                    rx,
+                    eval_ctx,
+                )
+            }
+            "get" => {
+                let req: crate::callback_handler::cache::CacheGetRequest =
+                    serde_json::from_slice(payload)?;
+                debug!(
+                    eval_ctx.policy_id,
+                    binding,
+                    namespace,
+                    operation,
+                    key = req.key,
+                    "Sending request via callback channel"
+                );
+                let (tx, rx) = oneshot::channel::<Result<CallbackResponse>>();
+                let req = CallbackRequest {
+                    request: CallbackRequestType::CacheGet { key: req.key },
+                    response_channel: tx,
+                };
+                send_request_and_wait_for_response(
+                    &eval_ctx.policy_id,
+                    binding,
+                    operation,
+                    req,
+                    rx,
+                    eval_ctx,
+                )
+            }
+            _ => unknown_operation(namespace, operation),
+        },
         _ => unknown_namespace(namespace),
     }
 }

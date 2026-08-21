@@ -1,17 +1,23 @@
 use std::collections::BTreeSet;
+use std::time::Duration;
 
 mod client;
 pub(crate) mod field_mask;
 mod reflector;
 
 use anyhow::{Result, anyhow};
-use cached::macros::cached;
 use k8s_openapi::api::authorization::v1::SubjectAccessReviewStatus;
 use kube::core::ObjectList;
 use kubewarden_policy_sdk::host_capabilities::kubernetes::SubjectAccessReview as KWSubjectAccessReview;
 use serde::Serialize;
 
+use super::cache;
+
 pub(crate) use client::Client;
+
+/// Queries against the Kubernetes API are kept in the shared cache for this
+/// long. It is deliberately short, since cluster state can change at any moment.
+const KUBERNETES_CACHE_TTL: Duration = Duration::from_secs(5);
 
 #[derive(Eq, Hash, PartialEq)]
 struct ApiVersionKind {
@@ -98,21 +104,21 @@ pub(crate) async fn get_resource(
         })
 }
 
-#[cached(
-    ttl = 5,
-    sync_writes = "default",
-    key = "String",
-    convert = r#"{ format!("get_resource_cached({},{}),{},{:?}", api_version, kind, name, namespace) }"#,
-    with_cached_flag = true
-)]
 pub(crate) async fn get_resource_cached(
+    cache: &dyn cache::Cache,
     client: Option<&mut Client>,
     api_version: &str,
     kind: &str,
     name: &str,
     namespace: Option<&str>,
 ) -> Result<cached::Return<kube::core::DynamicObject>> {
-    get_resource(client, api_version, kind, name, namespace).await
+    let sub_key = format!("get_resource:{api_version}/{kind}:{name}:{namespace:?}");
+    cache::internal_cached(cache, &sub_key, KUBERNETES_CACHE_TTL, || async move {
+        get_resource(client, api_version, kind, name, namespace)
+            .await
+            .map(|ret| ret.value)
+    })
+    .await
 }
 
 pub(crate) async fn get_resource_plural_name(
@@ -183,20 +189,20 @@ pub(crate) async fn can_i(
         })
 }
 
-#[cached(
-    ttl = 5,
-    // We can use the request type as key because cached requires the key to implement Hash + Eq
-    // traits. As we already implement these traits, there is no need to have a custom logic for key
-    // generation. If we do that, we will only convert it into a type (e.g. string)  that
-    // implements the traits as well. 
-    key = "KWSubjectAccessReview",
-    convert = r#"{request.clone()}"#,
-    sync_writes = "default",
-    with_cached_flag = true
-)]
 pub(crate) async fn can_i_cached(
+    cache: &dyn cache::Cache,
     client: Option<&mut Client>,
     request: KWSubjectAccessReview,
 ) -> Result<cached::Return<SubjectAccessReviewStatus>> {
-    can_i(client, request).await
+    // The previous `#[cached]` macro used the request itself as the key (it
+    // implements Hash + Eq). The shared backend is keyed by String, so we
+    // serialize the request to derive an equivalent, stable key.
+    let sub_key = format!(
+        "can_i:{}",
+        serde_json::to_string(&request).unwrap_or_default()
+    );
+    cache::internal_cached(cache, &sub_key, KUBERNETES_CACHE_TTL, || async move {
+        can_i(client, request).await.map(|ret| ret.value)
+    })
+    .await
 }
