@@ -210,47 +210,86 @@ impl CallbackHandler {
                     namespace,
                     label_selector,
                     field_selector,
+                    disable_cache,
                     field_masks,
                 } => {
-                    handle_callback!(
-                        req,
-                        format!("[{namespace}] {api_version}/{kind}"),
-                        "List namespaced Kubernetes resource",
-                        {
-                            kubernetes::list_resources_by_namespace(
-                                kubernetes_client.as_mut(),
-                                &api_version,
-                                &kind,
-                                &namespace,
-                                label_selector,
-                                field_selector,
-                                field_masks,
-                            )
-                        }
-                    )
+                    if disable_cache {
+                        handle_callback!(
+                            req,
+                            format!("[{namespace}] {api_version}/{kind}"),
+                            "List namespaced Kubernetes resource - no cache",
+                            {
+                                kubernetes::list_resources_by_namespace_direct(
+                                    kubernetes_client.as_mut(),
+                                    &api_version,
+                                    &kind,
+                                    &namespace,
+                                    label_selector,
+                                    field_selector,
+                                    field_masks,
+                                )
+                            }
+                        )
+                    } else {
+                        handle_callback!(
+                            req,
+                            format!("[{namespace}] {api_version}/{kind}"),
+                            "List namespaced Kubernetes resource",
+                            {
+                                kubernetes::list_resources_by_namespace(
+                                    kubernetes_client.as_mut(),
+                                    &api_version,
+                                    &kind,
+                                    &namespace,
+                                    label_selector,
+                                    field_selector,
+                                    field_masks,
+                                )
+                            }
+                        )
+                    }
                 }
                 CallbackRequestType::KubernetesListResourceAll {
                     api_version,
                     kind,
                     label_selector,
                     field_selector,
+                    disable_cache,
                     field_masks,
                 } => {
-                    handle_callback!(
-                        req,
-                        format!("{api_version}/{kind}"),
-                        "List Kubernetes resource",
-                        {
-                            kubernetes::list_resources_all(
-                                kubernetes_client.as_mut(),
-                                &api_version,
-                                &kind,
-                                label_selector,
-                                field_selector,
-                                field_masks,
-                            )
-                        }
-                    )
+                    if disable_cache {
+                        handle_callback!(
+                            req,
+                            format!("{api_version}/{kind}"),
+                            "List Kubernetes resource - no cache",
+                            {
+                                kubernetes::list_resources_all_direct(
+                                    kubernetes_client.as_mut(),
+                                    &api_version,
+                                    &kind,
+                                    label_selector,
+                                    field_selector,
+                                    field_masks,
+                                )
+                            }
+                        )
+                    } else {
+                        handle_callback!(
+                            req,
+                            format!("{api_version}/{kind}"),
+                            "List Kubernetes resource",
+                            {
+                                kubernetes::list_resources_all(
+                                    kubernetes_client.as_mut(),
+                                    &api_version,
+                                    &kind,
+                                    label_selector,
+                                    field_selector,
+                                    field_masks,
+                                )
+                            }
+                        )
+                    }
                 }
                 CallbackRequestType::KubernetesGetResource {
                     api_version,

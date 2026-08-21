@@ -13,7 +13,7 @@ use kube::{
 use kubewarden_policy_sdk::host_capabilities::kubernetes::SubjectAccessReview as KWSubjectAccessReview;
 use tokio::{sync::RwLock, time::Instant};
 
-use crate::callback_handler::kubernetes::{ApiVersionKind, KubeResource, reflector::Reflector};
+use crate::callback_handler::kubernetes::{ApiVersionKind, KubeResource, field_mask, reflector::Reflector};
 
 #[derive(Clone)]
 pub(crate) struct Client {
@@ -180,6 +180,53 @@ impl Client {
         .await
     }
 
+    /// List resources matching the given criteria with a direct, one-shot call to the
+    /// Kubernetes API Server, bypassing the reflector cache.
+    pub async fn list_resources_by_namespace_direct(
+        &mut self,
+        api_version: &str,
+        kind: &str,
+        namespace: &str,
+        label_selector: Option<String>,
+        field_selector: Option<String>,
+        field_masks: Option<BTreeSet<String>>,
+    ) -> Result<ObjectList<kube::core::DynamicObject>> {
+        let resource = self.build_kube_resource(api_version, kind).await?;
+        if !resource.namespaced {
+            return Err(anyhow!(
+                "resource {api_version}/{kind} is cluster wide. Cannot search for it inside of a namespace"
+            ));
+        }
+
+        let api = kube::api::Api::<kube::core::DynamicObject>::namespaced_with(
+            self.kube_client.clone(),
+            namespace,
+            &resource.resource,
+        );
+
+        list_resources_direct(api, label_selector, field_selector, field_masks).await
+    }
+
+    /// List resources matching the given criteria with a direct, one-shot call to the
+    /// Kubernetes API Server, bypassing the reflector cache.
+    pub async fn list_resources_all_direct(
+        &mut self,
+        api_version: &str,
+        kind: &str,
+        label_selector: Option<String>,
+        field_selector: Option<String>,
+        field_masks: Option<BTreeSet<String>>,
+    ) -> Result<ObjectList<kube::core::DynamicObject>> {
+        let resource = self.build_kube_resource(api_version, kind).await?;
+
+        let api = kube::api::Api::<kube::core::DynamicObject>::all_with(
+            self.kube_client.clone(),
+            &resource.resource,
+        );
+
+        list_resources_direct(api, label_selector, field_selector, field_masks).await
+    }
+
     pub async fn has_list_resources_all_result_changed_since_instant(
         &mut self,
         api_version: &str,
@@ -337,4 +384,32 @@ impl Client {
                 .ok_or(anyhow!("SubjectAccessReview did not return a response"))
         })
     }
+}
+
+/// Perform a one-shot list call against the Kubernetes API Server, applying the same
+/// object pruning (managed fields, last-applied-configuration annotation, field masks)
+/// that the reflector applies to the objects it caches.
+async fn list_resources_direct(
+    api: kube::api::Api<kube::core::DynamicObject>,
+    label_selector: Option<String>,
+    field_selector: Option<String>,
+    field_masks: Option<BTreeSet<String>>,
+) -> Result<ObjectList<kube::core::DynamicObject>> {
+    let mut list_params = kube::api::ListParams::default();
+    if let Some(label_selector) = label_selector {
+        list_params = list_params.labels(&label_selector);
+    }
+    if let Some(field_selector) = field_selector {
+        list_params = list_params.fields(&field_selector);
+    }
+
+    let mut list = api.list(&list_params).await.map_err(anyhow::Error::new)?;
+
+    let field_masker: Option<field_mask::FieldMaskNode> =
+        field_masks.map(field_mask::FieldMaskNode::new);
+    for item in &mut list.items {
+        field_mask::modify_object(item, field_masker.as_ref());
+    }
+
+    Ok(list)
 }

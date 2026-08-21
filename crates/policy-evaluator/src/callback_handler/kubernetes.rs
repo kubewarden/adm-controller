@@ -77,6 +77,62 @@ pub(crate) async fn list_resources_all(
         .map(cached::Return::new)
 }
 
+/// Like [`list_resources_by_namespace`], but performs a direct, one-shot call to the
+/// Kubernetes API Server instead of relying on a reflector.
+pub(crate) async fn list_resources_by_namespace_direct(
+    client: Option<&mut Client>,
+    api_version: &str,
+    kind: &str,
+    namespace: &str,
+    label_selector: Option<String>,
+    field_selector: Option<String>,
+    field_masks: Option<BTreeSet<String>>,
+) -> Result<cached::Return<ObjectList<kube::core::DynamicObject>>> {
+    if client.is_none() {
+        return Err(anyhow!("kube::Client was not initialized properly")).map(cached::Return::new);
+    }
+
+    client
+        .unwrap()
+        .list_resources_by_namespace_direct(
+            api_version,
+            kind,
+            namespace,
+            label_selector,
+            field_selector,
+            field_masks,
+        )
+        .await
+        .map(cached::Return::new)
+}
+
+/// Like [`list_resources_all`], but performs a direct, one-shot call to the
+/// Kubernetes API Server instead of relying on a reflector.
+pub(crate) async fn list_resources_all_direct(
+    client: Option<&mut Client>,
+    api_version: &str,
+    kind: &str,
+    label_selector: Option<String>,
+    field_selector: Option<String>,
+    field_masks: Option<BTreeSet<String>>,
+) -> Result<cached::Return<ObjectList<kube::core::DynamicObject>>> {
+    if client.is_none() {
+        return Err(anyhow!("kube::Client was not initialized properly")).map(cached::Return::new);
+    }
+
+    client
+        .unwrap()
+        .list_resources_all_direct(
+            api_version,
+            kind,
+            label_selector,
+            field_selector,
+            field_masks,
+        )
+        .await
+        .map(cached::Return::new)
+}
+
 pub(crate) async fn get_resource(
     client: Option<&mut Client>,
     api_version: &str,
