@@ -1,4 +1,5 @@
 mod kubewarden_crds;
+mod resource_scope;
 
 mod manifest;
 pub(crate) use manifest::manifest;
