@@ -35,5 +35,5 @@ url = { version = "2.5", features = ["serde"] }
 # We need to disable the default features here to be able to provide a specific
 # set of features for kwctl on macOS x86_64
 # Workaround for https://github.com/bytecodealliance/wasmtime/issues/12217
-wasmtime      = { version = "47.0", default-features = false }
-wasmtime-wasi = "47.0"
+wasmtime      = { version = "48.0", default-features = false }
+wasmtime-wasi = "48.0"
