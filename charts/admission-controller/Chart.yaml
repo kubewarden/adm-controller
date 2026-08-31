@@ -60,7 +60,7 @@ annotations:
     - name: policy-reporter
       image: ghcr.io/kyverno/policy-reporter:3.9.0
     - name: policy-reporter-ui
-      image: ghcr.io/kyverno/policy-reporter-ui:2.7.0
+: ghcr.io/kyverno/policy-reporter-ui:2.8.1
 dependencies:
   - name: openreports
     version: 0.2.1
