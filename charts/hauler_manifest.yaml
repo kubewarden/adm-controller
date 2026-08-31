@@ -46,7 +46,7 @@ metadata:
   name: kubewarden-not-signed-images
 spec:
   images:
-    - name: ghcr.io/kyverno/policy-reporter-ui:2.7.0
+    - name: ghcr.io/kyverno/policy-reporter-ui:2.8.1
     - name: ghcr.io/kyverno/policy-reporter:3.9.0
     - name: ghcr.io/rancher/kuberlr-kubectl:v8.1.1
 ---
