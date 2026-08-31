@@ -176,7 +176,8 @@
         }
       ],
       "title": "Accepted requests rate",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "Rate of admission requests accepted by policy evaluations. Includes evaluations from both monitor- and protect-mode policies."
     },
     {
       "datasource": {
@@ -260,16 +261,17 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum by (accepted) (\n  rate(kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\"}[$__rate_interval])\n)",
+          "expr": "sum by (policy_mode) (\n  rate(kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\"}[$__rate_interval])\n)",
           "format": "time_series",
           "interval": "",
-          "legendFormat": "Reject requests",
+          "legendFormat": "{{policy_mode}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Rejected requests rate",
-      "type": "timeseries"
+      "title": "Rejected admission requests rate (by policy mode)",
+      "type": "timeseries",
+      "description": "Rate of policy evaluations that rejected the admission request, broken down by the policy's mode at the time of evaluation. policy_mode=protect: the request was actually blocked. policy_mode=monitor: the request was allowed through but would have been blocked if the policy was in protect mode."
     },
     {
       "datasource": {
@@ -361,7 +363,8 @@
         }
       ],
       "title": "Mutated requests rate",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "Rate of admission requests mutated by policy evaluations. policy_mode=monitor mutations are reported but the cluster does not apply them; only policy_mode=protect mutations are applied to the resource."
     },
     {
       "datasource": {
@@ -1079,15 +1082,16 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\"})*100/sum(kubewarden_policy_evaluations_total{})",
+          "expr": "sum by (policy_mode) (kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\"})*100/sum by (policy_mode) (kubewarden_policy_evaluations_total{request_origin=\"validate\"})",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{policy_mode}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Request rejection percentage ",
-      "type": "stat"
+      "title": "Request rejection percentage (by policy mode)",
+      "type": "stat",
+      "description": "Share of validate admission evaluations that rejected the admission request, broken down by the policy's mode. policy_mode=protect is the share that was actually blocked; policy_mode=monitor is the share that would have been blocked in protect mode."
     },
     {
       "datasource": {
@@ -1350,15 +1354,16 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\"})",
+          "expr": "sum by (policy_mode) (kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\"})",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{policy_mode}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Total rejected requests",
-      "type": "stat"
+      "title": "Rejected admission requests (by policy mode)",
+      "type": "stat",
+      "description": "Total policy evaluations that rejected the admission request, broken down by the policy's mode. policy_mode=protect requests were blocked; policy_mode=monitor requests were observed only (would have been blocked in protect mode)."
     },
     {
       "datasource": {
@@ -1548,15 +1553,16 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\",resource_request_operation=\"CREATE\",resource_kind=\"Pod\"})",
+          "expr": "sum by (policy_mode) (kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\",resource_request_operation=\"CREATE\",resource_kind=\"Pod\"})",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{policy_mode}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Pod creation rejections",
-      "type": "stat"
+      "title": "Pod creation rejections (by policy mode)",
+      "type": "stat",
+      "description": "Pod creation admission requests rejected by policy evaluations, broken down by the policy's mode at the time of evaluation."
     },
     {
       "datasource": {
@@ -2474,15 +2480,16 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\", policy_name=\"$policy_name\" })*100/sum(kubewarden_policy_evaluations_total{policy_name=\"$policy_name\"})",
+          "expr": "sum by (policy_mode) (kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\",policy_name=\"$policy_name\"})*100/sum by (policy_mode) (kubewarden_policy_evaluations_total{request_origin=\"validate\",policy_name=\"$policy_name\"})",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{policy_mode}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "$policy_name policy request rejection percentage ",
-      "type": "stat"
+      "title": "$policy_name policy request rejection percentage (by policy mode)",
+      "type": "stat",
+      "description": "Share of $policy_name validate admission evaluations that rejected the admission request, broken down by the policy's mode. policy_mode=protect is the share that was actually blocked; policy_mode=monitor is the share that would have been blocked in protect mode."
     },
     {
       "datasource": {
@@ -2624,7 +2631,6 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2676,15 +2682,16 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\",policy_name=\"$policy_name\"})",
+          "expr": "sum by (policy_mode) (kubewarden_policy_evaluations_total{accepted=\"false\",request_origin=\"validate\",policy_name=\"$policy_name\"})",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{policy_mode}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Total rejected requests by  $policy_name policy",
-      "type": "stat"
+      "title": "Rejected requests by $policy_name policy (by policy mode)",
+      "type": "stat",
+      "description": "Total $policy_name policy evaluations that rejected the admission request, broken down by the policy's mode."
     },
     {
       "datasource": {
@@ -2838,15 +2845,16 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum  (\n  rate(kubewarden_policy_evaluations_total{policy_name=\"$policy_name\",request_origin=\"validate\"}[$__rate_interval])\n)",
+          "expr": "sum by (policy_mode) (\n  rate(kubewarden_policy_evaluations_total{policy_name=\"$policy_name\",request_origin=\"validate\"}[$__rate_interval])\n)",
           "interval": "",
-          "legendFormat": "Policy request rate",
+          "legendFormat": "{{policy_mode}}",
           "range": true,
           "refId": "A"
         }
       ],
       "title": "Rate of validate requests to $policy_name policy",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "Rate of admission requests evaluated by $policy_name, broken down by the policy's mode at the time of each evaluation."
     },
     {
       "collapsed": false,
