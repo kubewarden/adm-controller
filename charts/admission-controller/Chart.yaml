@@ -67,6 +67,6 @@ dependencies:
     repository: https://openreports.github.io/reports-api
     condition: installOpenReportsCRDs
   - name: policy-reporter
-    version: 3.9.1
+    version: 3.10.0
     repository: https://kyverno.github.io/policy-reporter
     condition: auditScanner.policyReporter
