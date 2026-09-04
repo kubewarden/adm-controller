@@ -1,0 +1,20 @@
+{
+  "uid": "test-crypto-uid",
+  "kind": { "group": "", "version": "v1", "kind": "ConfigMap" },
+  "resource": { "group": "", "version": "v1", "resource": "configmaps" },
+  "name": "test-cert",
+  "namespace": "default",
+  "operation": "CREATE",
+  "userInfo": { "username": "test-user", "groups": ["system:authenticated"] },
+  "object": {
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+      "name": "test-cert",
+      "namespace": "default",
+      "annotations": {
+        "cert": "PLACEHOLDER_CERT"
+      }
+    }
+  }
+}

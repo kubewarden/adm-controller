@@ -1,0 +1,53 @@
+{
+  "uid": "307362f8-ffb1-481a-9ce7-7e6192fbc700",
+  "kind": {
+    "group": "apps",
+    "kind": "Deployment",
+    "version": "v1"
+  },
+  "resource": {
+    "group": "apps",
+    "resource": "deployments",
+    "version": "v1"
+  },
+  "name": "nginx",
+  "namespace": "default",
+  "operation": "DELETE",
+  "userInfo": {
+    "groups": ["system:masters", "system:authenticated"],
+    "username": "minikube-user"
+  },
+  "oldObject": {
+    "apiVersion": "apps/v1",
+    "kind": "Deployment",
+    "metadata": {
+      "name": "nginx",
+      "namespace": "default",
+      "uid": "5be2582c-c8fb-4318-8d47-6df8a24affc7"
+    },
+    "spec": {
+      "replicas": 3,
+      "selector": {
+        "matchLabels": {
+          "app": "nginx"
+        }
+      },
+      "template": {
+        "metadata": {
+          "labels": {
+            "app": "nginx"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "image": "nginx:latest",
+              "name": "nginx"
+            }
+          ]
+        }
+      }
+    },
+    "status": {}
+  }
+}

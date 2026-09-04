@@ -19,6 +19,8 @@ bytes = "1"
 chrono = { version = "0.4", default-features = false }
 dns-lookup = "4.0"
 email_address = { version = "0.2", features = ["serde"] }
+ferricel-core = { workspace = true }
+ferricel-types = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
@@ -46,6 +48,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = { workspace = true }
+slog = "2"
 thiserror = { workspace = true }
 time = { version = "0.3", features = ["serde-human-readable"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }

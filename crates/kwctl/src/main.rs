@@ -305,11 +305,16 @@ async fn main() -> Result<()> {
                 let vap_file: PathBuf = matches.get_one::<String>("policy").unwrap().into();
                 let vap_binding_file: PathBuf =
                     matches.get_one::<String>("binding").unwrap().into();
+                let compile_to_wasm: Option<PathBuf> =
+                    matches.get_one::<String>("compile-to-wasm").map(Into::into);
+                let force = matches.get_flag("force");
 
                 scaffold::vap(
                     cel_policy_uri.as_str(),
                     vap_file.as_path(),
                     vap_binding_file.as_path(),
+                    compile_to_wasm.as_deref(),
+                    force,
                 )?;
             };
             if let Some(matches) = matches.subcommand_matches("scaffold")

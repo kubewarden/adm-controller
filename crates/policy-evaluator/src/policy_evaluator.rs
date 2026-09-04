@@ -25,6 +25,8 @@ pub enum PolicyExecutionMode {
     OpaGatekeeper,
     #[serde(rename = "wasi")]
     Wasi,
+    #[serde(rename = "ferricel")]
+    Ferricel,
 }
 
 impl fmt::Display for PolicyExecutionMode {
@@ -72,7 +74,9 @@ impl TryFrom<PolicyExecutionMode> for RegoPolicyExecutionMode {
         match execution_mode {
             PolicyExecutionMode::Opa => Ok(RegoPolicyExecutionMode::Opa),
             PolicyExecutionMode::OpaGatekeeper => Ok(RegoPolicyExecutionMode::Gatekeeper),
-            PolicyExecutionMode::KubewardenWapc | PolicyExecutionMode::Wasi => {
+            PolicyExecutionMode::KubewardenWapc
+            | PolicyExecutionMode::Wasi
+            | PolicyExecutionMode::Ferricel => {
                 Err(PolicyEvaluatorBuilderError::ExecutionModeNotRegoCompatible)
             }
         }
@@ -127,6 +131,10 @@ mod tests {
             serde_json::to_string(&json!("gatekeeper")).unwrap(),
             PolicyExecutionMode::OpaGatekeeper,
         );
+        test_data.insert(
+            serde_json::to_string(&json!("ferricel")).unwrap(),
+            PolicyExecutionMode::Ferricel,
+        );
 
         for (expected, mode) in &test_data {
             let actual = serde_json::to_string(&mode);
@@ -149,6 +157,10 @@ mod tests {
         test_data.insert(
             serde_json::to_string(&json!("gatekeeper")).unwrap(),
             PolicyExecutionMode::OpaGatekeeper,
+        );
+        test_data.insert(
+            serde_json::to_string(&json!("ferricel")).unwrap(),
+            PolicyExecutionMode::Ferricel,
         );
 
         for (mode_str, expected) in &test_data {

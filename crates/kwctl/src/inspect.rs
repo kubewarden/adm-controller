@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
+use ferricel_core::{ModuleInfo, inspect as ferricel_inspect};
 use is_terminal::IsTerminal;
 use policy_evaluator::{
     constants::*,
@@ -42,7 +43,18 @@ pub(crate) async fn inspect(
         .map_err(|e| anyhow!("Error parsing policy metadata: {}", e))?;
 
     match metadata {
-        Some(metadata) => metadata_printer.print(&metadata, no_color)?,
+        Some(metadata) => {
+            metadata_printer.print(&metadata, no_color)?;
+
+            if metadata.execution_mode == PolicyExecutionMode::Ferricel {
+                let wasm =
+                    std::fs::read(&wasm_path).map_err(|e| anyhow!("cannot read wasm file: {e}"))?;
+                let module_info = ferricel_inspect(&wasm)
+                    .map_err(|e| anyhow!("cannot inspect ferricel module: {e}"))?;
+                println!();
+                FerricelPrinter::from(&output).print(&module_info, no_color)?;
+            }
+        }
         None => {
             return Err(anyhow!(
                 "No Kubewarden metadata found inside of '{}'.\nPolicies can be annotated with the `kwctl annotate` command.",
@@ -321,6 +333,120 @@ impl SignaturesPrinter {
                 }
             }
         }
+    }
+}
+
+enum FerricelPrinter {
+    Yaml,
+    Pretty,
+}
+
+impl From<&OutputType> for FerricelPrinter {
+    fn from(output_type: &OutputType) -> Self {
+        match output_type {
+            OutputType::Yaml => Self::Yaml,
+            OutputType::Pretty => Self::Pretty,
+        }
+    }
+}
+
+impl FerricelPrinter {
+    fn print(&self, info: &ModuleInfo, no_color: bool) -> Result<()> {
+        match self {
+            FerricelPrinter::Yaml => self.print_yaml(info),
+            FerricelPrinter::Pretty => self.print_pretty(info, no_color),
+        }
+    }
+
+    fn print_yaml(&self, info: &ModuleInfo) -> Result<()> {
+        // Emit a merge-friendly mapping so the full inspect -o yaml output
+        // remains a single parseable YAML document.
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct FerricelYaml<'a> {
+            producers: &'a [ferricel_core::ProducerField],
+            #[serde(skip_serializing_if = "Option::is_none")]
+            vap_source: Option<&'a str>,
+            #[serde(skip_serializing_if = "<[String]>::is_empty")]
+            vap_variables: &'a [String],
+        }
+        let doc = FerricelYaml {
+            producers: &info.producers,
+            vap_source: info.vap_source.as_deref(),
+            vap_variables: &info.vap_variables,
+        };
+        print!("{}", serde_yaml::to_string(&doc)?);
+        Ok(())
+    }
+
+    fn print_pretty(&self, info: &ModuleInfo, no_color: bool) -> Result<()> {
+        // Section header — same magenta style as Rules / Context Aware.
+        let mut table = Table::new();
+        table.set_format(FormatBuilder::new().padding(0, 1).build());
+        table.add_row(row![Fmbl -> "Ferricel"]);
+        table.printstd();
+
+        // Producers — one line per field.
+        if !info.producers.is_empty() {
+            for field in &info.producers {
+                let values: Vec<String> = field
+                    .values
+                    .iter()
+                    .map(|v| {
+                        if v.version.is_empty() {
+                            v.name.clone()
+                        } else {
+                            format!("{} {}", v.name, v.version)
+                        }
+                    })
+                    .collect();
+                let mut row_table = Table::new();
+                row_table.set_format(FormatBuilder::new().padding(0, 1).build());
+                row_table.add_row(row![Fgbl -> format!("{}:", field.name), d -> values.join(", ")]);
+                row_table.printstd();
+            }
+        }
+
+        // VAP variables referenced — one comma-separated line, same style
+        // as the Producers rows above.
+        if !info.vap_variables.is_empty() {
+            let mut row_table = Table::new();
+            row_table.set_format(FormatBuilder::new().padding(0, 1).build());
+            row_table.add_row(
+                row![Fgbl -> "VAP variables (referenced):", d -> info.vap_variables.join(", ")],
+            );
+            row_table.printstd();
+        }
+
+        // VAP source — fenced YAML block via the markdown renderer.
+        if let Some(src) = &info.vap_source {
+            println!();
+            let mut header_table = Table::new();
+            header_table.set_format(FormatBuilder::new().padding(0, 1).build());
+            header_table.add_row(row![Fgbl -> "source:"]);
+            header_table.printstd();
+
+            let text = format!("```yaml\n{src}```");
+            Self::render_markdown(&text, no_color);
+        }
+
+        Ok(())
+    }
+
+    fn render_markdown(text: &str, no_color: bool) {
+        let mut skin: MadSkin = if no_color || !io::stdout().is_terminal() {
+            MadSkin::no_style()
+        } else {
+            MadSkin::default()
+        };
+        skin.headers[0].align = termimad::Alignment::Left;
+
+        let (mut width, _) = terminal_size();
+        if width > 120 {
+            width = 120;
+        }
+        let fmt_text = FmtText::from_text(&skin, text.into(), Some(width as usize));
+        print!("{}", fmt_text);
     }
 }
 

@@ -3,6 +3,7 @@ use std::fmt::Display;
 use crate::policy_evaluator::RegoPolicyExecutionMode;
 
 pub(crate) mod callback;
+pub mod ferricel;
 pub(crate) mod rego;
 pub(crate) mod wapc;
 pub(crate) mod wasi_cli;
@@ -13,6 +14,7 @@ pub(crate) enum Runtime {
     Wapc(Box<wapc::WapcStack>),
     Rego(Box<rego::Stack>),
     Cli(wasi_cli::Stack),
+    Ferricel(ferricel::Stack),
 }
 
 impl Display for Runtime {
@@ -20,6 +22,7 @@ impl Display for Runtime {
         match self {
             Runtime::Cli(_) => write!(f, "wasi"),
             Runtime::Wapc(_) => write!(f, "wapc"),
+            Runtime::Ferricel(_) => write!(f, "ferricel"),
             Runtime::Rego(stack) => match stack.policy_execution_mode {
                 RegoPolicyExecutionMode::Opa => {
                     write!(f, "OPA")

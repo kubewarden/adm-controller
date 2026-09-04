@@ -56,7 +56,7 @@ fn prepare_metadata(
     let backend = backend_detector.detect(wasm_path, &metadata)?;
 
     match backend {
-        Backend::Opa | Backend::OpaGatekeeper | Backend::Wasi => {
+        Backend::Opa | Backend::OpaGatekeeper | Backend::Wasi | Backend::Ferricel => {
             metadata.protocol_version = Some(ProtocolVersion::Unknown)
         }
         Backend::KubewardenWapc(protocol_version) => {
@@ -337,6 +337,10 @@ mod tests {
         Ok(false)
     }
 
+    fn mock_ferricel_policy_detector_false(_wasm_path: PathBuf) -> Result<bool> {
+        Ok(false)
+    }
+
     #[test]
     fn test_kwctl_version_is_added_to_already_populated_annotations() -> Result<()> {
         let dir = tempdir()?;
@@ -365,6 +369,7 @@ mod tests {
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
             PathBuf::from("irrelevant.wasm"),
@@ -416,6 +421,7 @@ mod tests {
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
             PathBuf::from("irrelevant.wasm"),
@@ -461,6 +467,7 @@ mod tests {
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
             PathBuf::from("irrelevant.wasm"),
@@ -501,6 +508,7 @@ mod tests {
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
             PathBuf::from("irrelevant.wasm"),
@@ -543,6 +551,7 @@ mod tests {
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_true,
             mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
             PathBuf::from("irrelevant.wasm"),

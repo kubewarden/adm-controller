@@ -14,6 +14,7 @@ clap-documentation = { workspace = true }
 clap_complete      = "4.5"
 color-print        = "0.3"
 directories        = "6.0.0"
+ferricel-core      = { workspace = true }
 flate2             = "1.1"
 hex                = { workspace = true }
 humansize          = "2.1"
@@ -33,6 +34,7 @@ serde              = { workspace = true }
 serde_json         = { workspace = true }
 serde_yaml         = { workspace = true }
 tar                = "0.4.44"
+tempfile           = { workspace = true }
 termimad           = "0.35.0"
 thiserror          = { workspace = true }
 time               = "0.3.47"
@@ -61,7 +63,6 @@ hyper          = { version = "1.8.1" }
 predicates     = "3.1"
 rstest         = { workspace = true }
 sha2           = { workspace = true }
-tempfile       = { workspace = true }
 testcontainers = { version = "0.28", features = ["blocking"] }
 tower-test     = "0.4"
 wasm-encoder   = "0.258"
