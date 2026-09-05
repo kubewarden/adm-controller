@@ -2,6 +2,10 @@ module github.com/kubewarden/adm-controller
 
 go 1.27.0
 
+replace github.com/opencontainers/runc => github.com/opencontainers/runc v1.5.1
+
+replace sigs.k8s.io/wg-policy-prototypes => sigs.k8s.io/wg-policy-prototypes v0.0.0-20230505033312-51c21979086a
+
 require (
 	github.com/go-logr/logr v1.4.4
 	// CEL needs to be pinned to the same version as the one used by the k8s.io/apiserver package
@@ -23,15 +27,11 @@ require (
 	k8s.io/apiserver v0.37.0
 	k8s.io/client-go v0.37.0
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
-	sigs.k8s.io/controller-runtime v0.24.1
+	sigs.k8s.io/controller-runtime v0.25.0
 	sigs.k8s.io/e2e-framework v0.7.0
 	sigs.k8s.io/wg-policy-prototypes v0.0.0-20230505033312-51c21979086a
 	sigs.k8s.io/yaml v1.6.0
 )
-
-replace github.com/opencontainers/runc => github.com/opencontainers/runc v1.5.1
-
-replace sigs.k8s.io/wg-policy-prototypes => sigs.k8s.io/wg-policy-prototypes v0.0.0-20230505033312-51c21979086a
 
 require (
 	cel.dev/expr v0.25.2 // indirect
@@ -111,7 +111,7 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	k8s.io/apiextensions-apiserver v0.36.0 // indirect
+	k8s.io/apiextensions-apiserver v0.37.0 // indirect
 	k8s.io/component-base v0.37.0 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
