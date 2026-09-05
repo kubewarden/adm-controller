@@ -6,7 +6,7 @@ services:
       - "16686:16686"
       - "4318:4317"
   otel-collector:
-    image: otel/opentelemetry-collector:0.159.0
+    image: otel/opentelemetry-collector:0.160.0
     volumes:
       - ./otel-collector-minimal-config.yml:/etc/otel-collector-config.yml
     ports:
