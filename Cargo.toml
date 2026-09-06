@@ -18,7 +18,7 @@ kubewarden-policy-sdk = "0.17.0"
 lazy_static = "1.5"
 rayon = "1.11"
 regex = "1"
-rstest = "0.26"
+rstest = "0.27"
 rustls = "0.23"
 rustls-pki-types = { version = "1", features = ["alloc"] }
 semver = { version = "1.0.27", features = ["serde"] }
