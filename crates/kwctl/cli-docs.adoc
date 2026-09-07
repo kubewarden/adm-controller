@@ -128,7 +128,7 @@ Default value: `*`
 * `--dump-results-to-disk <DUMP_RESULTS_TO_DISK>` — Puts results in target/tiny-bench/label/.. if target can be found. used for comparing previous runs
 * `-e`, `--execution-mode <MODE>` — The runtime to use to execute this policy
 +
-Possible values: `opa`, `gatekeeper`, `kubewarden`, `wasi`
+Possible values: `opa`, `gatekeeper`, `kubewarden`, `wasi`, `ferricel`
 
 * `--github-owner <VALUE>` — GitHub owner expected in the certificates generated in CD pipelines
 * `--github-repo <VALUE>` — GitHub repository expected in the certificates generated in CD pipelines
@@ -392,7 +392,7 @@ Default value: `*`
 * `--docker-config-json-path <PATH>` — Path to a directory containing the Docker 'config.json' file. Can be used to indicate registry authentication details
 * `-e`, `--execution-mode <MODE>` — The runtime to use to execute this policy
 +
-Possible values: `opa`, `gatekeeper`, `kubewarden`, `wasi`
+Possible values: `opa`, `gatekeeper`, `kubewarden`, `wasi`, `ferricel`
 
 * `--github-owner <VALUE>` — GitHub owner expected in the certificates generated in CD pipelines
 * `--github-repo <VALUE>` — GitHub repository expected in the certificates generated in CD pipelines
@@ -532,6 +532,8 @@ Convert a Kubernetes `ValidatingAdmissionPolicy` into a Kubewarden `ClusterAdmis
 * `--cel-policy <URI>` — The CEL policy module to use
 +
 Default value: `ghcr.io/kubewarden/policies/cel-policy:latest`
+* `--compile-to-wasm <FILE>` — Compile the VAP CEL expressions into a standalone Wasm module and write it to FILE
+* `-f`, `--force <FORCE>` — Overwrite FILE and metadata.yml if they already exist (only valid together with --compile-to-wasm)
 * `-p`, `--policy <VALIDATING-ADMISSION-POLICY.yaml>` — The file containing the ValidatingAdmissionPolicy definition
 
 

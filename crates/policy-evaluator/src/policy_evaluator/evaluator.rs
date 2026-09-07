@@ -8,8 +8,8 @@ use crate::{
     evaluation_context::EvaluationContext,
     policy_evaluator::{PolicySettings, ValidateRequest},
     runtimes::{
-        Runtime, rego::Runtime as BurregoRuntime, wapc::Runtime as WapcRuntime,
-        wasi_cli::Runtime as WasiRuntime,
+        Runtime, ferricel::Runtime as FerricelRuntime, rego::Runtime as BurregoRuntime,
+        wapc::Runtime as WapcRuntime, wasi_cli::Runtime as WasiRuntime,
     },
 };
 
@@ -49,6 +49,9 @@ impl PolicyEvaluator {
                 }
             }
             Runtime::Cli(ref mut cli_stack) => WasiRuntime(cli_stack).validate(settings, &request),
+            Runtime::Ferricel(ref mut ferricel_stack) => {
+                FerricelRuntime(ferricel_stack).validate(settings, &request)
+            }
         }
     }
 
@@ -73,6 +76,9 @@ impl PolicyEvaluator {
             }
             Runtime::Cli(ref mut cli_stack) => {
                 WasiRuntime(cli_stack).validate_settings(settings_str)
+            }
+            Runtime::Ferricel(ref mut ferricel_stack) => {
+                FerricelRuntime(ferricel_stack).validate_settings(settings_str)
             }
         }
     }

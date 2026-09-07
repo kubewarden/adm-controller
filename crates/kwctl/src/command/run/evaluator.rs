@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, path::Path, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use policy_evaluator::{
@@ -8,7 +8,7 @@ use policy_evaluator::{
     host_capabilities::HostCapabilities,
     kube,
     kubewarden_policy_sdk::settings::SettingsValidationResponse,
-    policy_evaluator::{PolicyEvaluator, PolicySettings, ValidateRequest},
+    policy_evaluator::{PolicyEvaluator, PolicyExecutionMode, PolicySettings, ValidateRequest},
     policy_evaluator_builder::PolicyEvaluatorBuilder,
     policy_group_evaluator::evaluator::PolicyGroupEvaluator,
     policy_metadata::{ContextAwareResource, Metadata, PolicyType},
@@ -51,6 +51,49 @@ async fn build_callback_handler(
         }
     };
     CallbackHandler::new(cfg, kube_client, shutdown_channel_rx).await
+}
+
+/// Whether a compiled ferricel policy may reference the well-known VAP
+/// `namespaceObject` variable, i.e. whether evaluating it against a
+/// namespace-scoped request requires a Kubernetes client to be available (see
+/// `runtimes::ferricel::runtime::Runtime::build_bindings` in
+/// `policy-evaluator`).
+///
+/// Inspects the `ferricel.vap-variables` Wasm custom section (see
+/// [`ferricel_core::vap_variables_used`]). Returns `true` conservatively if
+/// the section is absent (e.g. a module compiled by an older ferricel
+/// version), so that the caller defaults to always provisioning a client.
+///
+/// Only meaningful for [`PolicyExecutionMode::Ferricel`] policies; callers
+/// must check the execution mode themselves.
+fn ferricel_policy_may_reference_namespace_object(wasm_path: &Path) -> Result<bool> {
+    let wasm_bytes = std::fs::read(wasm_path)
+        .map_err(|e| anyhow!("cannot read wasm module at {}: {e}", wasm_path.display()))?;
+    match ferricel_core::vap_variables_used(&wasm_bytes) {
+        Ok(vap_variables) => Ok(vap_variables.iter().any(|v| v == "namespaceObject")),
+        Err(e) => {
+            warn!(
+                error = e.to_string().as_str(),
+                "cannot read VAP variables from compiled ferricel module; assuming namespaceObject may be referenced"
+            );
+            Ok(true)
+        }
+    }
+}
+
+/// Whether evaluating `execution_mode` against `wasm_path` requires a
+/// Kubernetes client to be provisioned for reasons other than the
+/// `contextAwareResources` allow list, e.g. ferricel's `namespaceObject`
+/// VAP binding (see `fetch_namespace_object` in `policy-evaluator`, which
+/// intentionally bypasses the ctx-aware authorization gate).
+fn requires_kube_client_beyond_ctx_aware_grants(
+    execution_mode: PolicyExecutionMode,
+    wasm_path: &Path,
+) -> Result<bool> {
+    match execution_mode {
+        PolicyExecutionMode::Ferricel => ferricel_policy_may_reference_namespace_object(wasm_path),
+        _ => Ok(false),
+    }
 }
 
 pub(crate) enum Evaluator {
@@ -108,12 +151,12 @@ impl Evaluator {
                 let request =
                     build_validate_request(&cfg.request, *raw || has_raw_policy_type(metadata))?;
 
-                let callback_handler = build_callback_handler(
-                    !context_aware_allowed_resources.is_empty(),
-                    cfg,
-                    shutdown_channel_rx,
-                )
-                .await?;
+                let wasm_path = local_data.local_path(uri)?;
+                let kube_client_needed = !context_aware_allowed_resources.is_empty()
+                    || requires_kube_client_beyond_ctx_aware_grants(execution_mode, wasm_path)?;
+
+                let callback_handler =
+                    build_callback_handler(kube_client_needed, cfg, shutdown_channel_rx).await?;
 
                 let mut policy_evaluator_builder = PolicyEvaluatorBuilder::new()
                     .policy_file(local_data.local_path(uri)?)?
@@ -153,8 +196,32 @@ impl Evaluator {
                     .iter()
                     .any(|(_, pm)| !pm.settings.ctx_aware_resources_allow_list.is_empty());
 
+                // Pre-scan every member's execution mode (and, for ferricel
+                // members, whether they may reference `namespaceObject`)
+                // *before* building the callback handler, since that
+                // decides whether a Kubernetes client needs to be
+                // provisioned. Collected eagerly (rather than iterating
+                // `policy_members` a second time later) to avoid relying on
+                // `HashMap` iteration order being stable across two
+                // separate `.iter()` calls.
+                let mut kube_client_needed = is_context_aware;
+                let mut members_with_execution_mode = Vec::with_capacity(policy_members.len());
+                for (member_id, member) in policy_members {
+                    let metadata = local_data.metadata(&member.uri);
+                    let wasm_path = local_data.local_path(&member.uri)?;
+                    let execution_mode = determine_execution_mode(
+                        metadata,
+                        None,
+                        BackendDetector::default(),
+                        wasm_path,
+                    )?;
+                    kube_client_needed = kube_client_needed
+                        || requires_kube_client_beyond_ctx_aware_grants(execution_mode, wasm_path)?;
+                    members_with_execution_mode.push((member_id, member, execution_mode));
+                }
+
                 let callback_handler =
-                    build_callback_handler(is_context_aware, cfg, shutdown_channel_rx).await?;
+                    build_callback_handler(kube_client_needed, cfg, shutdown_channel_rx).await?;
 
                 // group policies cannot be raw right now
                 let request = build_validate_request(&cfg.request, false)?;
@@ -166,19 +233,7 @@ impl Evaluator {
                     Some(callback_handler.sender_channel()),
                 );
 
-                for (member_id, member) in policy_members {
-                    let metadata = local_data.metadata(&member.uri);
-
-                    let execution_mode = {
-                        let wasm_path = local_data.local_path(&member.uri)?;
-                        determine_execution_mode(
-                            metadata,
-                            None,
-                            BackendDetector::default(),
-                            wasm_path,
-                        )?
-                    };
-
+                for (member_id, member, execution_mode) in members_with_execution_mode {
                     let mut policy_evaluator_builder = PolicyEvaluatorBuilder::new()
                         .policy_file(local_data.local_path(&member.uri)?)?
                         .execution_mode(execution_mode);
