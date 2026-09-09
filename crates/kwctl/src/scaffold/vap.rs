@@ -11,6 +11,75 @@ use k8s_openapi::{
 use policy_evaluator::policy_metadata::{ContextAwareResource, Rule};
 use tracing::warn;
 
+/// Combine a VAP selector and a binding selector into one selector with
+/// AND logic.
+///
+/// Kubernetes runs the policy on an object only when the object matches
+/// two selectors at the same time: the VAP `matchConstraints` selector
+/// and the binding `matchResources` selector. A missing selector matches
+/// every object, so an absent side adds no condition.
+///
+/// A `LabelSelector` already combines `matchLabels` and `matchExpressions`
+/// with AND logic. This function merges two selectors into one selector
+/// that keeps that same AND logic. kwctl copies `matchExpressions` from
+/// both selectors into the result, side by side. kwctl also merges
+/// `matchLabels` from both selectors.
+///
+/// When a key has the same value on both sides, kwctl keeps one copy of
+/// the key.
+///
+/// When a key has a different value on each side, the merged selector
+/// can match no object: an object cannot have two different values for
+/// the same label at once. kwctl returns an error instead of building
+/// that selector. `field` names the selector in the error message, for
+/// example `"namespaceSelector"`.
+fn and_label_selectors(
+    field: &str,
+    a: Option<LabelSelector>,
+    b: Option<LabelSelector>,
+) -> Result<Option<LabelSelector>> {
+    let (a, b) = match (a, b) {
+        (None, None) => return Ok(None),
+        (Some(a), None) => return Ok(Some(a)),
+        (None, Some(b)) => return Ok(Some(b)),
+        (Some(a), Some(b)) => (a, b),
+    };
+
+    let mut match_expressions = a.match_expressions.unwrap_or_default();
+    match_expressions.extend(b.match_expressions.unwrap_or_default());
+
+    let mut match_labels = a.match_labels.unwrap_or_default();
+    for (key, b_value) in b.match_labels.unwrap_or_default() {
+        match match_labels.get(&key) {
+            Some(a_value) if a_value == &b_value => {
+                // The two sides use the same value for this key. Keep
+                // one copy.
+            }
+            Some(a_value) => {
+                return Err(anyhow!(
+                    "{field}: the ValidatingAdmissionPolicy sets the label '{key}' to '{a_value}', and the ValidatingAdmissionPolicyBinding sets it to '{b_value}'. A selector with both values matches no object. Set the same value on both sides, or remove the label from one side"
+                ));
+            }
+            None => {
+                match_labels.insert(key, b_value);
+            }
+        }
+    }
+
+    Ok(Some(LabelSelector {
+        match_expressions: if match_expressions.is_empty() {
+            None
+        } else {
+            Some(match_expressions)
+        },
+        match_labels: if match_labels.is_empty() {
+            None
+        } else {
+            Some(match_labels)
+        },
+    }))
+}
+
 pub(crate) fn vap(
     cel_policy_module: &str,
     vap_path: &Path,
@@ -190,14 +259,70 @@ impl VapData {
             }
         }
 
-        let namespace_selector = vap_binding_spec
-            .match_resources
-            .unwrap_or_default()
-            .namespace_selector;
-
+        // Kubernetes runs the policy on a request only when the request
+        // matches two match sets at the same time: `matchConstraints`
+        // (set on the VAP) and `matchResources` (set on the binding).
+        // See the function `and_label_selectors` for more information.
+        // kwctl must merge or reject every field that can narrow that
+        // match. If kwctl does not, the generated ClusterAdmissionPolicy
+        // can run against resources that the original VAP and binding
+        // pair excluded.
         let vap_match_constraints = vap_spec.match_constraints.clone().unwrap_or_default();
-        let match_policy = vap_match_constraints.match_policy;
-        let object_selector = vap_match_constraints.object_selector;
+        let binding_match_resources = vap_binding_spec.match_resources.unwrap_or_default();
+
+        if vap_match_constraints
+            .exclude_resource_rules
+            .as_ref()
+            .is_some_and(|rules| !rules.is_empty())
+        {
+            return Err(anyhow!(
+                "ValidatingAdmissionPolicy spec.matchConstraints.excludeResourceRules is not supported. ClusterAdmissionPolicy has no matching field. Remove excludeResourceRules, and narrow spec.matchConstraints.resourceRules instead"
+            ));
+        }
+        if binding_match_resources
+            .exclude_resource_rules
+            .as_ref()
+            .is_some_and(|rules| !rules.is_empty())
+        {
+            return Err(anyhow!(
+                "ValidatingAdmissionPolicyBinding spec.matchResources.excludeResourceRules is not supported. ClusterAdmissionPolicy has no matching field. Remove excludeResourceRules, and narrow spec.matchConstraints.resourceRules on the ValidatingAdmissionPolicy instead"
+            ));
+        }
+        if binding_match_resources
+            .resource_rules
+            .as_ref()
+            .is_some_and(|rules| !rules.is_empty())
+        {
+            return Err(anyhow!(
+                "ValidatingAdmissionPolicyBinding spec.matchResources.resourceRules is not supported. kwctl only translates spec.matchConstraints.resourceRules from the ValidatingAdmissionPolicy. Move the narrowing into the ValidatingAdmissionPolicy, or remove it from the binding"
+            ));
+        }
+        if let Some(binding_match_policy) = binding_match_resources.match_policy.as_deref() {
+            // This field defaults to "Equivalent" on both the VAP and
+            // the binding. Kubernetes uses this default when a user
+            // leaves the field unset.
+            let vap_match_policy = vap_match_constraints
+                .match_policy
+                .as_deref()
+                .unwrap_or("Equivalent");
+            if binding_match_policy != vap_match_policy {
+                return Err(anyhow!(
+                    "ValidatingAdmissionPolicyBinding spec.matchResources.matchPolicy is '{binding_match_policy}'. ValidatingAdmissionPolicy spec.matchConstraints.matchPolicy is '{vap_match_policy}'. The two values differ. Make the two values equal, or remove matchPolicy from the binding"
+                ));
+            }
+        }
+
+        let namespace_selector = and_label_selectors(
+            "namespaceSelector",
+            vap_match_constraints.namespace_selector.clone(),
+            binding_match_resources.namespace_selector,
+        )?;
+        let object_selector = and_label_selectors(
+            "objectSelector",
+            vap_match_constraints.object_selector.clone(),
+            binding_match_resources.object_selector,
+        )?;
+        let match_policy = vap_match_constraints.match_policy.clone();
         let rules = vap_match_constraints
             .resource_rules
             .unwrap_or_default()
@@ -221,14 +346,18 @@ impl VapData {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::{fs::File, path::Path};
+    use std::{collections::BTreeMap, fs::File, path::Path};
 
-    use k8s_openapi::api::admissionregistration::v1::{
-        ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding,
+    use k8s_openapi::{
+        api::admissionregistration::v1::{
+            MatchResources, NamedRuleWithOperations, ValidatingAdmissionPolicy,
+            ValidatingAdmissionPolicyBinding,
+        },
+        apimachinery::pkg::apis::meta::v1::{LabelSelector, LabelSelectorRequirement},
     };
     use rstest::*;
 
-    use super::VapData;
+    use super::{VapData, and_label_selectors};
 
     pub(crate) const CEL_POLICY_MODULE: &str = "ghcr.io/kubewarden/policies/cel-policy:latest";
 
@@ -265,6 +394,36 @@ pub(crate) mod tests {
     fn open_vap(vap_yaml_path: &str) -> ValidatingAdmissionPolicy {
         let yaml_file = File::open(test_data(vap_yaml_path)).expect("cannot open VAP yaml file");
         serde_yaml::from_reader(yaml_file).expect("cannot parse VAP yaml file")
+    }
+
+    /// Build a VAP and binding pair. The match-field tests start from
+    /// this pair and change it.
+    #[fixture]
+    fn vap_pair() -> (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding) {
+        open_raw("vap/vap-without-variables.yml", "vap/vap-binding.yml")
+    }
+
+    /// Return a mutable reference to `vap.spec.matchConstraints`. When
+    /// the field is absent, insert a default value first.
+    fn vap_match_constraints(vap: &mut ValidatingAdmissionPolicy) -> &mut MatchResources {
+        vap.spec
+            .as_mut()
+            .expect("vap has a spec")
+            .match_constraints
+            .get_or_insert_with(Default::default)
+    }
+
+    /// Return a mutable reference to `binding.spec.matchResources`. When
+    /// the field is absent, insert a default value first.
+    fn binding_match_resources(
+        binding: &mut ValidatingAdmissionPolicyBinding,
+    ) -> &mut MatchResources {
+        binding
+            .spec
+            .as_mut()
+            .expect("binding has a spec")
+            .match_resources
+            .get_or_insert_with(Default::default)
     }
 
     #[test]
@@ -311,10 +470,11 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
-    fn new_rejects_binding_whose_policy_name_does_not_match_the_vap() {
-        let (vap, mut vap_binding) =
-            open_raw("vap/vap-without-variables.yml", "vap/vap-binding.yml");
+    #[rstest]
+    fn new_rejects_binding_whose_policy_name_does_not_match_the_vap(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (vap, mut vap_binding) = vap_pair;
         vap_binding
             .spec
             .as_mut()
@@ -331,10 +491,11 @@ pub(crate) mod tests {
         assert!(message.contains("vap-test"), "{message}");
     }
 
-    #[test]
-    fn new_rejects_vap_with_no_metadata_name() {
-        let (mut vap, vap_binding) =
-            open_raw("vap/vap-without-variables.yml", "vap/vap-binding.yml");
+    #[rstest]
+    fn new_rejects_vap_with_no_metadata_name(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (mut vap, vap_binding) = vap_pair;
         vap.metadata.name = None;
 
         let err = match VapData::new(vap, vap_binding) {
@@ -343,5 +504,211 @@ pub(crate) mod tests {
         };
 
         assert!(err.to_string().contains("metadata.name"));
+    }
+
+    fn label_selector(labels: &[(&str, &str)]) -> LabelSelector {
+        LabelSelector {
+            match_labels: Some(
+                labels
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect::<BTreeMap<_, _>>(),
+            ),
+            match_expressions: None,
+        }
+    }
+
+    fn in_requirement(key: &str, value: &str) -> LabelSelectorRequirement {
+        LabelSelectorRequirement {
+            key: key.to_string(),
+            operator: "In".to_string(),
+            values: Some(vec![value.to_string()]),
+        }
+    }
+
+    fn expressions_selector(requirements: Vec<LabelSelectorRequirement>) -> LabelSelector {
+        LabelSelector {
+            match_labels: None,
+            match_expressions: Some(requirements),
+        }
+    }
+
+    #[rstest]
+    #[case::both_absent(None, None, None)]
+    #[case::only_vap(
+        Some(label_selector(&[("env", "prod")])),
+        None,
+        Some(label_selector(&[("env", "prod")]))
+    )]
+    #[case::only_binding(
+        None,
+        Some(label_selector(&[("env", "prod")])),
+        Some(label_selector(&[("env", "prod")]))
+    )]
+    #[case::disjoint_labels_are_merged(
+        Some(label_selector(&[("env", "prod")])),
+        Some(label_selector(&[("team", "platform")])),
+        Some(label_selector(&[("env", "prod"), ("team", "platform")]))
+    )]
+    #[case::same_label_same_value_keeps_one_copy(
+        Some(label_selector(&[("env", "prod")])),
+        Some(label_selector(&[("env", "prod")])),
+        Some(label_selector(&[("env", "prod")]))
+    )]
+    #[case::match_expressions_are_concatenated(
+        Some(expressions_selector(vec![in_requirement("env", "prod")])),
+        Some(expressions_selector(vec![in_requirement("team", "platform")])),
+        Some(expressions_selector(vec![
+            in_requirement("env", "prod"),
+            in_requirement("team", "platform"),
+        ]))
+    )]
+    fn and_label_selectors_cases(
+        #[case] vap: Option<LabelSelector>,
+        #[case] binding: Option<LabelSelector>,
+        #[case] expected: Option<LabelSelector>,
+    ) {
+        assert_eq!(
+            and_label_selectors("namespaceSelector", vap, binding).expect("no label conflict"),
+            expected
+        );
+    }
+
+    #[test]
+    fn and_label_selectors_rejects_a_label_with_different_values() {
+        let vap = label_selector(&[("env", "prod")]);
+        let binding = label_selector(&[("env", "staging")]);
+
+        let err = match and_label_selectors("namespaceSelector", Some(vap), Some(binding)) {
+            Ok(_) => panic!("a label with two different values should be rejected"),
+            Err(e) => e,
+        };
+
+        let message = err.to_string();
+        assert!(message.contains("namespaceSelector"), "{message}");
+        assert!(message.contains("env"), "{message}");
+        assert!(message.contains("prod"), "{message}");
+        assert!(message.contains("staging"), "{message}");
+    }
+
+    #[rstest]
+    fn new_merges_namespace_selector_from_vap_and_binding(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (mut vap, vap_binding) = vap_pair;
+        vap_match_constraints(&mut vap).namespace_selector =
+            Some(label_selector(&[("team", "platform")]));
+        // The fixture binding already sets `namespaceSelector` to
+        // kubernetes.io/metadata.name=default.
+
+        let vap_data = VapData::new(vap, vap_binding).expect("VapData::new should succeed");
+
+        let namespace_selector = vap_data
+            .namespace_selector
+            .expect("namespace_selector should be present");
+        assert_eq!(
+            namespace_selector.match_labels,
+            Some(BTreeMap::from([
+                (
+                    "kubernetes.io/metadata.name".to_string(),
+                    "default".to_string()
+                ),
+                ("team".to_string(), "platform".to_string()),
+            ]))
+        );
+    }
+
+    #[rstest]
+    fn new_keeps_binding_object_selector_that_the_vap_does_not_set(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (vap, mut vap_binding) = vap_pair;
+        binding_match_resources(&mut vap_binding).object_selector =
+            Some(label_selector(&[("app", "web")]));
+
+        let vap_data = VapData::new(vap, vap_binding).expect("VapData::new should succeed");
+
+        assert_eq!(
+            vap_data
+                .object_selector
+                .expect("object_selector should be present")
+                .match_labels,
+            Some(BTreeMap::from([("app".to_string(), "web".to_string())]))
+        );
+    }
+
+    type MutatePair = fn(&mut ValidatingAdmissionPolicy, &mut ValidatingAdmissionPolicyBinding);
+
+    #[rstest]
+    #[case::vap_exclude_resource_rules(
+        (|vap: &mut ValidatingAdmissionPolicy, _: &mut ValidatingAdmissionPolicyBinding| {
+            vap_match_constraints(vap).exclude_resource_rules =
+                Some(vec![NamedRuleWithOperations::default()]);
+        }) as MutatePair,
+        Some("matchConstraints.excludeResourceRules")
+    )]
+    #[case::binding_exclude_resource_rules(
+        (|_: &mut ValidatingAdmissionPolicy, binding: &mut ValidatingAdmissionPolicyBinding| {
+            binding_match_resources(binding).exclude_resource_rules =
+                Some(vec![NamedRuleWithOperations::default()]);
+        }) as MutatePair,
+        Some("matchResources.excludeResourceRules")
+    )]
+    #[case::binding_resource_rules(
+        (|_: &mut ValidatingAdmissionPolicy, binding: &mut ValidatingAdmissionPolicyBinding| {
+            binding_match_resources(binding).resource_rules =
+                Some(vec![NamedRuleWithOperations::default()]);
+        }) as MutatePair,
+        Some("matchResources.resourceRules")
+    )]
+    #[case::binding_match_policy_differs_from_the_vap(
+        // The VAP fixture does not set `matchPolicy`. This field
+        // defaults to "Equivalent". The binding sets `matchPolicy` to
+        // "Exact". The two values differ.
+        (|_: &mut ValidatingAdmissionPolicy, binding: &mut ValidatingAdmissionPolicyBinding| {
+            binding_match_resources(binding).match_policy = Some("Exact".to_string());
+        }) as MutatePair,
+        Some("matchPolicy")
+    )]
+    #[case::binding_match_policy_equals_the_vap_default(
+        // The VAP fixture leaves `matchPolicy` unset. This field
+        // defaults to "Equivalent". The binding sets `matchPolicy` to
+        // the same value. Kubernetes allows this.
+        (|_: &mut ValidatingAdmissionPolicy, binding: &mut ValidatingAdmissionPolicyBinding| {
+            binding_match_resources(binding).match_policy = Some("Equivalent".to_string());
+        }) as MutatePair,
+        None
+    )]
+    #[case::vap_and_binding_namespace_selector_conflict(
+        // The fixture binding sets `namespaceSelector` to
+        // kubernetes.io/metadata.name=default. Setting the same key to a
+        // different value on the VAP makes the merge fail.
+        (|vap: &mut ValidatingAdmissionPolicy, _: &mut ValidatingAdmissionPolicyBinding| {
+            vap_match_constraints(vap).namespace_selector =
+                Some(label_selector(&[("kubernetes.io/metadata.name", "other")]));
+        }) as MutatePair,
+        Some("namespaceSelector")
+    )]
+    fn new_checks_match_fields(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+        #[case] mutate: MutatePair,
+        #[case] expected_error: Option<&str>,
+    ) {
+        let (mut vap, mut vap_binding) = vap_pair;
+        mutate(&mut vap, &mut vap_binding);
+
+        let result = VapData::new(vap, vap_binding);
+        match expected_error {
+            None => {
+                result.expect("VapData::new should succeed");
+            }
+            Some(needle) => {
+                let err = match result {
+                    Ok(_) => panic!("expected an error that mentions '{needle}'"),
+                    Err(e) => e,
+                };
+                assert!(err.to_string().contains(needle), "{err}");
+            }
+        }
     }
 }
