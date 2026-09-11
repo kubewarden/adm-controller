@@ -1,15 +1,14 @@
 name: Build, Sign, and Generate SBOM, Attestation & Provenance
 
 on:
-  workflow_call:
-    inputs:
-      version:
-        type: string
-
   push:
     branches:
       - "main"
       - "feat-**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -61,12 +60,6 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/heads/feat') }}
         run: |
           echo "TAG_NAME=latest-$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
-      - name: Retrieve tag name (release)
-        if: ${{ !startsWith(github.ref, 'refs/heads/') }}
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          echo TAG_NAME=$INPUT_VERSION >> $GITHUB_ENV
       - name: Merge multi-arch images
         uses: kubewarden/github-actions/merge-multiarch@143b9e4b11ddc47370482267383586e6f1bc7efe # v7.0.1
         with:
