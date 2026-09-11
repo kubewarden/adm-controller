@@ -43,15 +43,7 @@ pub(crate) fn vap_interpreted(
         );
     }
 
-    let mut settings = vap_data.param_settings;
-
-    if let Some(vap_failure_policy) = vap_spec.failure_policy.clone() {
-        // CEL settings.failurePolicy, not to confuse with spec.failurePolicy
-        settings.insert(
-            "failurePolicy".into(),
-            serde_yaml::to_value(vap_failure_policy)?,
-        );
-    }
+    let mut settings = vap_data.settings;
 
     if let Some(vap_variables) = vap_spec.variables.clone() {
         let vap_variables: Vec<serde_yaml::Value> = vap_variables

@@ -88,42 +88,37 @@ pub(crate) fn manifest_handler(
     eval_ctx: &Arc<EvaluationContext>,
     builder_map: &Value,
 ) -> Result<Value, String> {
-    let image = str_field(builder_map, "image").map_err(|e| format!("kw.oci.manifest: {e}"))?;
+    let image = str_field(builder_map, "image")?;
     call_host(
         eval_ctx,
         "oci",
         "v1/oci_manifest",
         CallbackRequestType::OciManifest { image },
     )
-    .map_err(|e| format!("kw.oci.manifest: {e}"))
 }
 
 pub(crate) fn manifest_digest_handler(
     eval_ctx: &Arc<EvaluationContext>,
     builder_map: &Value,
 ) -> Result<Value, String> {
-    let image =
-        str_field(builder_map, "image").map_err(|e| format!("kw.oci.manifestDigest: {e}"))?;
+    let image = str_field(builder_map, "image")?;
     call_host(
         eval_ctx,
         "oci",
         "v1/manifest_digest",
         CallbackRequestType::OciManifestDigest { image },
     )
-    .map_err(|e| format!("kw.oci.manifestDigest: {e}"))
 }
 
 pub(crate) fn manifest_config_handler(
     eval_ctx: &Arc<EvaluationContext>,
     builder_map: &Value,
 ) -> Result<Value, String> {
-    let image =
-        str_field(builder_map, "image").map_err(|e| format!("kw.oci.manifestConfig: {e}"))?;
+    let image = str_field(builder_map, "image")?;
     call_host(
         eval_ctx,
         "oci",
         "v1/oci_manifest_config",
         CallbackRequestType::OciManifestAndConfig { image },
     )
-    .map_err(|e| format!("kw.oci.manifestConfig: {e}"))
 }

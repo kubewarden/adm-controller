@@ -1086,13 +1086,33 @@ fn test_scaffold_from_vap(
 }
 
 #[rstest]
-#[case::compile_without_params("vap/vap-with-variables.yml", "vap/vap-binding.yml", true, false)]
-#[case::compile_with_params("vap/vap-with-params.yml", "vap/vap-binding-params.yml", true, true)]
+#[case::compile_without_params(
+    "vap/vap-with-variables.yml",
+    "vap/vap-binding.yml",
+    true,
+    false,
+    "Fail"
+)]
+#[case::compile_with_params(
+    "vap/vap-with-params.yml",
+    "vap/vap-binding-params.yml",
+    true,
+    true,
+    "Fail"
+)]
+#[case::compile_with_failure_policy_ignore(
+    "vap/vap-with-failure-policy-ignore.yml",
+    "vap/vap-binding.yml",
+    true,
+    false,
+    "Ignore"
+)]
 fn test_scaffold_vap_compile_to_wasm(
     #[case] vap_path: &str,
     #[case] vap_binding: &str,
     #[case] success: bool,
     #[case] has_params: bool,
+    #[case] expected_failure_policy: &str,
 ) {
     let tempdir = tempdir().unwrap();
     let wasm_output = tempdir.path().join("policy.wasm");
@@ -1135,9 +1155,18 @@ fn test_scaffold_vap_compile_to_wasm(
             !stdout.contains("variables:"),
             "compiled output must not contain variables in settings"
         );
+        // The VAP failurePolicy must reach the ferricel runtime through the
+        // settings. The ClusterAdmissionPolicy spec.failurePolicy field is
+        // not the right place: it controls the webhook, not the policy.
+        let cap: serde_yaml::Value = serde_yaml::from_str(&stdout).unwrap();
+        assert_eq!(
+            cap["spec"]["settings"]["failurePolicy"].as_str(),
+            Some(expected_failure_policy),
+            "settings.failurePolicy must match the VAP spec.failurePolicy"
+        );
         assert!(
-            !stdout.contains("failurePolicy:"),
-            "compiled output must not contain failurePolicy in settings"
+            cap["spec"]["failurePolicy"].is_null(),
+            "spec.failurePolicy must not be set by the scaffold"
         );
         if has_params {
             assert!(stdout.contains("paramKind:"), "should contain paramKind");

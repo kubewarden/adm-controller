@@ -97,7 +97,7 @@ pub(crate) fn verify_handler(
 ) -> Result<Value, String> {
     let cert_pem = builder_map["cert"]
         .as_str()
-        .ok_or_else(|| "kw.crypto.verify: missing 'cert' field in builder map".to_string())?;
+        .ok_or_else(|| "missing 'cert' field in builder map".to_string())?;
     let cert = Certificate {
         encoding: CertificateEncoding::Pem,
         data: cert_pem.as_bytes().to_vec(),
@@ -130,7 +130,6 @@ pub(crate) fn verify_handler(
         "v1/is_certificate_trusted",
         CallbackRequestType::CryptoIsCertificateTrusted { request },
     )
-    .map_err(|e| format!("kw.crypto.verify: {e}"))
 }
 
 /// Handler for `.isTrusted()` -- no host call. Returns the boolean trust field

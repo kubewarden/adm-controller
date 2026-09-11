@@ -182,8 +182,11 @@ pub(crate) struct VapData {
     pub(crate) match_policy: Option<String>,
     pub(crate) namespace_selector: Option<LabelSelector>,
     pub(crate) object_selector: Option<LabelSelector>,
-    /// paramKind + paramRef settings (when both are present).
-    pub(crate) param_settings: serde_yaml::Mapping,
+    /// The settings that both output paths share: `paramKind` and
+    /// `paramRef` (when both are present) and `failurePolicy` (when the
+    /// VAP sets it). Each runtime reads these at evaluation time. The
+    /// interpreted path adds the CEL expressions on top of them.
+    pub(crate) settings: serde_yaml::Mapping,
     /// The Kubernetes resource (apiVersion/kind) named by `paramKind`, when
     /// present. This is the resource the compiled/interpreted policy fetches
     /// at evaluation time via `paramRef`, and must be granted access to via
@@ -222,8 +225,23 @@ impl VapData {
             ));
         }
 
+        let mut settings = serde_yaml::Mapping::new();
+
+        // `failurePolicy` decides what the runtime does when a CEL
+        // expression cannot be evaluated. It goes to the settings, not to
+        // `spec.failurePolicy` of the ClusterAdmissionPolicy: that field
+        // controls the webhook configuration, and the API server applies it
+        // only when the call to the policy server fails. With the value in
+        // the settings, the administrator can change it without a new build
+        // of the policy.
+        if let Some(failure_policy) = &vap_spec.failure_policy {
+            settings.insert(
+                "failurePolicy".into(),
+                serde_yaml::to_value(failure_policy)?,
+            );
+        }
+
         // Params: both must be present together or both absent.
-        let mut param_settings = serde_yaml::Mapping::new();
         let mut param_resource = None;
         match (&vap_spec.param_kind, vap_binding_spec.param_ref) {
             (Some(vap_param_kind), Some(mut vap_param_ref)) => {
@@ -239,8 +257,8 @@ impl VapData {
                     vap_param_ref.parameter_not_found_action = Some("Deny".to_string());
                 }
 
-                param_settings.insert("paramKind".into(), serde_yaml::to_value(vap_param_kind)?);
-                param_settings.insert("paramRef".into(), serde_yaml::to_value(&vap_param_ref)?);
+                settings.insert("paramKind".into(), serde_yaml::to_value(vap_param_kind)?);
+                settings.insert("paramRef".into(), serde_yaml::to_value(&vap_param_ref)?);
 
                 if let (Some(api_version), Some(kind)) =
                     (&vap_param_kind.api_version, &vap_param_kind.kind)
@@ -338,7 +356,7 @@ impl VapData {
             match_policy,
             namespace_selector,
             object_selector,
-            param_settings,
+            settings,
             param_resource,
         })
     }
@@ -450,7 +468,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             "Deny",
-            vap_data.param_settings["paramRef"]["parameterNotFoundAction"]
+            vap_data.settings["paramRef"]["parameterNotFoundAction"]
                 .as_str()
                 .expect("parameterNotFoundAction should be a string")
         );
@@ -464,9 +482,45 @@ pub(crate) mod tests {
 
         assert_eq!(
             "Deny",
-            vap_data.param_settings["paramRef"]["parameterNotFoundAction"]
+            vap_data.settings["paramRef"]["parameterNotFoundAction"]
                 .as_str()
                 .expect("parameterNotFoundAction should be a string")
+        );
+    }
+
+    // `failurePolicy` goes to the settings, not to `spec.failurePolicy` of
+    // the ClusterAdmissionPolicy. That field controls the webhook, and the
+    // API server applies it only when the call to the policy server fails.
+    // The runtime reads `settings.failurePolicy` to decide what a CEL
+    // runtime error does.
+    #[rstest]
+    #[case::fail("vap/vap-without-variables.yml", "Fail")]
+    #[case::ignore("vap/vap-with-failure-policy-ignore.yml", "Ignore")]
+    fn failure_policy_is_copied_to_settings(#[case] vap_yaml_path: &str, #[case] expected: &str) {
+        let vap_data = open_vap_data(vap_yaml_path, "vap/vap-binding.yml");
+
+        assert_eq!(
+            Some(expected),
+            vap_data.settings["failurePolicy"].as_str(),
+            "settings.failurePolicy must match the VAP spec.failurePolicy"
+        );
+    }
+
+    #[rstest]
+    fn failure_policy_is_absent_from_settings_when_the_vap_does_not_set_it(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (mut vap, vap_binding) = vap_pair;
+        vap.spec.as_mut().expect("vap has a spec").failure_policy = None;
+
+        let vap_data = VapData::new(vap, vap_binding).expect("VapData::new should succeed");
+
+        // The runtime treats a missing key as `Fail`. The scaffold must leave
+        // the choice to the runtime, not write a default of its own.
+        assert!(
+            !vap_data.settings.contains_key("failurePolicy"),
+            "settings must not contain failurePolicy, got: {:?}",
+            vap_data.settings
         );
     }
 

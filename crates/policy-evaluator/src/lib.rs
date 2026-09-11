@@ -30,6 +30,9 @@ pub use kube;
 pub use kubewarden_policy_sdk::{self, metadata::ProtocolVersion};
 pub use policy_evaluator::policy_evaluator_builder;
 pub use policy_fetcher;
+/// Make sure that a ferricel module was built for the ABI version that this
+/// runtime supports. Call it before you compile or load a ferricel policy.
+pub use runtimes::ferricel::errors::check_abi_version as ferricel_check_abi_version;
 /// Chain and extension declarations for the ferricel compiler.
 ///
 /// Use these when compiling a Kubewarden VAP policy with ferricel so that

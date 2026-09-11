@@ -34,7 +34,7 @@ pub(crate) fn lookup_host_handler(
     let host = args
         .first()
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "kw.net.lookupHost: expected a string argument".to_string())?
+        .ok_or_else(|| "expected a string argument".to_string())?
         .to_owned();
 
     let response = call_host(
@@ -42,13 +42,12 @@ pub(crate) fn lookup_host_handler(
         "net",
         "v1/dns_lookup_host",
         CallbackRequestType::DNSLookupHost { host },
-    )
-    .map_err(|e| format!("kw.net.lookupHost: {e}"))?;
+    )?;
 
     // The callback returns `{"ips": ["1.1.1.1", ...]}` (LookupHostResponse).
     // The CEL expression expects a list<string>, so unwrap the `ips` field.
     response
         .get("ips")
         .cloned()
-        .ok_or_else(|| "kw.net.lookupHost: response missing 'ips' field".to_string())
+        .ok_or_else(|| "response missing 'ips' field".to_string())
 }

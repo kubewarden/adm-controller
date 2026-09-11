@@ -2244,9 +2244,9 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "ferricel-core"
-version = "0.8.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95849e8f3c0fbb23cbeea07f4bd70905800c41af1758db5e5d0b23103a045705"
+checksum = "48aceed3dff2184c8bd346a1ed26280dca91d187989a1d02f8706c1b701afcb7"
 dependencies = [
  "anyhow",
  "cel",
@@ -2265,9 +2265,9 @@ dependencies = [
 
 [[package]]
 name = "ferricel-types"
-version = "0.8.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b534082fd9e6a12688278cc442e7a6fdc665c7027e8ececbfd8fcbe15fc42f0e"
+checksum = "e166c5f2e089e94331c557bd769c88a2f0c04a81ad41b20204a9a78c2864a6f7"
 dependencies = [
  "prost 0.14.4",
  "prost-build 0.14.4",
@@ -2276,6 +2276,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strum 0.28.0",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -5104,6 +5105,7 @@ dependencies = [
  "tracing",
  "url",
  "validator",
+ "walrus",
  "wapc",
  "wasmparser 0.258.0",
  "wasmtime",

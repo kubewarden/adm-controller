@@ -91,7 +91,9 @@ fn write_output_file(path: &Path, contents: &[u8], force: bool, what: &str) -> R
 
 /// Compiled path: compiles the VAP CEL expressions to Wasm, writes the module
 /// to `wasm_path`, generates a `metadata.yml` alongside it, and builds a
-/// [`ClusterAdmissionPolicy`] with only paramKind + paramRef in settings.
+/// [`ClusterAdmissionPolicy`]. The settings hold only the values that the
+/// runtime reads at evaluation time: `paramKind`, `paramRef`, and
+/// `failurePolicy`. The CEL expressions live in the Wasm module.
 ///
 /// Unless `force` is set, neither `wasm_path` nor the `metadata.yml` written
 /// alongside it are allowed to already exist: the check happens before any
@@ -204,7 +206,7 @@ pub(crate) fn vap_compiled(
             context_aware_resources,
             failure_policy: None,
             mode: None,
-            settings: vap_data.param_settings,
+            settings: vap_data.settings,
         },
     })
 }
@@ -315,6 +317,11 @@ mod tests {
         "vap/vap-binding-params-no-action.yml",
         true
     )]
+    #[case::vap_with_failure_policy_ignore(
+        "vap/vap-with-failure-policy-ignore.yml",
+        "vap/vap-binding.yml",
+        false
+    )]
     fn compile_vap_to_wasm(
         #[case] vap_yaml_path: &str,
         #[case] vap_binding_yaml_path: &str,
@@ -343,6 +350,9 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let wasm_path = dir.path().join("policy.wasm");
 
+        let expected_failure_policy =
+            serde_yaml::to_value(vap.spec.as_ref().unwrap().failure_policy.as_ref()).unwrap();
+
         let vap_data = VapData::new(vap, vap_binding).unwrap();
         let cap = vap_compiled(vap_data, &wasm_path, false).unwrap();
 
@@ -357,13 +367,27 @@ mod tests {
         );
         assert!(!cap.spec.mutating);
         assert!(cap.spec.background_audit);
+        // The VAP failurePolicy goes to the settings, never to
+        // spec.failurePolicy: that field controls the webhook, not the
+        // policy. See `VapData::new`.
         assert!(cap.spec.failure_policy.is_none());
         assert!(cap.spec.mode.is_none());
 
-        // validations, variables, failurePolicy must NOT be in settings
+        // The CEL expressions live in the Wasm module, not in the settings.
         assert!(!cap.spec.settings.contains_key("validations"));
         assert!(!cap.spec.settings.contains_key("variables"));
-        assert!(!cap.spec.settings.contains_key("failurePolicy"));
+
+        // The ferricel runtime reads failurePolicy from the settings. The
+        // scaffold must copy the value of the VAP as it is.
+        assert_eq!(
+            expected_failure_policy,
+            cap.spec
+                .settings
+                .get("failurePolicy")
+                .cloned()
+                .unwrap_or(serde_yaml::Value::Null),
+            "settings.failurePolicy must match the VAP spec.failurePolicy"
+        );
 
         if has_params {
             assert!(cap.spec.settings.contains_key("paramKind"));

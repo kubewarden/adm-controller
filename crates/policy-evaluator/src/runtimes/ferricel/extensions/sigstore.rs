@@ -259,7 +259,7 @@ pub(crate) fn pub_key_verify_handler(
 ) -> Result<Value, String> {
     let image = builder_map["image"]
         .as_str()
-        .ok_or_else(|| "kw.sigstore.pubKeyVerify: missing 'image'".to_string())?
+        .ok_or_else(|| "missing 'image'".to_string())?
         .to_owned();
 
     let pub_keys: Vec<String> = builder_map["pubKeys"]
@@ -283,7 +283,6 @@ pub(crate) fn pub_key_verify_handler(
             annotations,
         },
     )
-    .map_err(|e| format!("kw.sigstore.pubKeyVerify: {e}"))
 }
 
 pub(crate) fn keyless_verify_handler(
@@ -292,12 +291,11 @@ pub(crate) fn keyless_verify_handler(
 ) -> Result<Value, String> {
     let image = builder_map["image"]
         .as_str()
-        .ok_or_else(|| "kw.sigstore.keylessVerify: missing 'image'".to_string())?
+        .ok_or_else(|| "missing 'image'".to_string())?
         .to_owned();
 
     // issuers and subjects are stored as parallel arrays; zip them into KeylessInfo pairs.
-    let keyless = zip_keyless(builder_map, "keylessIssuers", "keylessSubjects")
-        .map_err(|e| format!("kw.sigstore.keylessVerify: {e}"))?;
+    let keyless = zip_keyless(builder_map, "keylessIssuers", "keylessSubjects")?;
 
     let annotations = parse_annotations(builder_map);
 
@@ -311,7 +309,6 @@ pub(crate) fn keyless_verify_handler(
             annotations,
         },
     )
-    .map_err(|e| format!("kw.sigstore.keylessVerify: {e}"))
 }
 
 pub(crate) fn keyless_prefix_verify_handler(
@@ -320,17 +317,15 @@ pub(crate) fn keyless_prefix_verify_handler(
 ) -> Result<Value, String> {
     let image = builder_map["image"]
         .as_str()
-        .ok_or_else(|| "kw.sigstore.keylessPrefixVerify: missing 'image'".to_string())?
+        .ok_or_else(|| "missing 'image'".to_string())?
         .to_owned();
 
-    let issuers = str_array(builder_map, "keylessPrefixIssuers")
-        .map_err(|e| format!("kw.sigstore.keylessPrefixVerify: {e}"))?;
-    let urls = str_array(builder_map, "keylessPrefixUrls")
-        .map_err(|e| format!("kw.sigstore.keylessPrefixVerify: {e}"))?;
+    let issuers = str_array(builder_map, "keylessPrefixIssuers")?;
+    let urls = str_array(builder_map, "keylessPrefixUrls")?;
 
     if issuers.len() != urls.len() {
         return Err(format!(
-            "kw.sigstore.keylessPrefixVerify: issuer/urlPrefix arrays have different lengths ({} vs {})",
+            "issuer/urlPrefix arrays have different lengths ({} vs {})",
             issuers.len(),
             urls.len()
         ));
@@ -354,7 +349,6 @@ pub(crate) fn keyless_prefix_verify_handler(
             annotations,
         },
     )
-    .map_err(|e| format!("kw.sigstore.keylessPrefixVerify: {e}"))
 }
 
 pub(crate) fn github_actions_verify_handler(
@@ -363,12 +357,12 @@ pub(crate) fn github_actions_verify_handler(
 ) -> Result<Value, String> {
     let image = builder_map["image"]
         .as_str()
-        .ok_or_else(|| "kw.sigstore.githubActionsVerify: missing 'image'".to_string())?
+        .ok_or_else(|| "missing 'image'".to_string())?
         .to_owned();
 
     let owner = builder_map["owner"]
         .as_str()
-        .ok_or_else(|| "kw.sigstore.githubActionsVerify: missing 'owner'".to_string())?
+        .ok_or_else(|| "missing 'owner'".to_string())?
         .to_owned();
 
     // `repo` is optional — only set by the 2-arg githubAction overload.
@@ -387,7 +381,6 @@ pub(crate) fn github_actions_verify_handler(
             annotations,
         },
     )
-    .map_err(|e| format!("kw.sigstore.githubActionsVerify: {e}"))
 }
 
 pub(crate) fn certificate_verify_handler(
@@ -396,12 +389,12 @@ pub(crate) fn certificate_verify_handler(
 ) -> Result<Value, String> {
     let image = builder_map["image"]
         .as_str()
-        .ok_or_else(|| "kw.sigstore.certificateVerify: missing 'image'".to_string())?
+        .ok_or_else(|| "missing 'image'".to_string())?
         .to_owned();
 
     let cert_pem = builder_map["certificate"]
         .as_str()
-        .ok_or_else(|| "kw.sigstore.certificateVerify: missing 'certificate'".to_string())?;
+        .ok_or_else(|| "missing 'certificate'".to_string())?;
     let certificate: Vec<u8> = cert_pem.as_bytes().to_vec();
 
     let certificate_chain: Option<Vec<Vec<u8>>> =
@@ -429,7 +422,6 @@ pub(crate) fn certificate_verify_handler(
             annotations,
         },
     )
-    .map_err(|e| format!("kw.sigstore.certificateVerify: {e}"))
 }
 
 /// `.digest()` -- no host call. Returns the `digest` field from the

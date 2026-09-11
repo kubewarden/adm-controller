@@ -12,10 +12,9 @@ pub(crate) fn get_handler(
     eval_ctx: &Arc<EvaluationContext>,
     builder_map: &Value,
 ) -> Result<Value, String> {
-    let api_version =
-        str_field(builder_map, "apiVersion").map_err(|e| format!("kw.k8s.get: {e}"))?;
-    let kind = str_field(builder_map, "kind").map_err(|e| format!("kw.k8s.get: {e}"))?;
-    let name = str_field(builder_map, "name").map_err(|e| format!("kw.k8s.get: {e}"))?;
+    let api_version = str_field(builder_map, "apiVersion")?;
+    let kind = str_field(builder_map, "kind")?;
+    let name = str_field(builder_map, "name")?;
     let namespace = builder_map["namespace"].as_str().map(str::to_owned);
     let field_masks = parse_field_masks(builder_map);
 
@@ -32,16 +31,14 @@ pub(crate) fn get_handler(
             field_masks,
         },
     )
-    .map_err(|e| format!("kw.k8s.get: {e}"))
 }
 
 pub(crate) fn list_handler(
     eval_ctx: &Arc<EvaluationContext>,
     builder_map: &Value,
 ) -> Result<Value, String> {
-    let api_version =
-        str_field(builder_map, "apiVersion").map_err(|e| format!("kw.k8s.list: {e}"))?;
-    let kind = str_field(builder_map, "kind").map_err(|e| format!("kw.k8s.list: {e}"))?;
+    let api_version = str_field(builder_map, "apiVersion")?;
+    let kind = str_field(builder_map, "kind")?;
     let label_selector = builder_map["labelSelector"].as_str().map(str::to_owned);
     let field_selector = builder_map["fieldSelector"].as_str().map(str::to_owned);
     let field_masks = parse_field_masks(builder_map);
@@ -72,5 +69,4 @@ pub(crate) fn list_handler(
     };
 
     call_host(eval_ctx, "kubernetes", operation, request_type)
-        .map_err(|e| format!("kw.k8s.list: {e}"))
 }

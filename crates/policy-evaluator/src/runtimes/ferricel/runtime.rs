@@ -10,7 +10,10 @@ use crate::{
     callback_requests::{CallbackRequest, CallbackRequestType},
     evaluation_context::EvaluationContext,
     policy_evaluator::{PolicySettings, ValidateRequest},
-    runtimes::ferricel::{errors::FerricelRuntimeError, stack::Stack},
+    runtimes::ferricel::{
+        errors::{FerricelRuntimeError, format_cel_error},
+        stack::Stack,
+    },
 };
 
 pub(crate) struct Runtime<'a>(pub(crate) &'a Stack);
@@ -21,6 +24,17 @@ impl Runtime<'_> {
         settings: &PolicySettings,
         request: &ValidateRequest,
     ) -> AdmissionResponse {
+        // The settings passed `validate_settings` at load time, so an
+        // invalid value here is a bug in the caller. Fall back to `Fail`,
+        // the safe choice, instead of a panic.
+        let failure_policy = FailurePolicy::from_settings(settings).unwrap_or_else(|e| {
+            error!(
+                error = e.as_str(),
+                "invalid failurePolicy in settings, using Fail"
+            );
+            FailurePolicy::Fail
+        });
+
         let bindings = match self.build_bindings(settings, request) {
             Ok(b) => b,
             Err(response) => return *response,
@@ -73,10 +87,64 @@ impl Runtime<'_> {
                     500,
                 )
             }
+            Err(FerricelRuntimeError::CelRuntimeError(cel_err)) => {
+                self.handle_cel_runtime_error(request, &cel_err, failure_policy)
+            }
             Err(e) => AdmissionResponse::reject_internal_server_error(
                 request.uid().to_string(),
                 e.to_string(),
             ),
+        }
+    }
+
+    /// Apply the VAP `failurePolicy` to a CEL runtime error.
+    ///
+    /// This mirrors what the Kubernetes API server does with a
+    /// `ValidatingAdmissionPolicy` whose expression cannot be evaluated:
+    ///   - `Fail`: reject the request. The message names the error.
+    ///   - `Ignore`: skip the policy and admit the request. The response
+    ///     carries a warning, so the client and the audit results show that
+    ///     the policy did not run.
+    ///
+    /// Only a CEL runtime error reaches this function. A deadline, a Wasm
+    /// trap, or a host bug always rejects the request, whatever the
+    /// `failurePolicy` says.
+    fn handle_cel_runtime_error(
+        &self,
+        request: &ValidateRequest,
+        cel_err: &ferricel_core::CelRuntimeError,
+        failure_policy: FailurePolicy,
+    ) -> AdmissionResponse {
+        let policy_id = &self.0.eval_ctx().policy_id;
+        let message = format_cel_error(cel_err);
+
+        match failure_policy {
+            FailurePolicy::Fail => {
+                error!(
+                    policy_id = %policy_id,
+                    error = %message,
+                    "CEL runtime error, request rejected because failurePolicy is Fail"
+                );
+                AdmissionResponse::reject_internal_server_error(
+                    request.uid().to_string(),
+                    format!("CEL runtime error: {message}"),
+                )
+            }
+            FailurePolicy::Ignore => {
+                warn!(
+                    policy_id = %policy_id,
+                    error = %message,
+                    "CEL runtime error, policy skipped because failurePolicy is Ignore"
+                );
+                AdmissionResponse {
+                    uid: request.uid().to_string(),
+                    allowed: true,
+                    warnings: Some(vec![format!(
+                        "policy {policy_id} skipped (failurePolicy is Ignore): CEL runtime error: {message}"
+                    )]),
+                    ..Default::default()
+                }
+            }
         }
     }
 
@@ -170,11 +238,11 @@ impl Runtime<'_> {
 
     /// Ferricel/VAP policies do not have runtime settings validation for the
     /// bulk of their behavior: all validation logic is compiled into the
-    /// Wasm module. This function only validates the shape of the
-    /// `paramKind`/`paramRef` settings (which are consumed by the runtime
-    /// itself, not by the compiled wasm's own logic) and, on top of that,
-    /// warns -- without failing validation -- when a `paramKind` grant is
-    /// missing.
+    /// Wasm module. This function only validates the settings that the
+    /// runtime itself consumes, not the compiled wasm: the value of
+    /// `failurePolicy` and the shape of `paramKind`/`paramRef`. On top of
+    /// that, it warns -- without failing validation -- when a `paramKind`
+    /// grant is missing.
     pub fn validate_settings(&self, settings: String) -> SettingsValidationResponse {
         match validate_settings_json(&settings, self.0.eval_ctx()) {
             Ok(()) => SettingsValidationResponse {
@@ -189,7 +257,8 @@ impl Runtime<'_> {
     }
 }
 
-/// Parses `settings` as JSON and validates the `paramKind`/`paramRef` fields.
+/// Parses `settings` as JSON and validates the `failurePolicy` and
+/// `paramKind`/`paramRef` fields.
 ///
 /// Kept as a free function (rather than a `Runtime` method) so it only
 /// depends on `&EvaluationContext`, making it unit-testable without a real
@@ -198,7 +267,49 @@ fn validate_settings_json(settings: &str, eval_ctx: &EvaluationContext) -> Resul
     let settings_json: Value = serde_json::from_str(settings)
         .map_err(|e| format!("cannot parse policy settings as JSON: {e}"))?;
 
+    FailurePolicy::from_value(settings_json.get("failurePolicy"))?;
     validate_params(&settings_json, eval_ctx)
+}
+
+/// What the runtime does when a CEL expression of the policy evaluates to
+/// an error. This is the `spec.failurePolicy` of the source
+/// `ValidatingAdmissionPolicy`.
+///
+/// The value comes from `settings.failurePolicy`, not from the compiled Wasm
+/// module. As a result, the Kubewarden administrator can change it in the
+/// `ClusterAdmissionPolicy` without a new build of the policy. The
+/// `kwctl scaffold vap --compile-to-wasm` command copies the value of the
+/// VAP into the generated settings.
+///
+/// Do not confuse it with `spec.failurePolicy` of the Kubewarden policy
+/// CRDs. That field goes to the webhook configuration, and the API server
+/// applies it only when the call to the policy server fails.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum FailurePolicy {
+    /// Reject the request. This is the default, as in Kubernetes.
+    #[default]
+    Fail,
+    /// Skip the policy and admit the request.
+    Ignore,
+}
+
+impl FailurePolicy {
+    const INVALID_VALUE_MESSAGE: &str = "failurePolicy must be either 'Fail' or 'Ignore'";
+
+    /// Read the policy from `settings["failurePolicy"]`. A missing or `null`
+    /// value means `Fail`.
+    pub(crate) fn from_settings(settings: &PolicySettings) -> Result<Self, String> {
+        Self::from_value(settings.0.get("failurePolicy"))
+    }
+
+    fn from_value(value: Option<&Value>) -> Result<Self, String> {
+        match value {
+            None | Some(Value::Null) => Ok(Self::Fail),
+            Some(Value::String(s)) if s == "Fail" => Ok(Self::Fail),
+            Some(Value::String(s)) if s == "Ignore" => Ok(Self::Ignore),
+            Some(_) => Err(Self::INVALID_VALUE_MESSAGE.to_string()),
+        }
+    }
 }
 
 /// Reads `obj[key]` and requires it to be a JSON string if present.
@@ -379,6 +490,29 @@ mod tests {
             ctx_aware_resources_allow_list,
             ..Default::default()
         }
+    }
+
+    #[rstest]
+    #[case::absent(json!({}), FailurePolicy::Fail)]
+    #[case::null(json!({"failurePolicy": null}), FailurePolicy::Fail)]
+    #[case::fail(json!({"failurePolicy": "Fail"}), FailurePolicy::Fail)]
+    #[case::ignore(json!({"failurePolicy": "Ignore"}), FailurePolicy::Ignore)]
+    fn failure_policy_from_settings(
+        #[case] settings: serde_json::Value,
+        #[case] expected: FailurePolicy,
+    ) {
+        let settings = PolicySettings(settings.as_object().unwrap().clone());
+        assert_eq!(FailurePolicy::from_settings(&settings).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case::wrong_case(json!({"failurePolicy": "ignore"}))]
+    #[case::unknown_value(json!({"failurePolicy": "Sometimes"}))]
+    #[case::wrong_type(json!({"failurePolicy": true}))]
+    fn failure_policy_rejects_invalid_values(#[case] settings: serde_json::Value) {
+        let err = validate_settings_json(&settings.to_string(), &EvaluationContext::default())
+            .expect_err("expected an error for an invalid failurePolicy");
+        assert_eq!(err, "failurePolicy must be either 'Fail' or 'Ignore'");
     }
 
     #[test]

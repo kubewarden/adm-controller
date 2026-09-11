@@ -1,0 +1,15 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: "vap-test"
+spec:
+  failurePolicy: Ignore
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "deployments/scale"]
+  validations:
+    - expression: "object.spec.replicas <= 10"
+      message: "should have at most 10 replicas"

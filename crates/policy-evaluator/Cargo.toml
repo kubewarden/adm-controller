@@ -111,6 +111,8 @@ testcontainers = { version = "0.28", default-features = false, features = [
 ] }
 tokio = { workspace = true, features = ["io-util", "macros"] }
 tower-test = "0.4"
+# Used by the ferricel tests to rewrite the custom sections of a compiled module.
+walrus = "0.26"
 # This is required to have reqwest built using the `rustls-tls-native-roots`
 # feature across all the transitive dependencies of policy-fetcher
 # This is required to have the integration tests use the system certificates instead of the

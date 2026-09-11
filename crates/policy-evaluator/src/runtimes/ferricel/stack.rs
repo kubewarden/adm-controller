@@ -43,21 +43,27 @@ impl Stack {
 
     /// Evaluate the compiled Wasm module with the given JSON-encoded bindings.
     ///
-    /// If the evaluation is interrupted because the epoch deadline configured
-    /// via [`EvaluationContext::epoch_deadline`] was exceeded, this returns
-    /// [`FerricelRuntimeError::ExecutionDeadlineExceeded`] instead of the
-    /// generic [`FerricelRuntimeError::EvalFailed`], so callers can surface a
-    /// clear timeout error rather than a raw wasmtime trap message.
+    /// The error tells the caller what went wrong:
+    ///   - [`FerricelRuntimeError::ExecutionDeadlineExceeded`] when the
+    ///     evaluation ran past the epoch deadline configured with
+    ///     [`EvaluationContext::epoch_deadline`].
+    ///   - [`FerricelRuntimeError::CelRuntimeError`] when the CEL expression
+    ///     of the policy evaluated to an error. Only this error is subject to
+    ///     the VAP `failurePolicy`.
+    ///   - [`FerricelRuntimeError::EvalFailed`] for every other failure: a
+    ///     Wasm trap, a memory limit, a missing export, or a bug in the host.
     pub fn eval(&self, bindings_json: Option<&str>) -> Result<String, FerricelRuntimeError> {
         self.engine.eval(bindings_json).map_err(|e| {
             if matches!(
                 e.downcast_ref::<wasmtime::Trap>(),
                 Some(wasmtime::Trap::Interrupt)
             ) {
-                FerricelRuntimeError::ExecutionDeadlineExceeded
-            } else {
-                FerricelRuntimeError::EvalFailed(e)
+                return FerricelRuntimeError::ExecutionDeadlineExceeded;
             }
+            if let Some(cel_err) = e.downcast_ref::<ferricel_core::CelRuntimeError>() {
+                return FerricelRuntimeError::CelRuntimeError(cel_err.clone());
+            }
+            FerricelRuntimeError::EvalFailed(e)
         })
     }
 }

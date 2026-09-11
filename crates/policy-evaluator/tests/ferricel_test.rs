@@ -790,41 +790,308 @@ spec:
     );
 }
 
-/// A CEL runtime error in a VAP validation that has nothing to do with host
-/// extensions (division by zero) must also be rejected (HTTP 500), never
-/// silently accepted.
-#[tokio::test(flavor = "multi_thread")]
-async fn test_validation_runtime_error_is_rejected_not_accepted() {
-    let vap = r#"
+// ─────────────────────────────────────────────────────────────────────────────
+// failurePolicy
+//
+// `settings.failurePolicy` is the `spec.failurePolicy` of the source VAP. It
+// applies only to a CEL runtime error. `Fail` (the default) rejects the
+// request: a CEL runtime error is never a silent accept. `Ignore` skips the
+// policy and admits the request with a warning. A deadline or a trap always
+// rejects the request.
+//
+// The unit tests in `runtimes::ferricel::runtime` cover invalid values of
+// `settings.failurePolicy`. The tests here need a compiled module.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A VAP whose only validation always errors at runtime.
+const VAP_RUNTIME_ERROR: &str = r#"
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: runtime-error-deny
+  name: runtime-error
 spec:
   validations:
     - expression: "(1 / 0) == 1"
       message: "unused: the validation errors, it never actually evaluates to false"
 "#;
+
+/// A VAP whose only matchCondition always errors at runtime. This covers the
+/// second place where the compiled module can trap.
+const VAP_MATCH_CONDITION_RUNTIME_ERROR: &str = r#"
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: match-condition-runtime-error
+spec:
+  matchConditions:
+    - name: always-errors
+      expression: "(1 / 0) == 1"
+  validations:
+    - expression: "false"
+      message: "unused: the matchCondition errors before this runs"
+"#;
+
+fn settings_from_json(value: serde_json::Value) -> PolicySettings {
+    PolicySettings(
+        value
+            .as_object()
+            .expect("settings must be an object")
+            .clone(),
+    )
+}
+
+fn assert_cel_error_rejection(response: &policy_evaluator::admission_response::AdmissionResponse) {
+    assert!(
+        !response.allowed,
+        "a CEL runtime error must reject the request when failurePolicy is Fail, got: {response:?}"
+    );
+    assert_eq!(response.status.as_ref().and_then(|s| s.code), Some(500));
+    let message = response.status.as_ref().and_then(|s| s.message.as_deref());
+    assert!(
+        message.is_some_and(|m| m.contains("divide by zero")),
+        "expected the divide-by-zero cause in the rejection message, got: {message:?}"
+    );
+}
+
+fn assert_cel_error_ignored(response: &policy_evaluator::admission_response::AdmissionResponse) {
+    assert!(
+        response.allowed,
+        "a CEL runtime error must skip the policy when failurePolicy is Ignore, got: {response:?}"
+    );
+    let warnings = response
+        .warnings
+        .as_ref()
+        .expect("a skipped policy must add a warning to the response");
+    assert_eq!(
+        warnings.len(),
+        1,
+        "expected exactly one warning, got: {warnings:?}"
+    );
+    assert!(
+        warnings[0].contains("failurePolicy is Ignore") && warnings[0].contains("divide by zero"),
+        "the warning must name the reason and the error, got: {:?}",
+        warnings[0]
+    );
+}
+
+#[rstest]
+#[case::validation_default(VAP_RUNTIME_ERROR, json!({}))]
+#[case::validation_fail(VAP_RUNTIME_ERROR, json!({"failurePolicy": "Fail"}))]
+#[case::match_condition_default(VAP_MATCH_CONDITION_RUNTIME_ERROR, json!({}))]
+#[case::match_condition_fail(VAP_MATCH_CONDITION_RUNTIME_ERROR, json!({"failurePolicy": "Fail"}))]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_cel_runtime_error_is_rejected_when_failure_policy_is_fail(
+    #[case] vap: &str,
+    #[case] settings: serde_json::Value,
+) {
     let wasm = compile_vap(vap);
     let mut evaluator = build_evaluator(&wasm, None, BTreeSet::new());
+    let settings = settings_from_json(settings);
 
     let response = tokio::task::block_in_place(|| {
         evaluator.validate(
             ValidateRequest::AdmissionRequest(Box::new(cluster_scoped_request())),
-            &PolicySettings::default(),
+            &settings,
+        )
+    });
+
+    assert_cel_error_rejection(&response);
+}
+
+#[rstest]
+#[case::validation(VAP_RUNTIME_ERROR)]
+#[case::match_condition(VAP_MATCH_CONDITION_RUNTIME_ERROR)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_cel_runtime_error_is_ignored_when_failure_policy_is_ignore(#[case] vap: &str) {
+    let wasm = compile_vap(vap);
+    let mut evaluator = build_evaluator(&wasm, None, BTreeSet::new());
+    let settings = settings_from_json(json!({"failurePolicy": "Ignore"}));
+
+    let response = tokio::task::block_in_place(|| {
+        evaluator.validate(
+            ValidateRequest::AdmissionRequest(Box::new(cluster_scoped_request())),
+            &settings,
+        )
+    });
+
+    assert_cel_error_ignored(&response);
+}
+
+/// `failurePolicy: Ignore` must not hide a real rejection. A validation that
+/// evaluates to `false` still rejects the request.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_failure_policy_ignore_does_not_affect_a_real_rejection() {
+    let vap = r#"
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: always-deny
+spec:
+  validations:
+    - expression: "false"
+      message: "always denied"
+"#;
+    let wasm = compile_vap(vap);
+    let mut evaluator = build_evaluator(&wasm, None, BTreeSet::new());
+    let settings = settings_from_json(json!({"failurePolicy": "Ignore"}));
+
+    let response = tokio::task::block_in_place(|| {
+        evaluator.validate(
+            ValidateRequest::AdmissionRequest(Box::new(cluster_scoped_request())),
+            &settings,
+        )
+    });
+
+    assert!(!response.allowed, "expected rejection, got: {response:?}");
+    assert_eq!(
+        response.status.as_ref().and_then(|s| s.message.as_deref()),
+        Some("always denied")
+    );
+}
+
+/// A host extension call that the authorization gate denies is a CEL runtime
+/// error. With `failurePolicy: Ignore` the policy is skipped. The gate still
+/// runs: the request must never reach the callback channel.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_denied_extension_is_ignored_when_failure_policy_is_ignore() {
+    let vap = r#"
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: authorization-gate-ignore
+spec:
+  validations:
+    - expression: "kw.oci.image('image:latest').manifest() == {'ok': true}"
+      message: "unused: the validation errors, it never actually evaluates to false"
+"#;
+    let wasm = compile_vap(vap);
+    let channel = spawn_direct_mock(|req| {
+        panic!("callback channel should not be reached when the request is denied: {req:?}")
+    });
+    let mut evaluator = build_evaluator_with_host_capabilities(
+        &wasm,
+        Some(channel),
+        BTreeSet::new(),
+        HostCapabilities::DenyAll,
+    );
+    let settings = settings_from_json(json!({"failurePolicy": "Ignore"}));
+
+    let response = tokio::task::block_in_place(|| {
+        evaluator.validate(
+            ValidateRequest::AdmissionRequest(Box::new(cluster_scoped_request())),
+            &settings,
         )
     });
 
     assert!(
-        !response.allowed,
-        "a CEL runtime error must never be silently accepted, got: {response:?}"
+        response.allowed,
+        "expected the policy to be skipped, got: {response:?}"
     );
-    assert_eq!(response.status.as_ref().and_then(|s| s.code), Some(500));
-    let actual_message = response.status.as_ref().and_then(|s| s.message.as_deref());
+    let warnings = response.warnings.as_deref().unwrap_or_default();
     assert!(
-        actual_message.is_some_and(|m| m.contains("divide by zero")),
-        "expected the divide-by-zero cause in the rejection message, got: {actual_message:?}"
+        warnings.iter().any(|w| w.contains("kw.oci.manifest")),
+        "the warning must name the extension that failed, got: {warnings:?}"
     );
+}
+
+/// An execution deadline is not a CEL runtime error. `failurePolicy: Ignore`
+/// must not turn it into an accept.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_deadline_exceeded_is_rejected_when_failure_policy_is_ignore() {
+    let wasm = compile_vap(VAP_ALWAYS_ALLOW);
+    let mut evaluator = build_evaluator_with_epoch_deadline(&wasm, None, true, None);
+    let settings = settings_from_json(json!({"failurePolicy": "Ignore"}));
+
+    let response = evaluator.validate(
+        ValidateRequest::AdmissionRequest(Box::new(cluster_scoped_request())),
+        &settings,
+    );
+
+    assert!(!response.allowed, "expected rejection, got: {response:?}");
+    assert_eq!(response.status.as_ref().and_then(|s| s.code), Some(500));
+    let msg = response
+        .status
+        .as_ref()
+        .and_then(|s| s.message.as_deref())
+        .unwrap_or("");
+    assert!(
+        msg.contains("exceeded the allowed execution time"),
+        "expected message to mention the execution deadline, got: {msg:?}"
+    );
+}
+
+/// Return a copy of `wasm` where the `ferricel.abi-version` custom section
+/// is removed (`replacement: None`) or holds `replacement` instead of the
+/// version that the compiler wrote.
+fn rewrite_abi_version_section(wasm: &[u8], replacement: Option<&[u8]>) -> Vec<u8> {
+    let mut module = walrus::Module::from_buffer(wasm).expect("ferricel emits valid wasm");
+    module
+        .customs
+        .remove_raw(ferricel_types::ABI_VERSION_SECTION)
+        .expect("the compiler writes the ABI version section");
+    if let Some(data) = replacement {
+        module.customs.add(walrus::RawCustomSection {
+            name: ferricel_types::ABI_VERSION_SECTION.to_string(),
+            data: data.to_vec(),
+        });
+    }
+    module.emit_wasm()
+}
+
+/// A module built by another ferricel compiler has no `ferricel.abi-version`
+/// custom section, or has one with a different value. The builder must
+/// reject it with a message that names both versions and tells the user
+/// what to do.
+#[rstest]
+#[case::section_missing(None, "ABI version unknown")]
+#[case::section_with_other_version(Some(b"1000".as_slice()), "ABI version 1000")]
+fn test_module_with_wrong_abi_version_is_rejected_at_build_time(
+    #[case] replacement: Option<&[u8]>,
+    #[case] expected_found: &str,
+) {
+    let wasm = compile_vap(VAP_ALWAYS_ALLOW);
+    let wasm = rewrite_abi_version_section(&wasm, replacement);
+
+    let err = PolicyEvaluatorBuilder::new()
+        .policy_contents(&wasm)
+        .execution_mode(PolicyExecutionMode::Ferricel)
+        .build_pre()
+        .err()
+        .expect("a module with a wrong ABI version must be rejected");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains(expected_found),
+        "the message must name the version found: {msg}"
+    );
+    assert!(
+        msg.contains(&format!(
+            "supports ABI version {}",
+            ferricel_types::ABI_VERSION
+        )),
+        "the message must name the supported version: {msg}"
+    );
+    assert!(
+        msg.contains("newer kwctl"),
+        "the message must tell the user what to do: {msg}"
+    );
+}
+
+/// The walrus round trip in `rewrite_abi_version_section` must not break the
+/// module on its own. With the supported version written back, the builder
+/// accepts the module. This makes sure that the rejections above come from
+/// the ABI check and not from a damaged module.
+#[test]
+fn test_module_with_the_supported_abi_version_is_accepted() {
+    let wasm = compile_vap(VAP_ALWAYS_ALLOW);
+    let supported = ferricel_types::ABI_VERSION.to_string();
+    let wasm = rewrite_abi_version_section(&wasm, Some(supported.as_bytes()));
+
+    PolicyEvaluatorBuilder::new()
+        .policy_contents(&wasm)
+        .execution_mode(PolicyExecutionMode::Ferricel)
+        .build_pre()
+        .expect("a module with the supported ABI version must be accepted");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

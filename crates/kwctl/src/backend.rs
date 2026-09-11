@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, anyhow};
 use lazy_static::lazy_static;
 use policy_evaluator::{
-    ProtocolVersion, evaluation_context::EvaluationContext, policy_evaluator::PolicyExecutionMode,
-    policy_evaluator_builder::PolicyEvaluatorBuilder, policy_metadata::Metadata, wasmparser,
+    ProtocolVersion, evaluation_context::EvaluationContext, ferricel_check_abi_version,
+    policy_evaluator::PolicyExecutionMode, policy_evaluator_builder::PolicyEvaluatorBuilder,
+    policy_metadata::Metadata, wasmparser,
 };
 use semver::{BuildMetadata, Prerelease, Version};
 
@@ -77,7 +78,16 @@ fn ferricel_policy_detector(wasm_path: PathBuf) -> Result<bool> {
         field.name == "processed-by" && field.values.iter().any(|value| value.name == "ferricel")
     });
 
-    Ok(processed_by_ferricel && module_info.vap_source.is_some())
+    let is_ferricel_policy = processed_by_ferricel && module_info.vap_source.is_some();
+
+    // A ferricel policy built for another ABI version is an error, not a
+    // "not a ferricel policy" answer. Without this check kwctl would try the
+    // other backends and report a confusing failure.
+    if is_ferricel_policy {
+        ferricel_check_abi_version(&data)?;
+    }
+
+    Ok(is_ferricel_policy)
 }
 
 fn kubewarden_protocol_detector(wasm_path: PathBuf) -> Result<ProtocolVersion> {

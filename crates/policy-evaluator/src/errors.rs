@@ -85,6 +85,9 @@ pub enum PolicyEvaluatorBuilderError {
 
     #[error("cannot read VAP variables referenced by the compiled ferricel module: {0}")]
     ReadVapVariables(#[source] anyhow::Error),
+
+    #[error("{0}")]
+    FerricelAbiVersion(#[source] crate::runtimes::ferricel::errors::FerricelRuntimeError),
 }
 
 #[derive(Error, Debug)]
