@@ -1,8 +1,6 @@
 {
   "extends": [
-    "config:recommended",
-    "helpers:pinGitHubActionDigestsToSemver",
-    "schedule:weekends"
+    "github>kubewarden/github-actions//renovate-config/default"
   ],
   "ignoreDeps": [
     "sigs.k8s.io/wg-policy-prototypes"
@@ -21,9 +19,6 @@
       ]
     }
   ],
-  "labels": [
-    "area/dependencies"
-  ],
   "lockFileMaintenance": {
     "enabled": true,
     "automerge": false
@@ -37,7 +32,7 @@
         "kubewarden/adm-controller/controller",
         "kubewarden/adm-controller/audit-scanner"
       ],
-      "matchPaths": [
+      "matchFileNames": [
         "charts/admission-controller/values.yaml"
       ],
       "enabled": false
@@ -49,7 +44,7 @@
       "matchPackageNames": [
         "kubewarden/adm-controller/policy-server"
       ],
-      "matchPaths": [
+      "matchFileNames": [
         "charts/kubewarden-defaults/values.yaml"
       ],
       "enabled": false
@@ -97,6 +92,14 @@
       ]
     },
     {
+      "description": "Update all wasmtime packages together",
+      "groupName": "Rust wasmtime packages",
+      "matchPackageNames": [
+        "wasmtime",
+        "wasmtime-wasi"
+      ]
+    },
+    {
       "matchManagers": [
         "github-actions"
       ],
@@ -119,10 +122,5 @@
       ],
       "enabled": false
     }
-  ],
-  "rebaseWhen": "behind-base-branch",
-  "prHourlyLimit": 0,
-  "prConcurrentLimit": 0,
-  "semanticCommits": "enabled",
-  "semanticCommitType": "build"
+  ]
 }
