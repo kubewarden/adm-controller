@@ -4,8 +4,6 @@ mod common;
 // have Docker installed.
 #[cfg(not(target_os = "macos"))]
 mod proxy_tests {
-    use std::time::Duration;
-
     use backon::{ConstantBuilder, Retryable};
     use policy_evaluator::callback_requests::{CallbackRequest, CallbackRequestType};
     use policy_fetcher::{proxy::ProxyConfig, sources::Sources};
