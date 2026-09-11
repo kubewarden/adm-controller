@@ -14,8 +14,8 @@
         "/(^|/)scripts/.+\\.sh$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s+\\w+?_(?:VERSION|version)\\w*\\s*[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?",
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) digestVersion=(?<currentValue>\\S+)\\s+\\w+?_(?:SHA256|sha256|SHA512|sha512|CHECKSUM|checksum|SUM|sum)\\w*\\s*[:=]\\s*\"?(?<currentDigest>[^\"\\s]+)\"?"
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s*\\n\\s*\\S+?\\s*[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?",
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) digestVersion=(?<currentValue>\\S+)\\s*\\n\\s*\\S+?\\s*[:=]\\s*\"?(?<currentDigest>[^\"\\s]+)\"?"
       ]
     }
   ],

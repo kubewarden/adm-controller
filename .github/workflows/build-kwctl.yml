@@ -107,7 +107,9 @@ jobs:
           sha512sum -c checksum
           tar -xvf cross-x86_64-unknown-linux-musl.tar.gz
         env:
+          # renovate: datasource=github-release-attachments depName=cross-rs/cross digestVersion=v0.2.5
           CROSS_CHECKSUM: "70b31b207e981aa31925a7519a0ad125c5d97b84afe0e8e81b0664df5c3a7978558d83f9fcd0c36dc2176fc2a4d0caed67f8cf9fd689f9935f84449cd4922ceb"
+          # renovate: datasource=github-release-attachments depName=cross-rs/cross
           CROSS_VERSION: "v0.2.5"
 
       - name: Build kwctl
