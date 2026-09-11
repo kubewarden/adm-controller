@@ -1,7 +1,7 @@
 # AGENTS.md — the Helm chart
 
 - This file applies to all the files in `charts/admission-controller/`. The
-  root [`AGENTS.md`](../../AGENTS.md) holds the rules for the full monorepo.
+  root [`AGENTS.md`](../AGENTS.md) holds the rules for the full monorepo.
 - This is the single unified chart. It installs the controller, the audit
   scanner and the defaults of the policy server.
 
