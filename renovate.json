@@ -107,6 +107,12 @@
     },
     {
       "matchManagers": [
+        "custom.regex"
+      ],
+      "groupName": "Custom manager updates"
+    },
+    {
+      "matchManagers": [
         "helm-values",
         "helmfile",
         "helm-chart"
