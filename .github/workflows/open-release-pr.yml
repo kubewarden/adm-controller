@@ -46,7 +46,7 @@ jobs:
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           # helm --verify=false flag only exists on Helm >= 4
-          version: v4.2.4
+          version: v4.3.0
 
       - name: Install helm values schema json plugin
         # Disable plugin verification until helm v4 is supported
