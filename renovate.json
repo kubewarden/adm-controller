@@ -1,14 +1,23 @@
 {
   "extends": [
-    "config:recommended",
-    "helpers:pinGitHubActionDigestsToSemver",
-    "schedule:weekends"
+    "github>kubewarden/github-actions//renovate-config/default"
   ],
   "ignoreDeps": [
     "sigs.k8s.io/wg-policy-prototypes"
   ],
-  "labels": [
-    "area/dependencies"
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update pinned tool versions and their checksums annotated with renovate directives",
+      "managerFilePatterns": [
+        "/(^|/)\\.github/.+\\.ya?ml$/",
+        "/(^|/)scripts/.+\\.sh$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s*\\n\\s*\\S+?\\s*[:=]\\s*\"?(?<currentValue>[^\"\\s]+)\"?",
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) digestVersion=(?<currentValue>\\S+)\\s*\\n\\s*\\S+?\\s*[:=]\\s*\"?(?<currentDigest>[^\"\\s]+)\"?"
+      ]
+    }
   ],
   "lockFileMaintenance": {
     "enabled": true,
@@ -23,7 +32,7 @@
         "kubewarden/adm-controller/controller",
         "kubewarden/adm-controller/audit-scanner"
       ],
-      "matchPaths": [
+      "matchFileNames": [
         "charts/admission-controller/values.yaml"
       ],
       "enabled": false
@@ -35,7 +44,7 @@
       "matchPackageNames": [
         "kubewarden/adm-controller/policy-server"
       ],
-      "matchPaths": [
+      "matchFileNames": [
         "charts/kubewarden-defaults/values.yaml"
       ],
       "enabled": false
@@ -83,10 +92,24 @@
       ]
     },
     {
+      "description": "Update all wasmtime packages together",
+      "groupName": "Rust wasmtime packages",
+      "matchPackageNames": [
+        "wasmtime",
+        "wasmtime-wasi"
+      ]
+    },
+    {
       "matchManagers": [
         "github-actions"
       ],
       "groupName": "GitHub Actions"
+    },
+    {
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "groupName": "Custom manager updates"
     },
     {
       "matchManagers": [
@@ -105,10 +128,5 @@
       ],
       "enabled": false
     }
-  ],
-  "rebaseWhen": "behind-base-branch",
-  "prHourlyLimit": 0,
-  "prConcurrentLimit": 0,
-  "semanticCommits": "enabled",
-  "semanticCommitType": "build"
+  ]
 }

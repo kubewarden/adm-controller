@@ -64,8 +64,11 @@ defaults:
     shell: bash
 
 env:
+  # renovate: datasource=github-release-attachments depName=k3d-io/k3d
   K3D_VERSION: v5.9.0
+  # renovate: datasource=github-release-attachments depName=k3d-io/k3d digestVersion=v5.9.0
   K3D_CHECKSUM_AMD64: 06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0
+  # renovate: datasource=github-release-attachments depName=k3d-io/k3d digestVersion=v5.9.0
   K3D_CHECKSUM_ARM64: 03cde5cf23e6e8e67de5a039ecf26e5b85aca82fba3e5d13dadf904cd218a250
   K3D_CLUSTER_NAME: ${{ github.repository_owner }}-${{ github.run_id }}
   MTLS: ${{ github.event_name == 'pull_request' && 'true' || inputs.MTLS }}
