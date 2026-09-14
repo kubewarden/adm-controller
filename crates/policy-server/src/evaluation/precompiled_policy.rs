@@ -3,7 +3,8 @@ use std::{collections::HashMap, fs, path::Path, vec::Vec};
 use anyhow::{Result, anyhow};
 use lazy_static::lazy_static;
 use policy_evaluator::{
-    ProtocolVersion, policy_evaluator::PolicyExecutionMode, policy_metadata::Metadata, wasmtime,
+    ProtocolVersion, ferricel_check_abi_version, policy_evaluator::PolicyExecutionMode,
+    policy_metadata::Metadata, wasmtime,
 };
 use semver::{BuildMetadata, Prerelease, Version};
 use sha2::{Digest, Sha256};
@@ -52,6 +53,13 @@ impl PrecompiledPolicy {
         has_minimum_kubewarden_version(&metadata)?;
 
         has_valid_protocol_version(&metadata)?;
+
+        // The evaluator receives a precompiled `wasmtime::Module`, which has
+        // no custom sections. This is the last place where the raw bytes are
+        // available, so the ferricel ABI check must run here.
+        if execution_mode == PolicyExecutionMode::Ferricel {
+            ferricel_check_abi_version(&policy_contents)?;
+        }
 
         let precompiled_module = engine.precompile_module(&policy_contents)?;
 

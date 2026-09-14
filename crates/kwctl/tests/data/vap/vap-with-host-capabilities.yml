@@ -1,0 +1,16 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: vap-test
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+  validations:
+    - expression: >-
+        size(kw.net.lookupHost('example.com')) >= 1 &&
+        kw.oci.image('nginx:latest').manifestDigest().startsWith('sha256:')
+      message: "host lookup and OCI manifest digest check failed"

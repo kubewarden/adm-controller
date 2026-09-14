@@ -317,7 +317,7 @@ fn run_args() -> Vec<Arg> {
            .long("execution-mode")
            .short('e')
            .value_name("MODE")
-           .value_parser(PossibleValuesParser::new(["opa","gatekeeper", "kubewarden", "wasi"]))
+           .value_parser(PossibleValuesParser::new(["opa","gatekeeper", "kubewarden", "wasi", "ferricel"]))
            .help("The runtime to use to execute this policy"),
        Arg::new("raw")
                .long("raw")
@@ -522,7 +522,19 @@ fn subcommand_scaffold() -> Command {
             .long("cel-policy")
             .value_name("URI")
             .default_value("ghcr.io/kubewarden/policies/cel-policy:latest")
+            .conflicts_with("compile-to-wasm")
             .help("The CEL policy module to use"),
+        Arg::new("compile-to-wasm")
+            .long("compile-to-wasm")
+            .value_name("FILE")
+            .conflicts_with("cel-policy")
+            .help("Compile the VAP CEL expressions into a standalone Wasm module and write it to FILE"),
+        Arg::new("force")
+            .long("force")
+            .short('f')
+            .num_args(0)
+            .requires("compile-to-wasm")
+            .help("Overwrite FILE and metadata.yml if they already exist (only valid together with --compile-to-wasm)"),
         Arg::new("policy")
             .long("policy")
             .short('p')
