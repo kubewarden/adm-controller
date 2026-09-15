@@ -36,7 +36,7 @@ jobs:
         run: cargo install --locked --version 0.13.9 cargo-edit
 
       - name: Install Updatecli in the runner
-        uses: updatecli/updatecli-action@41b9c8d707830a9daebaeaa84c1b62d60b779564 # v3.6.0
+        uses: updatecli/updatecli-action@ca8c01bf875e2520512c344a71dd02f3dc3326a7 # v3.7.0
         with:
           # Pinned to v0.109.0 due to a behavior change in newer versions that breaks the update script
           version: v0.109.0
@@ -46,7 +46,7 @@ jobs:
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           # helm --verify=false flag only exists on Helm >= 4
-          version: v4.2.4
+          version: v4.3.0
 
       - name: Install helm values schema json plugin
         # Disable plugin verification until helm v4 is supported
