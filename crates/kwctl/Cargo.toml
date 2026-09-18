@@ -41,7 +41,7 @@ tokio              = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 url                = { workspace = true }
-walrus             = "0.26.0"
+walrus             = "0.27.0"
 
 hostname-validator = "1.1.1"
 # This is required to have reqwest built using the `rustls-tls-native-roots`
@@ -64,7 +64,7 @@ sha2           = { workspace = true }
 tempfile       = { workspace = true }
 testcontainers = { version = "0.28", features = ["blocking"] }
 tower-test     = "0.4"
-wasm-encoder   = "0.258"
+wasm-encoder   = "0.259"
 
 
 [features]

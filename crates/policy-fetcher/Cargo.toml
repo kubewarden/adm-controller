@@ -21,7 +21,7 @@ docker_credential = "1.4"
 futures = { workspace = true }
 hex = { workspace = true }
 lazy_static = { workspace = true }
-oci-client = { version = "0.17", default-features = false, features = [
+oci-client = { version = "0.18", default-features = false, features = [
   "rustls-tls",
 ] }
 path-slash = "0.2"
