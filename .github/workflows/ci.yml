@@ -141,7 +141,7 @@ jobs:
           check-latest: true # Always check for the latest patch release
       - run: make test-go
       - name: Upload Go test coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           name: go-tests
           files: coverage/cover.out
@@ -363,14 +363,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6 # v2.87.7
+        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
         with:
           tool: cargo-llvm-cov
       - name: Install cosign # this is needed by some of the e2e tests
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - run: cargo llvm-cov --ignore-run-fail --lcov --output-path coverage/rust/lcov.info
       - name: Upload Rust test coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           name: rust-tests
           files: coverage/rust/lcov.info
@@ -410,7 +410,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check spelling with typos
-        uses: crate-ci/typos@d43b6c087ac471e2ea7b8af622ff15f05c0c365b # v1.50.1
+        uses: crate-ci/typos@512fc24f32f44ab01972217aaaf3dc86ec234d53 # v1.50.2
 
   charts:
     name: Helm unittest
@@ -423,7 +423,7 @@ jobs:
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           # helm --verify=false flag only exists on Helm >= 4
-          version: v4.2.4
+          version: v4.3.0
       # Disable plugin verification until the following issue is addressed https://github.com/helm-unittest/helm-unittest/issues/777
       - name: Install Helm-unittest
         run: helm plugin install https://github.com/helm-unittest/helm-unittest --verify=false
