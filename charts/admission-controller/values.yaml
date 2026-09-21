@@ -377,7 +377,7 @@ auditScanner:
     # The registry is defined in the common.cattle.systemDefaultRegistry value
     # kubectl image to be used in the pre-delete helm hook
     repository: "kubewarden/adm-controller/audit-scanner"
-    tag: v1.38.0
+    tag: v1.38.1
     pullPolicy: IfNotPresent
   cronJob:
     schedule: "0 * * * *" # every 60 minutes
