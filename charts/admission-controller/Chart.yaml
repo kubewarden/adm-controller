@@ -23,7 +23,7 @@ maintainers:
 # This is the chart version. This version number should be incremented each time you make changes
 # to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: 6.2.0
+version: 6.1.0
 # This is the version of Kubewarden stack
 appVersion: v1.38.0
 annotations:
@@ -52,7 +52,7 @@ annotations:
     - name: controller
       image: ghcr.io/kubewarden/adm-controller/controller:v1.38.0
     - name: audit-scanner
-      image: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.38.0-rc.1
+      image: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.38.0
     - name: policy-server
       image: ghcr.io/kubewarden/adm-controller/policy-server:v1.38.0
     - name: kuberlr-kubectl

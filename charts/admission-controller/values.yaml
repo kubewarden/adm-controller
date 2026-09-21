@@ -169,7 +169,7 @@ alwaysAcceptAdmissionReviewsOnDeploymentsNamespace: true
 # The default list contains Kubernetes resources that are considered
 # safe to be validated or mutated by namespaced policies.
 namespacedPoliciesAllowedResources: # @schema type:[array, null]
-  - apiGroups: [""]
+  - apiGroups: [""] # @schema minItems:1; required:true; item:string
     resources: # @schema minItems:1; required:true; item:string
       - pods
       - replicationcontrollers
@@ -377,7 +377,7 @@ auditScanner:
     # The registry is defined in the common.cattle.systemDefaultRegistry value
     # kubectl image to be used in the pre-delete helm hook
     repository: "kubewarden/adm-controller/audit-scanner"
-    tag: v1.38.0-rc.1
+    tag: v1.38.0
     pullPolicy: IfNotPresent
   cronJob:
     schedule: "0 * * * *" # every 60 minutes
