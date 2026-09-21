@@ -169,7 +169,7 @@ alwaysAcceptAdmissionReviewsOnDeploymentsNamespace: true
 # The default list contains Kubernetes resources that are considered
 # safe to be validated or mutated by namespaced policies.
 namespacedPoliciesAllowedResources: # @schema type:[array, null]
-  - apiGroups: [""] # @schema minItems:1; required:true; item:string
+  - apiGroups: [""]
     resources: # @schema minItems:1; required:true; item:string
       - pods
       - replicationcontrollers
@@ -300,7 +300,7 @@ image:
   # controller image to be used
   repository: "kubewarden/adm-controller/controller"
   # image tag
-  tag: v1.38.0
+  tag: v1.38.1
   pullPolicy: IfNotPresent
 preDeleteJob:
   image:
