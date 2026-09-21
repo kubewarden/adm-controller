@@ -169,7 +169,7 @@ alwaysAcceptAdmissionReviewsOnDeploymentsNamespace: true
 # The default list contains Kubernetes resources that are considered
 # safe to be validated or mutated by namespaced policies.
 namespacedPoliciesAllowedResources: # @schema type:[array, null]
-  - apiGroups: [""] # @schema minItems:1; required:true; item:string
+  - apiGroups: [""]
     resources: # @schema minItems:1; required:true; item:string
       - pods
       - replicationcontrollers
@@ -459,7 +459,7 @@ policyServer:
   image:
     # The registry is defined in the global.cattle.systemDefaultRegistry value
     repository: "kubewarden/adm-controller/policy-server"
-    tag: v1.38.0-rc.1
+    tag: v1.38.0
   serviceAccountName: policy-server
   # Configmap containing a Sigstore verification configuration under a key
   # named `verification-config`. Must be on the same ns as the PolicyServer.
