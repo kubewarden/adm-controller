@@ -50,7 +50,7 @@ annotations:
   # Reference: https://artifacthub.io/docs/topics/annotations/helm/
   artifacthub.io/images: |
     - name: controller
-      image: ghcr.io/kubewarden/adm-controller/controller:v1.38.0-rc.1
+      image: ghcr.io/kubewarden/adm-controller/controller:v1.38.0
     - name: audit-scanner
       image: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.38.0-rc.1
     - name: policy-server
