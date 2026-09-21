@@ -140,10 +140,15 @@ mod tests {
         Ok(false)
     }
 
+    fn mock_ferricel_policy_detector_false(_wasm_path: PathBuf) -> Result<bool> {
+        Ok(false)
+    }
+
     fn beckend_detector_always_rego() -> BackendDetector {
         BackendDetector::new(
             mock_rego_policy_detector_true,
             mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
         )
     }
 
@@ -151,6 +156,7 @@ mod tests {
         BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
         )
     }
 
@@ -221,6 +227,18 @@ mod tests {
         Some(PolicyExecutionMode::Opa),
         backend_detector_never_rego(),
         None
+    )]
+    #[case::metadata_set_ferricel_user_mode_not_set(
+        Some(build_metadata(PolicyExecutionMode::Ferricel)),
+        None,
+        backend_detector_never_rego(),
+        Some(PolicyExecutionMode::Ferricel)
+    )]
+    #[case::metadata_not_set_user_mode_is_ferricel(
+        None,
+        Some(PolicyExecutionMode::Ferricel),
+        backend_detector_never_rego(),
+        Some(PolicyExecutionMode::Ferricel)
     )]
     fn test_determine_execution_mode(
         #[case] metadata: Option<Metadata>,

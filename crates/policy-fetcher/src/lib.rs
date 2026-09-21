@@ -266,7 +266,7 @@ mod tests {
         fs::read(&test_data_file).unwrap_or_else(|_| {
             panic!(
                 "[test setup error] could not read file {:?}",
-                &test_data_file
+                test_data_file
             )
         })
     }

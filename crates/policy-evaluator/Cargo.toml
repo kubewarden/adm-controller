@@ -19,6 +19,8 @@ bytes = "1"
 chrono = { version = "0.4", default-features = false }
 dns-lookup = "4.0"
 email_address = { version = "0.2", features = ["serde"] }
+ferricel-core = { workspace = true }
+ferricel-types = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
@@ -46,6 +48,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = { workspace = true }
+slog = "2"
 thiserror = { workspace = true }
 time = { version = "0.3", features = ["serde-human-readable"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
@@ -108,6 +111,8 @@ testcontainers = { version = "0.28", default-features = false, features = [
 ] }
 tokio = { workspace = true, features = ["io-util", "macros"] }
 tower-test = "0.4"
+# Used by the ferricel tests to rewrite the custom sections of a compiled module.
+walrus = "0.26"
 # This is required to have reqwest built using the `rustls-tls-native-roots`
 # feature across all the transitive dependencies of policy-fetcher
 # This is required to have the integration tests use the system certificates instead of the

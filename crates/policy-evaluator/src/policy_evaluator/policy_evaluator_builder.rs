@@ -1,4 +1,4 @@
-use std::{path::Path, result::Result};
+use std::{borrow::Cow, collections::BTreeSet, path::Path, result::Result};
 
 use wasmtime_provider::wasmtime;
 
@@ -7,7 +7,7 @@ use crate::{
     policy_evaluator::{
         PolicyEvaluatorPre, PolicyExecutionMode, errors::InvalidUserInputError, stack_pre::StackPre,
     },
-    runtimes::{rego, wapc, wasi_cli},
+    runtimes::{ferricel, rego, wapc, wasi_cli},
 };
 
 /// Configure behavior of wasmtime [epoch-based interruptions](https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#method.epoch_interruption)
@@ -255,6 +255,12 @@ impl PolicyEvaluatorBuilder {
                 );
                 StackPre::from(rego_stack_pre)
             }
+            PolicyExecutionMode::Ferricel => {
+                let vap_variables = self.ferricel_module_info()?;
+                let ferricel_stack_pre = ferricel::StackPre::new(engine, module, vap_variables)
+                    .map_err(PolicyEvaluatorBuilderError::NewFerricelStackPre)?;
+                StackPre::from(ferricel_stack_pre)
+            }
         };
 
         Ok(PolicyEvaluatorPre::new(stack_pre))
@@ -299,6 +305,42 @@ impl PolicyEvaluatorBuilder {
                     .map_err(PolicyEvaluatorBuilderError::WasmModuleBuild),
             }
         }
+    }
+
+    /// Inspect the raw bytes of a compiled ferricel policy.
+    ///
+    /// Two things happen here:
+    ///   1. Make sure that the module uses the ferricel ABI version that
+    ///      this runtime supports (see [`ferricel::errors::check_abi_version`]).
+    ///   2. Read the well-known VAP variables (for example `namespaceObject`)
+    ///      that the policy references, from the `ferricel.vap-variables`
+    ///      Wasm custom section (see [`ferricel_core::vap_variables_used`]).
+    ///
+    /// Returns `None`, which means "unknown, assume every variable may be
+    /// referenced", when the raw Wasm bytes are not available. This is the
+    /// case for the `policy_module` builder input, which `policy-server`
+    /// uses: it builds evaluators from a precompiled `wasmtime::Module`, and
+    /// that type keeps neither the original Wasm bytes nor their custom
+    /// sections. In that case the ABI check does not run here. The
+    /// `policy-server` runs it when it precompiles the module.
+    fn ferricel_module_info(
+        &self,
+    ) -> Result<Option<BTreeSet<String>>, PolicyEvaluatorBuilderError> {
+        let wasm_bytes: Cow<'_, [u8]> = match (&self.policy_contents, &self.policy_file) {
+            (Some(contents), _) => Cow::Borrowed(contents.as_slice()),
+            (None, Some(file)) => Cow::Owned(
+                std::fs::read(file)
+                    .map_err(PolicyEvaluatorBuilderError::ReadPolicyFileForVapVariables)?,
+            ),
+            (None, None) => return Ok(None),
+        };
+
+        ferricel::errors::check_abi_version(&wasm_bytes)
+            .map_err(PolicyEvaluatorBuilderError::FerricelAbiVersion)?;
+
+        let vap_variables = ferricel_core::vap_variables_used(&wasm_bytes)
+            .map_err(PolicyEvaluatorBuilderError::ReadVapVariables)?;
+        Ok(Some(vap_variables.into_iter().collect()))
     }
 }
 

@@ -1,158 +1,450 @@
+mod compiled;
+mod interpreted;
+
 use std::{collections::BTreeSet, convert::TryFrom, fs::File, path::Path};
 
 use anyhow::{Result, anyhow};
-use k8s_openapi::api::admissionregistration::v1::{
-    ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding,
+use k8s_openapi::{
+    api::admissionregistration::v1::{ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding},
+    apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta},
 };
-use policy_evaluator::{policy_fetcher::oci_client::Reference, policy_metadata::Rule};
+use policy_evaluator::policy_metadata::{ContextAwareResource, Rule};
 use tracing::warn;
 
-use crate::scaffold::kubewarden_crds::{ClusterAdmissionPolicy, ClusterAdmissionPolicySpec};
+/// Combine a VAP selector and a binding selector into one selector with
+/// AND logic.
+///
+/// Kubernetes runs the policy on an object only when the object matches
+/// two selectors at the same time: the VAP `matchConstraints` selector
+/// and the binding `matchResources` selector. A missing selector matches
+/// every object, so an absent side adds no condition.
+///
+/// A `LabelSelector` already combines `matchLabels` and `matchExpressions`
+/// with AND logic. This function merges two selectors into one selector
+/// that keeps that same AND logic. kwctl copies `matchExpressions` from
+/// both selectors into the result, side by side. kwctl also merges
+/// `matchLabels` from both selectors.
+///
+/// When a key has the same value on both sides, kwctl keeps one copy of
+/// the key.
+///
+/// When a key has a different value on each side, the merged selector
+/// can match no object: an object cannot have two different values for
+/// the same label at once. kwctl returns an error instead of building
+/// that selector. `field` names the selector in the error message, for
+/// example `"namespaceSelector"`.
+fn and_label_selectors(
+    field: &str,
+    a: Option<LabelSelector>,
+    b: Option<LabelSelector>,
+) -> Result<Option<LabelSelector>> {
+    let (a, b) = match (a, b) {
+        (None, None) => return Ok(None),
+        (Some(a), None) => return Ok(Some(a)),
+        (None, Some(b)) => return Ok(Some(b)),
+        (Some(a), Some(b)) => (a, b),
+    };
 
-pub(crate) fn vap(cel_policy_module: &str, vap_path: &Path, binding_path: &Path) -> Result<()> {
-    let vap_file = File::open(vap_path)
-        .map_err(|e| anyhow!("cannot open {}: #{e}", vap_path.to_str().unwrap()))?;
-    let binding_file = File::open(binding_path)
-        .map_err(|e| anyhow!("cannot open {}: #{e}", binding_path.to_str().unwrap()))?;
+    let mut match_expressions = a.match_expressions.unwrap_or_default();
+    match_expressions.extend(b.match_expressions.unwrap_or_default());
 
-    let vap: ValidatingAdmissionPolicy = serde_yaml::from_reader(vap_file)
-        .map_err(|e| anyhow!("cannot convert given data into a ValidatingAdmissionPolicy: #{e}"))?;
-    let vap_binding: ValidatingAdmissionPolicyBinding = serde_yaml::from_reader(binding_file)
-        .map_err(|e| {
-            anyhow!("cannot convert given data into a ValidatingAdmissionPolicyBinding: #{e}")
-        })?;
-
-    match cel_policy_module.parse::<Reference>() {
-        Ok(cel_policy_ref) => match cel_policy_ref.tag() {
-            None | Some("latest") => {
-                warn!(
-                    "Using the 'latest' version of the CEL policy could lead to unexpected behavior. It is recommended to use a specific version to avoid breaking changes."
-                );
+    let mut match_labels = a.match_labels.unwrap_or_default();
+    for (key, b_value) in b.match_labels.unwrap_or_default() {
+        match match_labels.get(&key) {
+            Some(a_value) if a_value == &b_value => {
+                // The two sides use the same value for this key. Keep
+                // one copy.
             }
-            _ => {}
-        },
-        Err(_) => {
-            warn!("The CEL policy module specified is not a valid OCI reference");
+            Some(a_value) => {
+                return Err(anyhow!(
+                    "{field}: the ValidatingAdmissionPolicy sets the label '{key}' to '{a_value}', and the ValidatingAdmissionPolicyBinding sets it to '{b_value}'. A selector with both values matches no object. Set the same value on both sides, or remove the label from one side"
+                ));
+            }
+            None => {
+                match_labels.insert(key, b_value);
+            }
         }
     }
 
-    let cluster_admission_policy =
-        convert_vap_to_cluster_admission_policy(cel_policy_module, vap, vap_binding)?;
+    Ok(Some(LabelSelector {
+        match_expressions: if match_expressions.is_empty() {
+            None
+        } else {
+            Some(match_expressions)
+        },
+        match_labels: if match_labels.is_empty() {
+            None
+        } else {
+            Some(match_labels)
+        },
+    }))
+}
+
+pub(crate) fn vap(
+    cel_policy_module: &str,
+    vap_path: &Path,
+    binding_path: &Path,
+    compile_to_wasm: Option<&Path>,
+    force: bool,
+) -> Result<()> {
+    let vap_file = File::open(vap_path)
+        .map_err(|e| anyhow!("cannot open {}: {e}", vap_path.to_str().unwrap()))?;
+    let binding_file = File::open(binding_path)
+        .map_err(|e| anyhow!("cannot open {}: {e}", binding_path.to_str().unwrap()))?;
+
+    let vap: ValidatingAdmissionPolicy = serde_yaml::from_reader(vap_file)
+        .map_err(|e| anyhow!("cannot convert given data into a ValidatingAdmissionPolicy: {e}"))?;
+    let vap_binding: ValidatingAdmissionPolicyBinding = serde_yaml::from_reader(binding_file)
+        .map_err(|e| {
+            anyhow!("cannot convert given data into a ValidatingAdmissionPolicyBinding: {e}")
+        })?;
+
+    let vap_data = VapData::new(vap, vap_binding)?;
+
+    let cluster_admission_policy = match compile_to_wasm {
+        Some(wasm_path) => compiled::vap_compiled(vap_data, wasm_path, force)?,
+        None => interpreted::vap_interpreted(cel_policy_module, vap_data)?,
+    };
 
     serde_yaml::to_writer(std::io::stdout(), &cluster_admission_policy)?;
 
     Ok(())
 }
 
-fn convert_vap_to_cluster_admission_policy(
-    cel_policy_module: &str,
-    vap: ValidatingAdmissionPolicy,
-    vap_binding: ValidatingAdmissionPolicyBinding,
-) -> anyhow::Result<ClusterAdmissionPolicy> {
-    let vap_spec = vap.spec.unwrap_or_default();
-    let vap_binding_spec = vap_binding.spec.unwrap_or_default();
-    if vap_spec.audit_annotations.is_some() {
+/// Warn that this policy calls `kw.k8s`, which reads Kubernetes resources at
+/// evaluation time. The `granted` set holds the resources currently allowed
+/// in `spec.contextAwareResources` and `metadata.yml`. This set only comes
+/// from `paramKind` and `namespaceObject`, so it can miss resources the
+/// policy reads through an explicit `kw.k8s` call in its own CEL.
+///
+/// The runtime denies a `kw.k8s` call when its apiVersion and kind are not in
+/// `granted` (see `EvaluationContext::can_access_kubernetes_resource`). The
+/// user must review the generated `contextAwareResources` list and add each
+/// missing apiVersion and kind by hand before they apply the policy.
+pub(crate) fn warn_kw_k8s_requires_grants(granted: &BTreeSet<ContextAwareResource>) {
+    if granted.is_empty() {
         warn!(
-            "auditAnnotations are not supported by Kubewarden's CEL policy yet. They will be ignored."
+            "this policy calls kw.k8s.*, but spec.contextAwareResources is empty. Every kw.k8s get/list call will be denied at evaluation time. Add each apiVersion/kind that the policy reads through kw.k8s to spec.contextAwareResources in the generated ClusterAdmissionPolicy. Add the same entries to contextAwareResources in metadata.yml, if that file was generated."
         );
-    }
-    if vap_spec.match_conditions.is_some() {
-        warn!(
-            "matchConditions are not supported by Kubewarden's CEL policy yet. They will be ignored."
-        );
-    }
-
-    let mut settings = serde_yaml::Mapping::new();
-
-    if let Some(vap_failure_policy) = vap_spec.failure_policy {
-        // CEL settings.failurePolicy, not to confuse with spec.failurePolicy
-        settings.insert(
-            "failurePolicy".into(),
-            serde_yaml::to_value(vap_failure_policy)?,
-        );
-    }
-
-    // migrate CEL variables
-    if let Some(vap_variables) = vap_spec.variables {
-        let vap_variables: Vec<serde_yaml::Value> = vap_variables
+    } else {
+        let granted_list = granted
             .iter()
-            .map(|v| serde_yaml::to_value(v).expect("cannot convert VAP variable to YAML"))
-            .collect();
-        settings.insert("variables".into(), vap_variables.into());
+            .map(|r| format!("{}/{}", r.api_version, r.kind))
+            .collect::<Vec<_>>()
+            .join(", ");
+        warn!(
+            "this policy calls kw.k8s.*. Only {granted_list} is granted through spec.contextAwareResources, derived from paramKind and namespaceObject. Add every other apiVersion/kind that the policy reads through kw.k8s to spec.contextAwareResources by hand, and to metadata.yml if that file was generated. Without this, the runtime denies the call at evaluation time."
+        );
+    }
+}
+
+/// Build the base `spec.contextAwareResources` allow list for a VAP: the
+/// resource named by `paramKind` (from `vap_data.param_resource`), and
+/// `v1/Namespace` when `uses_namespace_object` is true. Without these
+/// grants, the compiled/interpreted policy would be denied access when it
+/// fetches the param resource via `paramRef`, or the Namespace via
+/// `namespaceObject`, at evaluation time (see
+/// `EvaluationContext::can_access_kubernetes_resource`).
+///
+/// Both output paths call this with the same shape of input; only how
+/// `uses_namespace_object` is computed differs (see the field docs on
+/// [`VapData::uses_namespace_object`]). A `warn!` announces every grant
+/// added, so the administrator reviews it before applying the generated
+/// policy.
+pub(crate) fn base_context_aware_resources(
+    vap_data: &VapData,
+    uses_namespace_object: bool,
+) -> BTreeSet<ContextAwareResource> {
+    let mut context_aware_resources = BTreeSet::new();
+
+    if let Some(param_resource) = &vap_data.param_resource {
+        warn!(
+            "granting access to {}/{} via spec.contextAwareResources (required by paramKind); review before applying",
+            param_resource.api_version, param_resource.kind
+        );
+        context_aware_resources.insert(param_resource.clone());
     }
 
-    // migrate CEL params
-    match (vap_spec.param_kind, vap_binding_spec.param_ref) {
-        (Some(vap_param_kind), Some(vap_param_ref)) => {
-            settings.insert("paramKind".into(), serde_yaml::to_value(vap_param_kind)?);
-            settings.insert("paramRef".into(), serde_yaml::to_value(vap_param_ref)?);
-        }
-        (None, None) => {}
-        _ => {
+    if uses_namespace_object {
+        warn!(
+            "granting access to v1/Namespace via spec.contextAwareResources (required by namespaceObject); review before applying"
+        );
+        context_aware_resources.insert(ContextAwareResource {
+            api_version: "v1".to_string(),
+            kind: "Namespace".to_string(),
+        });
+    }
+
+    context_aware_resources
+}
+
+/// Check whether any CEL expression in `vap` mentions `kw.k8s`.
+///
+/// The interpreted path uses this check because it has no compiled Wasm
+/// module to inspect. The compiled path instead reads the exact list of
+/// host extensions from the `ferricel.extensions` section of the module.
+///
+/// A text search can find `kw.k8s` inside a string literal and report a
+/// false positive. It cannot miss a real use in valid CEL, so this check
+/// never produces a false negative. A false positive only causes an extra
+/// warning. It does not hide a real one.
+fn vap_uses_kw_k8s(vap: &ValidatingAdmissionPolicy) -> bool {
+    cel_expressions(vap).any(|expr| expr.contains("kw.k8s"))
+}
+
+/// Check whether any CEL expression in `vap` mentions `namespaceObject`.
+///
+/// Since ferricel 0.11, a compiled VAP that reads `namespaceObject`
+/// resolves it on its own, through a `kw.k8s.get` call that the runtime
+/// gates the same way as every other Kubernetes read: the policy needs the
+/// `kubernetes/get_resource` host capability and a `v1/Namespace` grant in
+/// `spec.contextAwareResources`. `ferricel_core::vap_variables_used` gives
+/// the compiled path an exact answer (see `compiled::vap_compiled`); the
+/// interpreted path has no compiled module to inspect, so it falls back to
+/// this same text search used for `kw.k8s` (see `vap_uses_kw_k8s`), with
+/// the same false-positive-only guarantee.
+fn vap_uses_namespace_object(vap: &ValidatingAdmissionPolicy) -> bool {
+    cel_expressions(vap).any(|expr| expr.contains("namespaceObject"))
+}
+
+/// Every CEL expression in `vap`: the `validations`, `variables`, and
+/// `matchConditions` expressions, in that order. Empty when `vap` has no
+/// spec.
+fn cel_expressions(vap: &ValidatingAdmissionPolicy) -> impl Iterator<Item = &str> {
+    let spec = vap.spec.as_ref();
+    let validations = spec
+        .and_then(|s| s.validations.as_deref())
+        .unwrap_or_default();
+    let variables = spec
+        .and_then(|s| s.variables.as_deref())
+        .unwrap_or_default();
+    let match_conditions = spec
+        .and_then(|s| s.match_conditions.as_deref())
+        .unwrap_or_default();
+
+    validations
+        .iter()
+        .map(|v| v.expression.as_str())
+        .chain(variables.iter().map(|v| v.expression.as_str()))
+        .chain(match_conditions.iter().map(|m| m.expression.as_str()))
+}
+
+/// Data extracted from a VAP + binding pair, shared by both output paths.
+pub(crate) struct VapData {
+    pub(crate) vap: ValidatingAdmissionPolicy,
+    pub(crate) metadata: ObjectMeta,
+    pub(crate) rules: Vec<Rule>,
+    pub(crate) match_policy: Option<String>,
+    pub(crate) namespace_selector: Option<LabelSelector>,
+    pub(crate) object_selector: Option<LabelSelector>,
+    /// The settings that both output paths share: `paramKind` and
+    /// `paramRef` (when both are present) and `failurePolicy` (when the
+    /// VAP sets it). Each runtime reads these at evaluation time. The
+    /// interpreted path adds the CEL expressions on top of them.
+    pub(crate) settings: serde_yaml::Mapping,
+    /// The Kubernetes resource (apiVersion/kind) named by `paramKind`, when
+    /// present. This is the resource the compiled/interpreted policy fetches
+    /// at evaluation time via `paramRef`, and must be granted access to via
+    /// `spec.contextAwareResources` for the fetch to succeed.
+    pub(crate) param_resource: Option<ContextAwareResource>,
+    /// Whether any CEL expression in `vap` mentions `namespaceObject` (see
+    /// `vap_uses_namespace_object`). The interpreted path reads this
+    /// directly; the compiled path prefers the exact answer from
+    /// `ferricel_core::vap_variables_used` on the compiled module, and only
+    /// falls back to this text-search result when that section can't be
+    /// read.
+    pub(crate) uses_namespace_object: bool,
+}
+
+impl VapData {
+    pub(crate) fn new(
+        vap: ValidatingAdmissionPolicy,
+        vap_binding: ValidatingAdmissionPolicyBinding,
+    ) -> Result<Self> {
+        let vap_spec = vap
+            .spec
+            .as_ref()
+            .ok_or_else(|| anyhow!("ValidatingAdmissionPolicy has no spec"))?;
+        let vap_binding_spec = vap_binding.spec.unwrap_or_default();
+
+        // The binding only references its policy by name; make sure it
+        // actually points at the VAP we were given. Without this check a
+        // mismatched pair is silently combined, compiling one policy while
+        // applying another policy's binding metadata (name, selectors,
+        // paramRef, ...).
+        let vap_name = vap
+            .metadata
+            .name
+            .as_deref()
+            .ok_or_else(|| anyhow!("ValidatingAdmissionPolicy has no metadata.name"))?;
+        let policy_name = vap_binding_spec
+            .policy_name
+            .as_deref()
+            .ok_or_else(|| anyhow!("ValidatingAdmissionPolicyBinding has no spec.policyName"))?;
+        if policy_name != vap_name {
             return Err(anyhow!(
-                "Both paramKind and paramRef must be present together, or both absent"
+                "ValidatingAdmissionPolicyBinding spec.policyName '{policy_name}' does not match ValidatingAdmissionPolicy metadata.name '{vap_name}'"
             ));
         }
-    }
 
-    // migrate CEL validations
-    if let Some(vap_validations) = vap_spec.validations {
-        let kw_cel_validations: Vec<serde_yaml::Value> = vap_validations
+        let mut settings = serde_yaml::Mapping::new();
+
+        // `failurePolicy` decides what the runtime does when a CEL
+        // expression cannot be evaluated. It goes to the settings, not to
+        // `spec.failurePolicy` of the ClusterAdmissionPolicy: that field
+        // controls the webhook configuration, and the API server applies it
+        // only when the call to the policy server fails. With the value in
+        // the settings, the administrator can change it without a new build
+        // of the policy.
+        if let Some(failure_policy) = &vap_spec.failure_policy {
+            settings.insert(
+                "failurePolicy".into(),
+                serde_yaml::to_value(failure_policy)?,
+            );
+        }
+
+        // Params: both must be present together or both absent.
+        let mut param_resource = None;
+        match (&vap_spec.param_kind, vap_binding_spec.param_ref) {
+            (Some(vap_param_kind), Some(mut vap_param_ref)) => {
+                // The Kubernetes API marks `parameterNotFoundAction` as
+                // required, but a hand-written binding may omit it. Default
+                // to `Deny` (fail-closed) rather than silently forwarding an
+                // incomplete paramRef, which the ferricel/cel-policy runtime
+                // would reject at settings-validation time.
+                if vap_param_ref.parameter_not_found_action.is_none() {
+                    warn!(
+                        "paramRef.parameterNotFoundAction not set in the binding; defaulting to Deny"
+                    );
+                    vap_param_ref.parameter_not_found_action = Some("Deny".to_string());
+                }
+
+                settings.insert("paramKind".into(), serde_yaml::to_value(vap_param_kind)?);
+                settings.insert("paramRef".into(), serde_yaml::to_value(&vap_param_ref)?);
+
+                if let (Some(api_version), Some(kind)) =
+                    (&vap_param_kind.api_version, &vap_param_kind.kind)
+                {
+                    param_resource = Some(ContextAwareResource {
+                        api_version: api_version.clone(),
+                        kind: kind.clone(),
+                    });
+                }
+            }
+            (None, None) => {}
+            _ => {
+                return Err(anyhow!(
+                    "Both paramKind and paramRef must be present together, or both absent"
+                ));
+            }
+        }
+
+        // Kubernetes runs the policy on a request only when the request
+        // matches two match sets at the same time: `matchConstraints`
+        // (set on the VAP) and `matchResources` (set on the binding).
+        // See the function `and_label_selectors` for more information.
+        // kwctl must merge or reject every field that can narrow that
+        // match. If kwctl does not, the generated ClusterAdmissionPolicy
+        // can run against resources that the original VAP and binding
+        // pair excluded.
+        let vap_match_constraints = vap_spec.match_constraints.clone().unwrap_or_default();
+        let binding_match_resources = vap_binding_spec.match_resources.unwrap_or_default();
+
+        if vap_match_constraints
+            .exclude_resource_rules
+            .as_ref()
+            .is_some_and(|rules| !rules.is_empty())
+        {
+            return Err(anyhow!(
+                "ValidatingAdmissionPolicy spec.matchConstraints.excludeResourceRules is not supported. ClusterAdmissionPolicy has no matching field. Remove excludeResourceRules, and narrow spec.matchConstraints.resourceRules instead"
+            ));
+        }
+        if binding_match_resources
+            .exclude_resource_rules
+            .as_ref()
+            .is_some_and(|rules| !rules.is_empty())
+        {
+            return Err(anyhow!(
+                "ValidatingAdmissionPolicyBinding spec.matchResources.excludeResourceRules is not supported. ClusterAdmissionPolicy has no matching field. Remove excludeResourceRules, and narrow spec.matchConstraints.resourceRules on the ValidatingAdmissionPolicy instead"
+            ));
+        }
+        if binding_match_resources
+            .resource_rules
+            .as_ref()
+            .is_some_and(|rules| !rules.is_empty())
+        {
+            return Err(anyhow!(
+                "ValidatingAdmissionPolicyBinding spec.matchResources.resourceRules is not supported. kwctl only translates spec.matchConstraints.resourceRules from the ValidatingAdmissionPolicy. Move the narrowing into the ValidatingAdmissionPolicy, or remove it from the binding"
+            ));
+        }
+        if let Some(binding_match_policy) = binding_match_resources.match_policy.as_deref() {
+            // This field defaults to "Equivalent" on both the VAP and
+            // the binding. Kubernetes uses this default when a user
+            // leaves the field unset.
+            let vap_match_policy = vap_match_constraints
+                .match_policy
+                .as_deref()
+                .unwrap_or("Equivalent");
+            if binding_match_policy != vap_match_policy {
+                return Err(anyhow!(
+                    "ValidatingAdmissionPolicyBinding spec.matchResources.matchPolicy is '{binding_match_policy}'. ValidatingAdmissionPolicy spec.matchConstraints.matchPolicy is '{vap_match_policy}'. The two values differ. Make the two values equal, or remove matchPolicy from the binding"
+                ));
+            }
+        }
+
+        let namespace_selector = and_label_selectors(
+            "namespaceSelector",
+            vap_match_constraints.namespace_selector.clone(),
+            binding_match_resources.namespace_selector,
+        )?;
+        let object_selector = and_label_selectors(
+            "objectSelector",
+            vap_match_constraints.object_selector.clone(),
+            binding_match_resources.object_selector,
+        )?;
+        let match_policy = vap_match_constraints.match_policy.clone();
+        let rules = vap_match_constraints
+            .resource_rules
+            .unwrap_or_default()
             .iter()
-            .map(|v| serde_yaml::to_value(v).expect("cannot convert VAP validation to YAML"))
-            .collect();
-        settings.insert("validations".into(), kw_cel_validations.into());
-    }
+            .map(Rule::try_from)
+            .collect::<Result<Vec<Rule>, &'static str>>()
+            .map_err(|e| anyhow!("error converting VAP matchConstraints into rules: {e}"))?;
 
-    // VAP specifies the namespace selector inside of the binding
-    let namespace_selector = vap_binding_spec
-        .match_resources
-        .unwrap_or_default()
-        .namespace_selector;
+        let uses_namespace_object = vap_uses_namespace_object(&vap);
 
-    // VAP rules are specified inside of the VAP object
-    let vap_match_constraints = vap_spec.match_constraints.unwrap_or_default();
-    let match_policy = vap_match_constraints.match_policy;
-    let rules = vap_match_constraints
-        .resource_rules
-        .unwrap_or_default()
-        .iter()
-        .map(Rule::try_from)
-        .collect::<Result<Vec<Rule>, &'static str>>()
-        .map_err(|e| anyhow!("error converting VAP matchConstraints into rules: {e}"))?;
-
-    // migrate VAP
-    let cluster_admission_policy = ClusterAdmissionPolicy {
-        api_version: "policies.kubewarden.io/v1".to_string(),
-        kind: "ClusterAdmissionPolicy".to_string(),
-        metadata: vap_binding.metadata,
-        spec: ClusterAdmissionPolicySpec {
-            module: cel_policy_module.to_string(),
-            namespace_selector,
-            match_policy,
+        Ok(VapData {
+            vap,
+            metadata: vap_binding.metadata,
             rules,
-            object_selector: vap_match_constraints.object_selector,
-            mutating: false,
-            background_audit: true,
-            context_aware_resources: BTreeSet::new(),
-            failure_policy: None,
-            mode: None, // VAP policies are always in protect mode, which is the default for KW
+            match_policy,
+            namespace_selector,
+            object_selector,
             settings,
-        },
-    };
-
-    Ok(cluster_admission_policy)
+            param_resource,
+            uses_namespace_object,
+        })
+    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use std::{collections::BTreeMap, fs::File, path::Path};
+
+    use k8s_openapi::{
+        api::admissionregistration::v1::{
+            MatchResources, NamedRuleWithOperations, ValidatingAdmissionPolicy,
+            ValidatingAdmissionPolicyBinding,
+        },
+        apimachinery::pkg::apis::meta::v1::{LabelSelector, LabelSelectorRequirement},
+    };
     use rstest::*;
 
-    use super::*;
+    use super::{VapData, and_label_selectors};
 
-    const CEL_POLICY_MODULE: &str = "ghcr.io/kubewarden/policies/cel-policy:latest";
+    pub(crate) const CEL_POLICY_MODULE: &str = "ghcr.io/kubewarden/policies/cel-policy:latest";
 
-    fn test_data(path: &str) -> String {
+    pub(crate) fn test_data(path: &str) -> String {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
             .join("data")
@@ -161,150 +453,396 @@ mod tests {
             .to_string()
     }
 
-    #[rstest]
-    #[case::vap_without_variables(
-        "vap/vap-without-variables.yml",
-        "vap/vap-binding.yml",
-        false,
-        false
-    )]
-    #[case::vap_with_variables("vap/vap-with-variables.yml", "vap/vap-binding.yml", true, false)]
-    #[case::vap_with_params("vap/vap-with-params.yml", "vap/vap-binding-params.yml", false, true)]
-    #[case::only_param_kind("vap/vap-with-params.yml", "vap/vap-binding.yml", false, true)]
-    #[case::only_param_ref(
-        "vap/vap-without-variables.yml",
-        "vap/vap-binding-params.yml",
-        false,
-        true
-    )]
-    fn from_vap_to_cluster_admission_policy(
-        #[case] vap_yaml_path: &str,
-        #[case] vap_binding_yaml_path: &str,
-        #[case] has_variables: bool,
-        #[case] has_params: bool,
-    ) {
-        let yaml_file = File::open(test_data(vap_yaml_path)).unwrap();
-        let vap: ValidatingAdmissionPolicy = serde_yaml::from_reader(yaml_file).unwrap();
+    fn open_vap_data(vap_yaml_path: &str, vap_binding_yaml_path: &str) -> VapData {
+        let (vap, vap_binding) = open_raw(vap_yaml_path, vap_binding_yaml_path);
+        VapData::new(vap, vap_binding).expect("cannot build VapData")
+    }
 
-        let expected_validations =
-            serde_yaml::to_value(vap.clone().spec.unwrap().validations.unwrap()).unwrap();
-        let expected_rules = vap
-            .clone()
-            .spec
-            .unwrap()
-            .match_constraints
-            .unwrap()
-            .resource_rules
-            .unwrap()
-            .iter()
-            .map(Rule::try_from)
-            .collect::<Result<Vec<Rule>, &str>>()
-            .unwrap();
-        let expected_failure_policy =
-            serde_yaml::to_value(vap.clone().spec.unwrap().failure_policy).unwrap();
-        let yaml_file = File::open(test_data(vap_binding_yaml_path)).unwrap();
+    fn open_raw(
+        vap_yaml_path: &str,
+        vap_binding_yaml_path: &str,
+    ) -> (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding) {
+        let yaml_file = File::open(test_data(vap_yaml_path)).expect("cannot open VAP yaml file");
+        let vap: ValidatingAdmissionPolicy =
+            serde_yaml::from_reader(yaml_file).expect("cannot parse VAP yaml file");
+
+        let yaml_file = File::open(test_data(vap_binding_yaml_path))
+            .expect("cannot open VAP binding yaml file");
         let vap_binding: ValidatingAdmissionPolicyBinding =
-            serde_yaml::from_reader(yaml_file).unwrap();
+            serde_yaml::from_reader(yaml_file).expect("cannot parse VAP binding yaml file");
 
-        let result = convert_vap_to_cluster_admission_policy(
-            CEL_POLICY_MODULE,
-            vap.clone(),
-            vap_binding.clone(),
+        (vap, vap_binding)
+    }
+
+    fn open_vap(vap_yaml_path: &str) -> ValidatingAdmissionPolicy {
+        let yaml_file = File::open(test_data(vap_yaml_path)).expect("cannot open VAP yaml file");
+        serde_yaml::from_reader(yaml_file).expect("cannot parse VAP yaml file")
+    }
+
+    /// Build a VAP and binding pair. The match-field tests start from
+    /// this pair and change it.
+    #[fixture]
+    fn vap_pair() -> (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding) {
+        open_raw("vap/vap-without-variables.yml", "vap/vap-binding.yml")
+    }
+
+    /// Return a mutable reference to `vap.spec.matchConstraints`. When
+    /// the field is absent, insert a default value first.
+    fn vap_match_constraints(vap: &mut ValidatingAdmissionPolicy) -> &mut MatchResources {
+        vap.spec
+            .as_mut()
+            .expect("vap has a spec")
+            .match_constraints
+            .get_or_insert_with(Default::default)
+    }
+
+    /// Return a mutable reference to `binding.spec.matchResources`. When
+    /// the field is absent, insert a default value first.
+    fn binding_match_resources(
+        binding: &mut ValidatingAdmissionPolicyBinding,
+    ) -> &mut MatchResources {
+        binding
+            .spec
+            .as_mut()
+            .expect("binding has a spec")
+            .match_resources
+            .get_or_insert_with(Default::default)
+    }
+
+    #[test]
+    fn vap_uses_kw_k8s_detects_it_in_validations() {
+        let vap = open_vap("vap/vap-with-k8s.yml");
+        assert!(super::vap_uses_kw_k8s(&vap));
+    }
+
+    #[rstest]
+    #[case::without_variables("vap/vap-without-variables.yml")]
+    #[case::with_variables("vap/vap-with-variables.yml")]
+    #[case::with_host_capabilities("vap/vap-with-host-capabilities.yml")]
+    fn vap_uses_kw_k8s_is_false_when_not_used(#[case] vap_yaml_path: &str) {
+        let vap = open_vap(vap_yaml_path);
+        assert!(!super::vap_uses_kw_k8s(&vap));
+    }
+
+    #[test]
+    fn vap_uses_namespace_object_detects_it_in_validations() {
+        let vap = open_vap("vap/vap-with-namespace-object.yml");
+        assert!(super::vap_uses_namespace_object(&vap));
+    }
+
+    #[rstest]
+    #[case::without_variables("vap/vap-without-variables.yml")]
+    #[case::with_variables("vap/vap-with-variables.yml")]
+    #[case::with_k8s("vap/vap-with-k8s.yml")]
+    fn vap_uses_namespace_object_is_false_when_not_used(#[case] vap_yaml_path: &str) {
+        let vap = open_vap(vap_yaml_path);
+        assert!(!super::vap_uses_namespace_object(&vap));
+    }
+
+    #[test]
+    fn param_ref_parameter_not_found_action_defaults_to_deny_when_absent() {
+        let vap_data = open_vap_data(
+            "vap/vap-with-params.yml",
+            "vap/vap-binding-params-no-action.yml",
         );
 
-        if has_params {
-            let present_param_kind = vap.clone().spec.unwrap().param_kind.is_some();
-            let present_param_ref = vap_binding.clone().spec.unwrap().param_ref.is_some();
-            if present_param_kind != present_param_ref {
-                assert!(result.is_err());
-                return;
-            }
-        }
+        assert_eq!(
+            "Deny",
+            vap_data.settings["paramRef"]["parameterNotFoundAction"]
+                .as_str()
+                .expect("parameterNotFoundAction should be a string")
+        );
+    }
 
-        let cluster_admission_policy = result.unwrap();
+    #[test]
+    fn param_ref_parameter_not_found_action_is_preserved_when_present() {
+        // The fixture explicitly sets parameterNotFoundAction to Deny; this
+        // pins that an explicit value is forwarded as-is (not overwritten).
+        let vap_data = open_vap_data("vap/vap-with-params.yml", "vap/vap-binding-params.yml");
 
-        assert_eq!(CEL_POLICY_MODULE, cluster_admission_policy.spec.module);
-        assert!(!cluster_admission_policy.spec.mutating);
-        assert_eq!(cluster_admission_policy.spec.rules, expected_rules);
-        assert!(cluster_admission_policy.spec.background_audit);
+        assert_eq!(
+            "Deny",
+            vap_data.settings["paramRef"]["parameterNotFoundAction"]
+                .as_str()
+                .expect("parameterNotFoundAction should be a string")
+        );
+    }
+
+    // `failurePolicy` goes to the settings, not to `spec.failurePolicy` of
+    // the ClusterAdmissionPolicy. That field controls the webhook, and the
+    // API server applies it only when the call to the policy server fails.
+    // The runtime reads `settings.failurePolicy` to decide what a CEL
+    // runtime error does.
+    #[rstest]
+    #[case::fail("vap/vap-without-variables.yml", "Fail")]
+    #[case::ignore("vap/vap-with-failure-policy-ignore.yml", "Ignore")]
+    fn failure_policy_is_copied_to_settings(#[case] vap_yaml_path: &str, #[case] expected: &str) {
+        let vap_data = open_vap_data(vap_yaml_path, "vap/vap-binding.yml");
+
+        assert_eq!(
+            Some(expected),
+            vap_data.settings["failurePolicy"].as_str(),
+            "settings.failurePolicy must match the VAP spec.failurePolicy"
+        );
+    }
+
+    #[rstest]
+    fn failure_policy_is_absent_from_settings_when_the_vap_does_not_set_it(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (mut vap, vap_binding) = vap_pair;
+        vap.spec.as_mut().expect("vap has a spec").failure_policy = None;
+
+        let vap_data = VapData::new(vap, vap_binding).expect("VapData::new should succeed");
+
+        // The runtime treats a missing key as `Fail`. The scaffold must leave
+        // the choice to the runtime, not write a default of its own.
         assert!(
-            cluster_admission_policy
-                .spec
-                .context_aware_resources
-                .is_empty()
+            !vap_data.settings.contains_key("failurePolicy"),
+            "settings must not contain failurePolicy, got: {:?}",
+            vap_data.settings
         );
-        assert_eq!(
-            expected_failure_policy,
-            cluster_admission_policy.spec.settings["failurePolicy"]
-        );
-        assert!(cluster_admission_policy.spec.mode.is_none());
-        assert_eq!(
-            vap.clone()
-                .spec
-                .unwrap()
-                .match_constraints
-                .unwrap()
-                .match_policy,
-            cluster_admission_policy.spec.match_policy
-        );
-        assert_eq!(
-            vap_binding
-                .clone()
-                .spec
-                .unwrap()
-                .match_resources
-                .unwrap()
-                .namespace_selector,
-            cluster_admission_policy.spec.namespace_selector
-        );
-        assert!(cluster_admission_policy.spec.object_selector.is_none());
-        assert_eq!(
-            expected_validations,
-            cluster_admission_policy.spec.settings["validations"]
-        );
+    }
 
-        if has_variables {
-            let expected_variables =
-                serde_yaml::to_value(vap.clone().spec.unwrap().variables.unwrap()).unwrap();
-            assert_eq!(
-                expected_variables,
-                cluster_admission_policy.spec.settings["variables"]
-            );
-        } else {
-            assert!(
-                !cluster_admission_policy
-                    .spec
-                    .settings
-                    .contains_key("variables")
-            );
+    #[rstest]
+    fn new_rejects_binding_whose_policy_name_does_not_match_the_vap(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (vap, mut vap_binding) = vap_pair;
+        vap_binding
+            .spec
+            .as_mut()
+            .expect("binding has a spec")
+            .policy_name = Some("some-other-policy".to_string());
+
+        let err = match VapData::new(vap, vap_binding) {
+            Ok(_) => panic!("mismatched policyName/metadata.name should be rejected"),
+            Err(e) => e,
+        };
+
+        let message = err.to_string();
+        assert!(message.contains("some-other-policy"), "{message}");
+        assert!(message.contains("vap-test"), "{message}");
+    }
+
+    #[rstest]
+    fn new_rejects_vap_with_no_metadata_name(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (mut vap, vap_binding) = vap_pair;
+        vap.metadata.name = None;
+
+        let err = match VapData::new(vap, vap_binding) {
+            Ok(_) => panic!("VAP with no metadata.name is rejected"),
+            Err(e) => e,
+        };
+
+        assert!(err.to_string().contains("metadata.name"));
+    }
+
+    fn label_selector(labels: &[(&str, &str)]) -> LabelSelector {
+        LabelSelector {
+            match_labels: Some(
+                labels
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect::<BTreeMap<_, _>>(),
+            ),
+            match_expressions: None,
         }
+    }
 
-        if has_params {
-            let expected_param_kind =
-                serde_yaml::to_value(vap.clone().spec.unwrap().param_kind.unwrap()).unwrap();
-            assert_eq!(
-                expected_param_kind,
-                cluster_admission_policy.spec.settings["paramKind"]
-            );
-            let expected_param_ref =
-                serde_yaml::to_value(vap_binding.clone().spec.unwrap().param_ref.unwrap()).unwrap();
-            assert_eq!(
-                expected_param_ref,
-                cluster_admission_policy.spec.settings["paramRef"]
-            );
-        } else {
-            assert!(
-                !cluster_admission_policy
-                    .spec
-                    .settings
-                    .contains_key("paramKind")
-            );
-            assert!(
-                !cluster_admission_policy
-                    .spec
-                    .settings
-                    .contains_key("paramRef")
-            );
+    fn in_requirement(key: &str, value: &str) -> LabelSelectorRequirement {
+        LabelSelectorRequirement {
+            key: key.to_string(),
+            operator: "In".to_string(),
+            values: Some(vec![value.to_string()]),
+        }
+    }
+
+    fn expressions_selector(requirements: Vec<LabelSelectorRequirement>) -> LabelSelector {
+        LabelSelector {
+            match_labels: None,
+            match_expressions: Some(requirements),
+        }
+    }
+
+    #[rstest]
+    #[case::both_absent(None, None, None)]
+    #[case::only_vap(
+        Some(label_selector(&[("env", "prod")])),
+        None,
+        Some(label_selector(&[("env", "prod")]))
+    )]
+    #[case::only_binding(
+        None,
+        Some(label_selector(&[("env", "prod")])),
+        Some(label_selector(&[("env", "prod")]))
+    )]
+    #[case::disjoint_labels_are_merged(
+        Some(label_selector(&[("env", "prod")])),
+        Some(label_selector(&[("team", "platform")])),
+        Some(label_selector(&[("env", "prod"), ("team", "platform")]))
+    )]
+    #[case::same_label_same_value_keeps_one_copy(
+        Some(label_selector(&[("env", "prod")])),
+        Some(label_selector(&[("env", "prod")])),
+        Some(label_selector(&[("env", "prod")]))
+    )]
+    #[case::match_expressions_are_concatenated(
+        Some(expressions_selector(vec![in_requirement("env", "prod")])),
+        Some(expressions_selector(vec![in_requirement("team", "platform")])),
+        Some(expressions_selector(vec![
+            in_requirement("env", "prod"),
+            in_requirement("team", "platform"),
+        ]))
+    )]
+    fn and_label_selectors_cases(
+        #[case] vap: Option<LabelSelector>,
+        #[case] binding: Option<LabelSelector>,
+        #[case] expected: Option<LabelSelector>,
+    ) {
+        assert_eq!(
+            and_label_selectors("namespaceSelector", vap, binding).expect("no label conflict"),
+            expected
+        );
+    }
+
+    #[test]
+    fn and_label_selectors_rejects_a_label_with_different_values() {
+        let vap = label_selector(&[("env", "prod")]);
+        let binding = label_selector(&[("env", "staging")]);
+
+        let err = match and_label_selectors("namespaceSelector", Some(vap), Some(binding)) {
+            Ok(_) => panic!("a label with two different values should be rejected"),
+            Err(e) => e,
+        };
+
+        let message = err.to_string();
+        assert!(message.contains("namespaceSelector"), "{message}");
+        assert!(message.contains("env"), "{message}");
+        assert!(message.contains("prod"), "{message}");
+        assert!(message.contains("staging"), "{message}");
+    }
+
+    #[rstest]
+    fn new_merges_namespace_selector_from_vap_and_binding(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (mut vap, vap_binding) = vap_pair;
+        vap_match_constraints(&mut vap).namespace_selector =
+            Some(label_selector(&[("team", "platform")]));
+        // The fixture binding already sets `namespaceSelector` to
+        // kubernetes.io/metadata.name=default.
+
+        let vap_data = VapData::new(vap, vap_binding).expect("VapData::new should succeed");
+
+        let namespace_selector = vap_data
+            .namespace_selector
+            .expect("namespace_selector should be present");
+        assert_eq!(
+            namespace_selector.match_labels,
+            Some(BTreeMap::from([
+                (
+                    "kubernetes.io/metadata.name".to_string(),
+                    "default".to_string()
+                ),
+                ("team".to_string(), "platform".to_string()),
+            ]))
+        );
+    }
+
+    #[rstest]
+    fn new_keeps_binding_object_selector_that_the_vap_does_not_set(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+    ) {
+        let (vap, mut vap_binding) = vap_pair;
+        binding_match_resources(&mut vap_binding).object_selector =
+            Some(label_selector(&[("app", "web")]));
+
+        let vap_data = VapData::new(vap, vap_binding).expect("VapData::new should succeed");
+
+        assert_eq!(
+            vap_data
+                .object_selector
+                .expect("object_selector should be present")
+                .match_labels,
+            Some(BTreeMap::from([("app".to_string(), "web".to_string())]))
+        );
+    }
+
+    type MutatePair = fn(&mut ValidatingAdmissionPolicy, &mut ValidatingAdmissionPolicyBinding);
+
+    #[rstest]
+    #[case::vap_exclude_resource_rules(
+        (|vap: &mut ValidatingAdmissionPolicy, _: &mut ValidatingAdmissionPolicyBinding| {
+            vap_match_constraints(vap).exclude_resource_rules =
+                Some(vec![NamedRuleWithOperations::default()]);
+        }) as MutatePair,
+        Some("matchConstraints.excludeResourceRules")
+    )]
+    #[case::binding_exclude_resource_rules(
+        (|_: &mut ValidatingAdmissionPolicy, binding: &mut ValidatingAdmissionPolicyBinding| {
+            binding_match_resources(binding).exclude_resource_rules =
+                Some(vec![NamedRuleWithOperations::default()]);
+        }) as MutatePair,
+        Some("matchResources.excludeResourceRules")
+    )]
+    #[case::binding_resource_rules(
+        (|_: &mut ValidatingAdmissionPolicy, binding: &mut ValidatingAdmissionPolicyBinding| {
+            binding_match_resources(binding).resource_rules =
+                Some(vec![NamedRuleWithOperations::default()]);
+        }) as MutatePair,
+        Some("matchResources.resourceRules")
+    )]
+    #[case::binding_match_policy_differs_from_the_vap(
+        // The VAP fixture does not set `matchPolicy`. This field
+        // defaults to "Equivalent". The binding sets `matchPolicy` to
+        // "Exact". The two values differ.
+        (|_: &mut ValidatingAdmissionPolicy, binding: &mut ValidatingAdmissionPolicyBinding| {
+            binding_match_resources(binding).match_policy = Some("Exact".to_string());
+        }) as MutatePair,
+        Some("matchPolicy")
+    )]
+    #[case::binding_match_policy_equals_the_vap_default(
+        // The VAP fixture leaves `matchPolicy` unset. This field
+        // defaults to "Equivalent". The binding sets `matchPolicy` to
+        // the same value. Kubernetes allows this.
+        (|_: &mut ValidatingAdmissionPolicy, binding: &mut ValidatingAdmissionPolicyBinding| {
+            binding_match_resources(binding).match_policy = Some("Equivalent".to_string());
+        }) as MutatePair,
+        None
+    )]
+    #[case::vap_and_binding_namespace_selector_conflict(
+        // The fixture binding sets `namespaceSelector` to
+        // kubernetes.io/metadata.name=default. Setting the same key to a
+        // different value on the VAP makes the merge fail.
+        (|vap: &mut ValidatingAdmissionPolicy, _: &mut ValidatingAdmissionPolicyBinding| {
+            vap_match_constraints(vap).namespace_selector =
+                Some(label_selector(&[("kubernetes.io/metadata.name", "other")]));
+        }) as MutatePair,
+        Some("namespaceSelector")
+    )]
+    fn new_checks_match_fields(
+        vap_pair: (ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding),
+        #[case] mutate: MutatePair,
+        #[case] expected_error: Option<&str>,
+    ) {
+        let (mut vap, mut vap_binding) = vap_pair;
+        mutate(&mut vap, &mut vap_binding);
+
+        let result = VapData::new(vap, vap_binding);
+        match expected_error {
+            None => {
+                result.expect("VapData::new should succeed");
+            }
+            Some(needle) => {
+                let err = match result {
+                    Ok(_) => panic!("expected an error that mentions '{needle}'"),
+                    Err(e) => e,
+                };
+                assert!(err.to_string().contains(needle), "{err}");
+            }
         }
     }
 }
