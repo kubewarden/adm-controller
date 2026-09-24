@@ -22,8 +22,6 @@
 {{- range $type.SortedReferences }}
 {{- if asciidocShouldRenderType . }}
 - {{ asciidocRenderTypeLink . }}
-{{- else }}
-- {{ .Name }}
 {{- end }}
 {{- end }}
 ****
