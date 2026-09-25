@@ -552,7 +552,6 @@ ContextAwareResource identifies a Kubernetes resource.
 
 
 _Appears in:_
-- ClusterAdmissionPolicyFactory
 - [ClusterAdmissionPolicySpec](#clusteradmissionpolicyspec)
 - [PolicyGroupMemberWithContext](#policygroupmemberwithcontext)
 
@@ -854,7 +853,6 @@ _Underlying type:_ _[map[string]PolicyGroupMember](#map[string]policygroupmember
 
 
 _Appears in:_
-- AdmissionPolicyGroupFactory
 - [PolicyGroupSpec](#policygroupspec)
 
 
@@ -868,7 +866,6 @@ _Underlying type:_ _[map[string]PolicyGroupMemberWithContext](#map[string]policy
 
 
 _Appears in:_
-- ClusterAdmissionPolicyGroupFactory
 - [ClusterPolicyGroupSpec](#clusterpolicygroupspec)
 
 
@@ -915,10 +912,6 @@ _Validation:_
 - Enum: [protect monitor]
 
 _Appears in:_
-- AdmissionPolicyFactory
-- AdmissionPolicyGroupFactory
-- ClusterAdmissionPolicyFactory
-- ClusterAdmissionPolicyGroupFactory
 - [GroupSpec](#groupspec)
 - [PolicySpec](#policyspec)
 
@@ -934,7 +927,6 @@ _Validation:_
 - Enum: [protect monitor unknown]
 
 _Appears in:_
-- PolicyStatus
 
 | Field | Description |
 | --- | --- |
@@ -1527,7 +1519,6 @@ _Validation:_
 - Enum: [unscheduled scheduled pending active rejected]
 
 _Appears in:_
-- PolicyStatus
 
 | Field | Description |
 | --- | --- |
@@ -1805,7 +1796,6 @@ _Validation:_
 - Enum: [protect monitor unknown]
 
 _Appears in:_
-- PolicyStatus
 
 | Field | Description |
 | --- | --- |
@@ -2141,7 +2131,6 @@ _Validation:_
 - Enum: [unscheduled scheduled pending active rejected]
 
 _Appears in:_
-- PolicyStatus
 
 | Field | Description |
 | --- | --- |

@@ -20,8 +20,6 @@ _Appears in:_
 {{- range $type.SortedReferences }}
 {{- if markdownShouldRenderType . }}
 - {{ markdownRenderTypeLink . }}
-{{- else }}
-- {{ .Name }}
 {{- end }}
 {{- end }}
 {{- end }}
