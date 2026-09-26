@@ -46,11 +46,11 @@ NC='\033[0m'
 
 # ── Versions ──────────────────────────────────────────────────────────────────
 # renovate: datasource=github-release-attachments depName=sigstore/scaffolding
-SCAFFOLDING_VERSION=v0.7.31
-# renovate: datasource=github-release-attachments depName=sigstore/scaffolding digestVersion=v0.7.31
-SETUP_KIND_SHA256=a739e49ee8f98c8e966a1e6fddf38598acf09cf27ada2a0ebb3901fd366cecad
-# renovate: datasource=github-release-attachments depName=sigstore/scaffolding digestVersion=v0.7.31
-SETUP_SCAFFOLDING_SHA256=8861da880cb8f4ddc22fb83e92975dd6744bd6cea8f1d4025183d740ddbb2222
+SCAFFOLDING_VERSION=v0.7.37
+# renovate: datasource=github-release-attachments depName=sigstore/scaffolding digestVersion=v0.7.37
+SETUP_KIND_SHA256=aaaec61847800edcdc6abe40240443b52f3ccf7435759e07afca6509e85bb9e3
+# renovate: datasource=github-release-attachments depName=sigstore/scaffolding digestVersion=v0.7.37
+SETUP_SCAFFOLDING_SHA256=70e3341d544efcd9b3c243682d3ef16bfc12fef4cc9bb43c6c99755e09270736
 
 # ── Image references ──────────────────────────────────────────────────────────
 SOURCE_POLICY_IMAGE=ghcr.io/kubewarden/tests/pod-privileged:v0.2.5
