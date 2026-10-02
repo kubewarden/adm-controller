@@ -1,7 +1,7 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs::{self, File},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{Result, anyhow};
@@ -16,43 +16,201 @@ use crate::{
     wasm_scanner,
 };
 
-pub(crate) fn write_annotation(
-    wasm_path: PathBuf,
-    metadata_path: PathBuf,
-    destination: PathBuf,
-    usage_path: Option<PathBuf>,
-) -> Result<()> {
-    let usage = usage_path
-        .map(|path| {
-            fs::read_to_string(path).map_err(|e| anyhow!("Error reading usage file: {}", e))
-        })
-        .transpose()?;
+/// Input for [`write_annotation`].
+pub(crate) struct AnnotateRequest {
+    pub(crate) wasm_path: PathBuf,
+    pub(crate) metadata: MetadataSource,
+    pub(crate) destination: PathBuf,
+    /// `KEY=VALUE` or `KEY=@PATH` overrides.
+    /// kwctl applies them on top of the base metadata that `metadata`
+    /// resolves to.
+    pub(crate) annotations: Vec<String>,
+    pub(crate) usage_path: Option<PathBuf>,
+    /// Permits [`MetadataSource::File`] to replace the metadata of a policy
+    /// that already has one. [`MetadataSource::Policy`] never discards
+    /// anything, so this field has no effect on it.
+    pub(crate) force: bool,
+}
+
+/// Where `annotate` takes the base metadata from, before the overrides
+/// apply to it.
+pub(crate) enum MetadataSource {
+    /// `--metadata-path` was given. Replace the policy's metadata with the
+    /// file at this path.
+    File(PathBuf),
+    /// No `--metadata-path`. Patch the metadata already in the policy.
+    Policy,
+}
+
+impl MetadataSource {
+    /// Returns the metadata that the overrides apply to.
+    ///
+    /// `force` permits [`MetadataSource::File`] to replace metadata that is
+    /// already present. [`MetadataSource::Policy`] ignores `force`: it
+    /// never discards anything.
+    fn resolve(self, existing: Option<Metadata>, force: bool) -> Result<Metadata> {
+        match self {
+            Self::File(path) => {
+                if existing.is_some() {
+                    if !force {
+                        return Err(anyhow!(
+                            "The policy is already annotated. Use `annotate --force` to overwrite the existing metadata"
+                        ));
+                    }
+                    warn!("policy is already annotated, overwriting existing metadata");
+                }
+                load_metadata_file(&path)
+            }
+            Self::Policy => existing.ok_or_else(|| {
+                anyhow!(
+                    "The policy is not annotated. Use `annotate --metadata-path` to annotate it"
+                )
+            }),
+        }
+    }
+}
+
+pub(crate) fn write_annotation(request: AnnotateRequest) -> Result<()> {
+    let overrides = build_overrides(&request.annotations, request.usage_path.as_deref())?;
 
     let wasm_bytes =
-        std::fs::read(&wasm_path).map_err(|e| anyhow!("Error reading wasm file: {}", e))?;
+        std::fs::read(&request.wasm_path).map_err(|e| anyhow!("Error reading wasm file: {}", e))?;
+
+    let existing_metadata = Metadata::from_contents(&wasm_bytes)
+        .map_err(|e| anyhow!("Error reading the policy's existing metadata: {}", e))?;
+
+    let base_metadata = request.metadata.resolve(existing_metadata, request.force)?;
 
     let mut module = walrus::Module::from_buffer(&wasm_bytes)
         .map_err(|e| anyhow!("Error parsing wasm module: {}", e))?;
+
+    strip_metadata_sections(&mut module);
 
     let detected_capabilities =
         wasm_scanner::scan(&module).map_err(|e| anyhow!("Error scanning wasm module: {}", e))?;
 
     let backend_detector = BackendDetector::default();
-    let metadata = prepare_metadata(wasm_path, metadata_path, backend_detector, usage.as_deref())?;
-    write_annotated_wasm_file(&mut module, destination, metadata, &detected_capabilities)
+    let metadata = prepare_metadata(
+        base_metadata,
+        request.wasm_path,
+        backend_detector,
+        overrides,
+    )?;
+    write_annotated_wasm_file(
+        &mut module,
+        request.destination,
+        metadata,
+        &detected_capabilities,
+    )
+}
+
+fn load_metadata_file(path: &Path) -> Result<Metadata> {
+    let metadata_file =
+        File::open(path).map_err(|e| anyhow!("Error opening metadata file: {}", e))?;
+    serde_yaml::from_reader(&metadata_file)
+        .map_err(|e| anyhow!("Error unmarshalling metadata {}", e))
+}
+
+/// Removes every Kubewarden metadata custom section already in `module`.
+/// [`MetadataSource::resolve`] already decided that this is safe. This step
+/// only clears space for [`write_annotated_wasm_file`] to add one fresh
+/// section.
+fn strip_metadata_sections(module: &mut walrus::Module) {
+    while module
+        .customs
+        .remove_raw(KUBEWARDEN_CUSTOM_SECTION_METADATA)
+        .is_some()
+    {}
+}
+
+/// One `--annotation` value: a literal string, or the path to a file that
+/// holds the value.
+#[derive(Debug, PartialEq)]
+enum AnnotationValue {
+    Literal(String),
+    File(PathBuf),
+}
+
+#[derive(Debug, thiserror::Error, PartialEq)]
+enum AnnotationOverrideError {
+    #[error("invalid annotation {0:?}: expected KEY=VALUE or KEY=@PATH")]
+    MissingValue(String),
+    #[error("invalid annotation {0:?}: the key must not be empty")]
+    EmptyKey(String),
+}
+
+/// Parses one `--annotation` argument into its key and value.
+///
+/// `KEY=VALUE` sets a literal value. `KEY=@PATH` reads the value from the
+/// file at `PATH`, the same convention `curl -d` uses.
+///
+/// kwctl rejects a missing `=` or an empty key. It does not treat a missing
+/// `=` as an unset. The likely cause is a forgotten `=value`, and a typo
+/// must not delete an annotation in silence.
+fn parse_annotation_override(
+    input: &str,
+) -> std::result::Result<(String, AnnotationValue), AnnotationOverrideError> {
+    let (key, value) = input
+        .split_once('=')
+        .ok_or_else(|| AnnotationOverrideError::MissingValue(input.to_string()))?;
+
+    if key.is_empty() {
+        return Err(AnnotationOverrideError::EmptyKey(input.to_string()));
+    }
+
+    let value = match value.strip_prefix('@') {
+        Some(path) => AnnotationValue::File(PathBuf::from(path)),
+        None => AnnotationValue::Literal(value.to_string()),
+    };
+
+    Ok((key.to_string(), value))
+}
+
+/// Builds the map of annotation overrides for the base metadata. It
+/// combines the `--annotation` values with `--usage-path`, which kwctl
+/// treats as an override of `io.kubewarden.policy.usage`.
+fn build_overrides(
+    annotations: &[String],
+    usage_path: Option<&Path>,
+) -> Result<BTreeMap<String, String>> {
+    let mut overrides = BTreeMap::new();
+
+    for input in annotations {
+        let (key, value) = parse_annotation_override(input)?;
+        let resolved = match value {
+            AnnotationValue::Literal(s) => s,
+            AnnotationValue::File(path) => fs::read_to_string(&path).map_err(|e| {
+                anyhow!(
+                    "Error reading annotation value file '{}': {}",
+                    path.display(),
+                    e
+                )
+            })?,
+        };
+        overrides.insert(key, resolved);
+    }
+
+    if let Some(path) = usage_path {
+        if overrides.contains_key(KUBEWARDEN_ANNOTATION_POLICY_USAGE) {
+            return Err(anyhow!(
+                "conflicting values for '{}': both --usage-path and --annotation set it",
+                KUBEWARDEN_ANNOTATION_POLICY_USAGE
+            ));
+        }
+        let usage =
+            fs::read_to_string(path).map_err(|e| anyhow!("Error reading usage file: {}", e))?;
+        overrides.insert(String::from(KUBEWARDEN_ANNOTATION_POLICY_USAGE), usage);
+    }
+
+    Ok(overrides)
 }
 
 fn prepare_metadata(
+    mut metadata: Metadata,
     wasm_path: PathBuf,
-    metadata_path: PathBuf,
     backend_detector: BackendDetector,
-    usage: Option<&str>,
+    overrides: BTreeMap<String, String>,
 ) -> Result<Metadata> {
-    let metadata_file =
-        File::open(metadata_path).map_err(|e| anyhow!("Error opening metadata file: {}", e))?;
-    let mut metadata: Metadata = serde_yaml::from_reader(&metadata_file)
-        .map_err(|e| anyhow!("Error unmarshalling metadata {}", e))?;
-
     let backend = backend_detector.detect(wasm_path, &metadata)?;
 
     match backend {
@@ -65,16 +223,15 @@ fn prepare_metadata(
     };
 
     let mut annotations = metadata.annotations.unwrap_or_default();
+    for (key, value) in overrides {
+        if annotations.insert(key.clone(), value).is_some() {
+            warn!(annotation = %key, "overwriting an existing annotation");
+        }
+    }
     annotations.insert(
         String::from(KUBEWARDEN_ANNOTATION_KWCTL_VERSION),
         String::from(env!("CARGO_PKG_VERSION")),
     );
-    if let Some(s) = usage {
-        annotations.insert(
-            String::from(KUBEWARDEN_ANNOTATION_POLICY_USAGE),
-            String::from(s),
-        );
-    }
     metadata.annotations = Some(annotations);
 
     metadata
@@ -215,8 +372,6 @@ fn write_annotated_wasm_file(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-
     use rstest::rstest;
     use tempfile::tempdir;
 
@@ -325,6 +480,145 @@ mod tests {
         assert_eq!(mismatch.declared_but_unused, expected_unused);
     }
 
+    fn module_with_metadata_sections(count: usize) -> walrus::Module {
+        let mut module = walrus::Module::default();
+        for _ in 0..count {
+            module.customs.add(walrus::RawCustomSection {
+                name: String::from(KUBEWARDEN_CUSTOM_SECTION_METADATA),
+                data: b"{}".to_vec(),
+            });
+        }
+        module
+    }
+
+    fn metadata_section_count(module: &walrus::Module) -> usize {
+        module
+            .customs
+            .iter()
+            .filter(|(_, section)| section.name() == KUBEWARDEN_CUSTOM_SECTION_METADATA)
+            .count()
+    }
+
+    #[rstest]
+    #[case::no_sections(0)]
+    #[case::one_section(1)]
+    #[case::already_double_annotated(2)]
+    fn strip_metadata_sections_removes_every_section(#[case] existing_sections: usize) {
+        let mut module = module_with_metadata_sections(existing_sections);
+
+        strip_metadata_sections(&mut module);
+
+        assert_eq!(metadata_section_count(&module), 0);
+    }
+
+    fn sample_metadata() -> Metadata {
+        Metadata {
+            protocol_version: Some(ProtocolVersion::V1),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn metadata_source_file_without_existing_metadata_uses_the_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("metadata.yml");
+        fs::write(&path, serde_yaml::to_string(&sample_metadata()).unwrap()).unwrap();
+
+        let metadata = MetadataSource::File(path).resolve(None, false).unwrap();
+        assert_eq!(metadata.protocol_version, Some(ProtocolVersion::V1));
+    }
+
+    #[test]
+    fn metadata_source_file_with_existing_metadata_without_force_fails() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("metadata.yml");
+        fs::write(&path, serde_yaml::to_string(&sample_metadata()).unwrap()).unwrap();
+
+        let err = MetadataSource::File(path)
+            .resolve(Some(sample_metadata()), false)
+            .unwrap_err();
+        assert!(err.to_string().contains("already annotated"));
+    }
+
+    #[test]
+    fn metadata_source_file_with_existing_metadata_and_force_uses_the_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("metadata.yml");
+        let mut from_file = sample_metadata();
+        from_file.mutating = true;
+        fs::write(&path, serde_yaml::to_string(&from_file).unwrap()).unwrap();
+
+        let mut existing = sample_metadata();
+        existing.mutating = false;
+
+        let metadata = MetadataSource::File(path)
+            .resolve(Some(existing), true)
+            .unwrap();
+        assert!(metadata.mutating);
+    }
+
+    #[rstest]
+    #[case::literal(
+        "io.kubewarden.policy.title=foo",
+        "io.kubewarden.policy.title",
+        AnnotationValue::Literal(String::from("foo"))
+    )]
+    #[case::value_with_embedded_equals("k=a=b", "k", AnnotationValue::Literal(String::from("a=b")))]
+    #[case::empty_value("k=", "k", AnnotationValue::Literal(String::new()))]
+    #[case::file_reference(
+        "k=@path/to/file",
+        "k",
+        AnnotationValue::File(PathBuf::from("path/to/file"))
+    )]
+    fn parse_annotation_override_accepts(
+        #[case] input: &str,
+        #[case] expected_key: &str,
+        #[case] expected_value: AnnotationValue,
+    ) {
+        let (key, value) = parse_annotation_override(input).unwrap();
+        assert_eq!(key, expected_key);
+        assert_eq!(value, expected_value);
+    }
+
+    #[rstest]
+    #[case::no_equals_sign("novalue")]
+    #[case::empty_key("=value")]
+    fn parse_annotation_override_rejects(#[case] input: &str) {
+        assert!(parse_annotation_override(input).is_err());
+    }
+
+    #[test]
+    fn build_overrides_reads_a_referenced_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("usage.md");
+        fs::write(&path, "file contents").unwrap();
+
+        let overrides = build_overrides(
+            &[format!("io.kubewarden.policy.usage=@{}", path.display())],
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            overrides.get("io.kubewarden.policy.usage"),
+            Some(&String::from("file contents")),
+        );
+    }
+
+    #[test]
+    fn build_overrides_rejects_conflicting_usage_sources() {
+        let dir = tempdir().unwrap();
+        let usage_path = dir.path().join("usage.md");
+        fs::write(&usage_path, "from --usage-path").unwrap();
+
+        let err = build_overrides(
+            &[String::from("io.kubewarden.policy.usage=from --annotation")],
+            Some(&usage_path),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("conflicting values"));
+    }
+
     fn mock_protocol_version_detector_v1(_wasm_path: PathBuf) -> Result<ProtocolVersion> {
         Ok(ProtocolVersion::V1)
     }
@@ -341,13 +635,12 @@ mod tests {
         Ok(false)
     }
 
+    fn metadata_from_yaml(raw: &str) -> Metadata {
+        serde_yaml::from_str(raw).expect("test fixture must parse")
+    }
+
     #[test]
-    fn test_kwctl_version_is_added_to_already_populated_annotations() -> Result<()> {
-        let dir = tempdir()?;
-
-        let file_path = dir.path().join("metadata.yml");
-        let mut file = File::create(file_path.clone())?;
-
+    fn test_kwctl_version_is_added_to_already_populated_annotations() {
         let expected_policy_title = "psp-test";
         let raw_metadata = format!(
             r#"
@@ -364,19 +657,18 @@ mod tests {
             expected_policy_title
         );
 
-        write!(file, "{}", raw_metadata)?;
-
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
             mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
+            metadata_from_yaml(&raw_metadata),
             PathBuf::from("irrelevant.wasm"),
-            file_path,
             backend_detector,
-            None,
-        )?;
+            BTreeMap::new(),
+        )
+        .unwrap();
         let annotations = metadata.annotations.unwrap();
 
         assert_eq!(
@@ -388,17 +680,10 @@ mod tests {
             annotations.get(KUBEWARDEN_ANNOTATION_KWCTL_VERSION),
             Some(&String::from(env!("CARGO_PKG_VERSION"))),
         );
-
-        Ok(())
     }
 
     #[test]
-    fn test_kwctl_version_is_overwrote_when_user_accidentally_provides_it() -> Result<()> {
-        let dir = tempdir()?;
-
-        let file_path = dir.path().join("metadata.yml");
-        let mut file = File::create(file_path.clone())?;
-
+    fn test_kwctl_version_is_overwrote_when_user_accidentally_provides_it() {
         let expected_policy_title = "psp-test";
         let raw_metadata = format!(
             r#"
@@ -416,19 +701,18 @@ mod tests {
             expected_policy_title, KUBEWARDEN_ANNOTATION_KWCTL_VERSION,
         );
 
-        write!(file, "{}", raw_metadata)?;
-
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
             mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
+            metadata_from_yaml(&raw_metadata),
             PathBuf::from("irrelevant.wasm"),
-            file_path,
             backend_detector,
-            None,
-        )?;
+            BTreeMap::new(),
+        )
+        .unwrap();
         let annotations = metadata.annotations.unwrap();
 
         assert_eq!(
@@ -440,17 +724,10 @@ mod tests {
             annotations.get(KUBEWARDEN_ANNOTATION_KWCTL_VERSION),
             Some(&String::from(env!("CARGO_PKG_VERSION"))),
         );
-
-        Ok(())
     }
 
     #[test]
-    fn test_kwctl_version_is_added_when_annotations_is_none() -> Result<()> {
-        let dir = tempdir()?;
-
-        let file_path = dir.path().join("metadata.yml");
-        let mut file = File::create(file_path.clone())?;
-
+    fn test_kwctl_version_is_added_when_annotations_is_none() {
         let raw_metadata = r#"
         rules:
         - apiGroups: [""]
@@ -462,36 +739,28 @@ mod tests {
         executionMode: kubewarden-wapc
         "#;
 
-        write!(file, "{}", raw_metadata)?;
-
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
             mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
+            metadata_from_yaml(raw_metadata),
             PathBuf::from("irrelevant.wasm"),
-            file_path,
             backend_detector,
-            None,
-        )?;
+            BTreeMap::new(),
+        )
+        .unwrap();
         let annotations = metadata.annotations.unwrap();
 
         assert_eq!(
             annotations.get(KUBEWARDEN_ANNOTATION_KWCTL_VERSION),
             Some(&String::from(env!("CARGO_PKG_VERSION"))),
         );
-
-        Ok(())
     }
 
     #[test]
-    fn test_kwctl_usage_is_added_when_annotations_is_none() -> Result<()> {
-        let dir = tempdir()?;
-
-        let file_path = dir.path().join("metadata.yml");
-        let mut file = File::create(file_path.clone())?;
-
+    fn test_kwctl_usage_is_added_when_annotations_is_none() {
         let raw_metadata = r#"
         rules:
         - apiGroups: [""]
@@ -503,38 +772,33 @@ mod tests {
         executionMode: kubewarden-wapc
         "#;
 
-        write!(file, "{}", raw_metadata)?;
-
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_false,
             mock_protocol_version_detector_v1,
             mock_ferricel_policy_detector_false,
         );
+        let overrides = BTreeMap::from([(
+            String::from(KUBEWARDEN_ANNOTATION_POLICY_USAGE),
+            String::from("readme contents"),
+        )]);
         let metadata = prepare_metadata(
+            metadata_from_yaml(raw_metadata),
             PathBuf::from("irrelevant.wasm"),
-            file_path,
             backend_detector,
-            Some("readme contents"),
-        )?;
+            overrides,
+        )
+        .unwrap();
         let annotations = metadata.annotations.unwrap();
 
         assert_eq!(
             annotations.get(KUBEWARDEN_ANNOTATION_POLICY_USAGE),
             Some(&String::from("readme contents")),
         );
-
-        Ok(())
     }
 
     #[test]
-    fn test_final_metadata_for_a_rego_policy() -> Result<()> {
-        let dir = tempdir()?;
-
-        let file_path = dir.path().join("metadata.yml");
-        let mut file = File::create(file_path.clone())?;
-
-        let raw_metadata = String::from(
-            r#"
+    fn test_final_metadata_for_a_rego_policy() {
+        let raw_metadata = r#"
         rules:
         - apiGroups: [""]
           apiVersions: ["v1"]
@@ -543,10 +807,7 @@ mod tests {
         mutating: false
         backgroundAudit: true
         executionMode: opa
-        "#,
-        );
-
-        write!(file, "{}", raw_metadata)?;
+        "#;
 
         let backend_detector = BackendDetector::new(
             mock_rego_policy_detector_true,
@@ -554,17 +815,124 @@ mod tests {
             mock_ferricel_policy_detector_false,
         );
         let metadata = prepare_metadata(
+            metadata_from_yaml(raw_metadata),
             PathBuf::from("irrelevant.wasm"),
-            file_path,
             backend_detector,
-            None,
+            BTreeMap::new(),
         );
         assert!(metadata.is_ok());
         assert_eq!(
             metadata.unwrap().protocol_version,
             Some(ProtocolVersion::Unknown)
         );
+    }
 
-        Ok(())
+    #[test]
+    fn prepare_metadata_override_beats_base_value() {
+        let raw_metadata = r#"
+        rules: []
+        mutating: false
+        backgroundAudit: true
+        executionMode: kubewarden-wapc
+        annotations:
+          io.kubewarden.policy.title: original-title
+        "#;
+
+        let backend_detector = BackendDetector::new(
+            mock_rego_policy_detector_false,
+            mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
+        );
+        let overrides = BTreeMap::from([(
+            String::from(KUBEWARDEN_ANNOTATION_POLICY_TITLE),
+            String::from("patched-title"),
+        )]);
+        let metadata = prepare_metadata(
+            metadata_from_yaml(raw_metadata),
+            PathBuf::from("irrelevant.wasm"),
+            backend_detector,
+            overrides,
+        )
+        .unwrap();
+        let annotations = metadata.annotations.unwrap();
+
+        assert_eq!(
+            annotations.get(KUBEWARDEN_ANNOTATION_POLICY_TITLE),
+            Some(&String::from("patched-title")),
+        );
+    }
+
+    #[test]
+    fn prepare_metadata_keeps_fields_not_targeted_by_an_override() {
+        let raw_metadata = r#"
+        rules:
+        - apiGroups: [""]
+          apiVersions: ["v1"]
+          resources: ["pods"]
+          operations: ["CREATE", "UPDATE"]
+        mutating: false
+        backgroundAudit: true
+        executionMode: kubewarden-wapc
+        annotations:
+          io.kubewarden.policy.title: original-title
+          io.kubewarden.policy.author: original-author
+        "#;
+
+        let backend_detector = BackendDetector::new(
+            mock_rego_policy_detector_false,
+            mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
+        );
+        let overrides = BTreeMap::from([(
+            String::from(KUBEWARDEN_ANNOTATION_POLICY_TITLE),
+            String::from("patched-title"),
+        )]);
+        let metadata = prepare_metadata(
+            metadata_from_yaml(raw_metadata),
+            PathBuf::from("irrelevant.wasm"),
+            backend_detector,
+            overrides,
+        )
+        .unwrap();
+
+        assert_eq!(metadata.rules.len(), 1);
+        let annotations = metadata.annotations.unwrap();
+        assert_eq!(
+            annotations.get(KUBEWARDEN_ANNOTATION_POLICY_AUTHOR),
+            Some(&String::from("original-author")),
+        );
+    }
+
+    #[test]
+    fn prepare_metadata_cannot_be_used_to_override_the_kwctl_version() {
+        let raw_metadata = r#"
+        rules: []
+        mutating: false
+        backgroundAudit: true
+        executionMode: kubewarden-wapc
+        "#;
+
+        let backend_detector = BackendDetector::new(
+            mock_rego_policy_detector_false,
+            mock_protocol_version_detector_v1,
+            mock_ferricel_policy_detector_false,
+        );
+        let overrides = BTreeMap::from([(
+            String::from(KUBEWARDEN_ANNOTATION_KWCTL_VERSION),
+            String::from("NOT_VALID"),
+        )]);
+        let metadata = prepare_metadata(
+            metadata_from_yaml(raw_metadata),
+            PathBuf::from("irrelevant.wasm"),
+            backend_detector,
+            overrides,
+        )
+        .unwrap();
+        let annotations = metadata.annotations.unwrap();
+
+        assert_eq!(
+            annotations.get(KUBEWARDEN_ANNOTATION_KWCTL_VERSION),
+            Some(&String::from(env!("CARGO_PKG_VERSION"))),
+        );
     }
 }
