@@ -1708,6 +1708,73 @@ fn test_annotate_annotation_value_from_file() {
     );
 }
 
+/// Some metadata sections do not parse. For example, a newer kwctl can
+/// write a schema that this build does not know.
+///
+/// `--force` must replace such a section anyway. The user asked to discard
+/// it, so its content must not matter.
+///
+/// A patch must fail on such a section. The overrides apply on top of
+/// content that kwctl cannot read.
+#[rstest]
+#[case::replace_with_force(true, true, true, "")]
+#[case::replace_without_force(true, false, false, "already annotated")]
+#[case::patch(false, false, false, "Error reading the policy's existing metadata")]
+fn test_annotate_unreadable_existing_metadata(
+    #[case] with_metadata_path: bool,
+    #[case] with_force: bool,
+    #[case] success: bool,
+    #[case] expected_stderr: &str,
+) {
+    let tempdir = tempdir().unwrap();
+
+    // Build the fixture. Start from the rego policy, then add a metadata
+    // section that does not hold JSON.
+    let wasm_bytes =
+        std::fs::read(test_data("rego-annotate/no-default-namespace-rego.wasm")).unwrap();
+    let mut module = walrus::Module::from_buffer(&wasm_bytes).unwrap();
+    module.customs.add(walrus::RawCustomSection {
+        name: String::from("io.kubewarden.metadata"),
+        data: b"not json".to_vec(),
+    });
+    let unreadable_wasm = tempdir.path().join("unreadable.wasm");
+    module.emit_wasm_file(&unreadable_wasm).unwrap();
+
+    let output_wasm = tempdir.path().join("out.wasm");
+    let mut cmd = setup_command(tempdir.path());
+    cmd.arg("annotate");
+    if with_metadata_path {
+        cmd.arg("-m")
+            .arg(test_data("rego-annotate/metadata-correct.yml"));
+    } else {
+        cmd.arg("-a").arg("io.kubewarden.policy.title=x");
+    }
+    if with_force {
+        cmd.arg("--force");
+    }
+    cmd.arg(&unreadable_wasm).arg("-o").arg(&output_wasm);
+
+    if success {
+        cmd.assert().success();
+        let metadata = policy_metadata::Metadata::from_path(&output_wasm)
+            .expect("cannot read metadata back")
+            .expect("metadata must be present");
+        assert_eq!(
+            metadata
+                .annotations
+                .unwrap()
+                .get("io.kubewarden.policy.title"),
+            Some(&String::from("disallow-service-loadbalancer")),
+        );
+    } else {
+        cmd.assert().failure().stderr(contains(expected_stderr));
+        assert!(
+            !output_wasm.exists(),
+            "no output file should be written when the command fails"
+        );
+    }
+}
+
 #[rstest]
 #[case::show_signatures(true)]
 #[case::hide_signatures(false)]

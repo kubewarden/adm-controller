@@ -45,10 +45,16 @@ pub(crate) enum MetadataSource {
 impl MetadataSource {
     /// Returns the metadata that the overrides apply to.
     ///
-    /// `force` permits [`MetadataSource::File`] to replace metadata that is
-    /// already present. [`MetadataSource::Policy`] ignores `force`: it
-    /// never discards anything.
-    fn resolve(self, existing: Option<Metadata>, force: bool) -> Result<Metadata> {
+    /// `existing` is the raw content of the metadata section already in the
+    /// policy, if the policy has one.
+    ///
+    /// [`MetadataSource::File`] only asks whether the section exists. If it
+    /// does, `force` permits the replace. kwctl does not parse content that
+    /// it is about to discard.
+    ///
+    /// [`MetadataSource::Policy`] parses the section, because the overrides
+    /// apply on top of its content.
+    fn resolve(self, existing: Option<&[u8]>, force: bool) -> Result<Metadata> {
         match self {
             Self::File(path) => {
                 if existing.is_some() {
@@ -61,11 +67,15 @@ impl MetadataSource {
                 }
                 load_metadata_file(&path)
             }
-            Self::Policy => existing.ok_or_else(|| {
-                anyhow!(
-                    "The policy is not annotated. Use `annotate --metadata-path` to annotate it"
-                )
-            }),
+            Self::Policy => {
+                let raw = existing.ok_or_else(|| {
+                    anyhow!(
+                        "The policy is not annotated. Use `annotate --metadata-path` to annotate it"
+                    )
+                })?;
+                serde_json::from_slice(raw)
+                    .map_err(|e| anyhow!("Error reading the policy's existing metadata: {}", e))
+            }
         }
     }
 }
@@ -76,15 +86,17 @@ pub(crate) fn write_annotation(request: AnnotateRequest) -> Result<()> {
     let wasm_bytes =
         std::fs::read(&request.wasm_path).map_err(|e| anyhow!("Error reading wasm file: {}", e))?;
 
-    let existing_metadata = Metadata::from_contents(&wasm_bytes)
-        .map_err(|e| anyhow!("Error reading the policy's existing metadata: {}", e))?;
-
-    let base_metadata = request.metadata.resolve(existing_metadata, request.force)?;
-
     let mut module = walrus::Module::from_buffer(&wasm_bytes)
         .map_err(|e| anyhow!("Error parsing wasm module: {}", e))?;
 
-    strip_metadata_sections(&mut module);
+    // The module is only in memory at this point. Nothing reaches the disk
+    // before `write_annotated_wasm_file`. As a result, it is safe to take
+    // the section out before `resolve` decides whether the command goes on.
+    let existing_metadata = take_metadata_section(&mut module);
+
+    let base_metadata = request
+        .metadata
+        .resolve(existing_metadata.as_deref(), request.force)?;
 
     let detected_capabilities =
         wasm_scanner::scan(&module).map_err(|e| anyhow!("Error scanning wasm module: {}", e))?;
@@ -111,16 +123,25 @@ fn load_metadata_file(path: &Path) -> Result<Metadata> {
         .map_err(|e| anyhow!("Error unmarshalling metadata {}", e))
 }
 
-/// Removes every Kubewarden metadata custom section already in `module`.
-/// [`MetadataSource::resolve`] already decided that this is safe. This step
-/// only clears space for [`write_annotated_wasm_file`] to add one fresh
-/// section.
-fn strip_metadata_sections(module: &mut walrus::Module) {
+/// Removes every Kubewarden metadata custom section from `module`. Returns
+/// the raw content of the first section, if the module had one.
+///
+/// `Metadata::from_contents` also reads the first section. As a result,
+/// the two agree on which metadata a double-annotated policy carries.
+///
+/// This step also clears space for [`write_annotated_wasm_file`] to add
+/// one fresh section.
+fn take_metadata_section(module: &mut walrus::Module) -> Option<Vec<u8>> {
+    let first = module
+        .customs
+        .remove_raw(KUBEWARDEN_CUSTOM_SECTION_METADATA)
+        .map(|section| section.data);
     while module
         .customs
         .remove_raw(KUBEWARDEN_CUSTOM_SECTION_METADATA)
         .is_some()
     {}
+    first
 }
 
 /// One `--annotation` value: a literal string, or the path to a file that
@@ -480,12 +501,15 @@ mod tests {
         assert_eq!(mismatch.declared_but_unused, expected_unused);
     }
 
+    /// Builds a module with `count` metadata sections. Each section holds
+    /// its own index as content. A test can then tell which section
+    /// `take_metadata_section` returned.
     fn module_with_metadata_sections(count: usize) -> walrus::Module {
         let mut module = walrus::Module::default();
-        for _ in 0..count {
+        for index in 0..count {
             module.customs.add(walrus::RawCustomSection {
                 name: String::from(KUBEWARDEN_CUSTOM_SECTION_METADATA),
-                data: b"{}".to_vec(),
+                data: index.to_string().into_bytes(),
             });
         }
         module
@@ -499,15 +523,25 @@ mod tests {
             .count()
     }
 
+    #[test]
+    fn take_metadata_section_returns_none_when_there_is_no_section() {
+        let mut module = module_with_metadata_sections(0);
+
+        assert_eq!(take_metadata_section(&mut module), None);
+        assert_eq!(metadata_section_count(&module), 0);
+    }
+
     #[rstest]
-    #[case::no_sections(0)]
     #[case::one_section(1)]
     #[case::already_double_annotated(2)]
-    fn strip_metadata_sections_removes_every_section(#[case] existing_sections: usize) {
+    fn take_metadata_section_returns_the_first_and_removes_every_section(
+        #[case] existing_sections: usize,
+    ) {
         let mut module = module_with_metadata_sections(existing_sections);
 
-        strip_metadata_sections(&mut module);
+        let taken = take_metadata_section(&mut module);
 
+        assert_eq!(taken, Some(b"0".to_vec()));
         assert_eq!(metadata_section_count(&module), 0);
     }
 
@@ -516,6 +550,10 @@ mod tests {
             protocol_version: Some(ProtocolVersion::V1),
             ..Default::default()
         }
+    }
+
+    fn sample_metadata_json() -> Vec<u8> {
+        serde_json::to_vec(&sample_metadata()).expect("sample metadata serializes")
     }
 
     #[test]
@@ -528,33 +566,50 @@ mod tests {
         assert_eq!(metadata.protocol_version, Some(ProtocolVersion::V1));
     }
 
-    #[test]
-    fn metadata_source_file_with_existing_metadata_without_force_fails() {
+    /// `File` does not read the existing section, so its content must not
+    /// change the result. Without `--force`, `File` refuses. With `--force`,
+    /// `File` replaces the section.
+    #[rstest]
+    #[case::readable_section(sample_metadata_json())]
+    #[case::unreadable_section(b"not json".to_vec())]
+    fn metadata_source_file_with_existing_metadata_without_force_fails(#[case] existing: Vec<u8>) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("metadata.yml");
         fs::write(&path, serde_yaml::to_string(&sample_metadata()).unwrap()).unwrap();
 
         let err = MetadataSource::File(path)
-            .resolve(Some(sample_metadata()), false)
+            .resolve(Some(&existing), false)
             .unwrap_err();
         assert!(err.to_string().contains("already annotated"));
     }
 
-    #[test]
-    fn metadata_source_file_with_existing_metadata_and_force_uses_the_file() {
+    #[rstest]
+    #[case::readable_section(sample_metadata_json())]
+    #[case::unreadable_section(b"not json".to_vec())]
+    fn metadata_source_file_with_existing_metadata_and_force_uses_the_file(
+        #[case] existing: Vec<u8>,
+    ) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("metadata.yml");
         let mut from_file = sample_metadata();
         from_file.mutating = true;
         fs::write(&path, serde_yaml::to_string(&from_file).unwrap()).unwrap();
 
-        let mut existing = sample_metadata();
-        existing.mutating = false;
-
         let metadata = MetadataSource::File(path)
-            .resolve(Some(existing), true)
+            .resolve(Some(&existing), true)
             .unwrap();
         assert!(metadata.mutating);
+    }
+
+    #[test]
+    fn metadata_source_policy_with_unreadable_existing_metadata_fails() {
+        let err = MetadataSource::Policy
+            .resolve(Some(b"not json"), false)
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Error reading the policy's existing metadata")
+        );
     }
 
     #[rstest]
