@@ -212,6 +212,7 @@ fn subcommand_push() -> Command {
         Arg::new("force")
             .short('f')
             .long("force")
+            .action(ArgAction::SetTrue)
             .help("Push also a policy that is not annotated"),
         Arg::new("output")
             .long("output")
@@ -401,9 +402,19 @@ fn subcommand_annotate() -> Command {
         Arg::new("metadata-path")
             .long("metadata-path")
             .short('m')
-            .required(true)
             .value_name("PATH")
             .help("File containing the metadata"),
+        Arg::new("annotation")
+            .long("annotation")
+            .short('a')
+            .action(ArgAction::Append)
+            .number_of_values(1)
+            .value_name("KEY=VALUE")
+            .help(
+                "Set a single metadata annotation. KEY=@PATH reads the value from a file. \
+                 Can be repeated. Without --metadata-path, the policy must already be \
+                 annotated",
+            ),
         Arg::new("usage-path")
             .long("usage-path")
             .short('u')
@@ -415,6 +426,11 @@ fn subcommand_annotate() -> Command {
             .required(true)
             .value_name("PATH")
             .help("Output file"),
+        Arg::new("force")
+            .short('f')
+            .long("force")
+            .action(ArgAction::SetTrue)
+            .help("Overwrite the metadata of a policy that is already annotated"),
     ];
     args.sort_by(|a, b| a.get_id().cmp(b.get_id()));
     args.push(
@@ -427,6 +443,13 @@ fn subcommand_annotate() -> Command {
     Command::new("annotate")
         .about("Add Kubewarden metadata to a WebAssembly module")
         .args(args)
+        .group(
+            // at least one source of metadata must be given
+            ArgGroup::new("metadata-source")
+                .args(["metadata-path", "annotation", "usage-path"])
+                .multiple(true)
+                .required(true),
+        )
 }
 
 fn subcommand_inspect() -> Command {

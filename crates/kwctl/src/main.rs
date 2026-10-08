@@ -177,7 +177,7 @@ async fn main() -> Result<()> {
                     "policy push"
                 );
 
-                let force = matches.contains_id("force");
+                let force = matches.get_flag("force");
 
                 let immutable_ref = push::push(wasm_path, &uri, sources.as_ref(), force).await?;
 
@@ -220,18 +220,33 @@ async fn main() -> Result<()> {
                     .get_one::<String>("wasm-path")
                     .map(|output| PathBuf::from_str(output).unwrap())
                     .unwrap();
-                let metadata_file = matches
+                let metadata_path = matches
                     .get_one::<String>("metadata-path")
-                    .map(|output| PathBuf::from_str(output).unwrap())
-                    .unwrap();
+                    .map(|output| PathBuf::from_str(output).unwrap());
                 let destination = matches
                     .get_one::<String>("output-path")
                     .map(|output| PathBuf::from_str(output).unwrap())
                     .unwrap();
-                let usage_file = matches
+                let usage_path = matches
                     .get_one::<String>("usage-path")
                     .map(|output| PathBuf::from_str(output).unwrap());
-                annotate::write_annotation(wasm_path, metadata_file, destination, usage_file)?;
+                let annotations = matches
+                    .get_many::<String>("annotation")
+                    .map(|values| values.map(String::from).collect())
+                    .unwrap_or_default();
+                let force = matches.get_flag("force");
+                let metadata = match metadata_path {
+                    Some(path) => annotate::MetadataSource::File(path),
+                    None => annotate::MetadataSource::Policy,
+                };
+                annotate::write_annotation(annotate::AnnotateRequest {
+                    wasm_path,
+                    metadata,
+                    destination,
+                    annotations,
+                    usage_path,
+                    force,
+                })?;
             }
             Ok(())
         }

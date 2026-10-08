@@ -193,6 +193,20 @@ before policy distribution.
 
 The `kwctl annotate` command can be used to perform this operation.
 
+`kwctl annotate` can also change a single annotation of a policy that is
+already annotated. Use the `--annotation` (or `-a`) flag with a `KEY=VALUE`
+pair. You can repeat this flag. Use `KEY=@PATH` to read the value from a
+file instead of the command line.
+
+This is useful, for example, when you redistribute a policy pulled from
+another registry and only need to change a couple of annotations:
+
+```console
+kwctl annotate \
+  --annotation io.kubewarden.policy.ociUrl=registry.corp.example/kubewarden/foo:v1.0.0 \
+  -o foo-internal.wasm foo.wasm
+```
+
 ### Inspect a policy
 
 The metadata attached to a policy, plus other details can be seen via the

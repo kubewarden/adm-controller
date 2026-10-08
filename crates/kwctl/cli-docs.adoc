@@ -65,7 +65,7 @@ Tool to manage Kubewarden policies
 
 Add Kubewarden metadata to a WebAssembly module
 
-*Usage:* `kwctl annotate [OPTIONS] --metadata-path <PATH> --output-path <PATH> <wasm-path>`
+*Usage:* `kwctl annotate [OPTIONS] --output-path <PATH> <--metadata-path <PATH>|--annotation <KEY=VALUE>|--usage-path <PATH>> <wasm-path>`
 
 === *Arguments:*
 
@@ -73,6 +73,8 @@ Add Kubewarden metadata to a WebAssembly module
 
 === *Options:*
 
+* `-a`, `--annotation <KEY=VALUE>` — Set a single metadata annotation. KEY=@PATH reads the value from a file. Can be repeated. Without --metadata-path, the policy must already be annotated
+* `-f`, `--force` — Overwrite the metadata of a policy that is already annotated
 * `-m`, `--metadata-path <PATH>` — File containing the metadata
 * `-o`, `--output-path <PATH>` — Output file
 * `-u`, `--usage-path <PATH>` — File containing the usage information of the policy
@@ -319,7 +321,7 @@ It respects standard proxy environment variables when downloading policies:
 === *Options:*
 
 * `--docker-config-json-path <PATH>` — Path to a directory containing the Docker 'config.json' file. Can be used to indicate registry authentication details
-* `-f`, `--force <FORCE>` — Push also a policy that is not annotated
+* `-f`, `--force` — Push also a policy that is not annotated
 * `-o`, `--output <PATH>` — Output format
 +
 Default value: `text`
