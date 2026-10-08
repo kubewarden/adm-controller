@@ -301,7 +301,7 @@ image:
   # controller image to be used
   repository: "kubewarden/adm-controller/controller"
   # image tag
-  tag: v1.38.2
+  tag: v1.39.0-rc.1
   pullPolicy: IfNotPresent
 preDeleteJob:
   image:
@@ -378,7 +378,7 @@ auditScanner:
     # The registry is defined in the common.cattle.systemDefaultRegistry value
     # kubectl image to be used in the pre-delete helm hook
     repository: "kubewarden/adm-controller/audit-scanner"
-    tag: v1.38.2
+    tag: v1.39.0-rc.1
     pullPolicy: IfNotPresent
   cronJob:
     schedule: "0 * * * *" # every 60 minutes
@@ -460,7 +460,7 @@ policyServer:
   image:
     # The registry is defined in the global.cattle.systemDefaultRegistry value
     repository: "kubewarden/adm-controller/policy-server"
-    tag: v1.38.2
+    tag: v1.39.0-rc.1
   serviceAccountName: policy-server
   # Configmap containing a Sigstore verification configuration under a key
   # named `verification-config`. Must be on the same ns as the PolicyServer.
