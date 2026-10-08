@@ -323,7 +323,7 @@ _Appears in:_
 **Type:** _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 NamespaceSelector decides whether to run the webhook on an object based
 on whether the namespace for that object matches the selector. If the
@@ -375,7 +375,7 @@ Default to the empty LabelSelector, which matches everything.
 **Type:** _boolean_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 AllowInsideAdmissionControllerNamespace controls whether the policy should also be
 evaluated for resources in the namespace where Kubewarden is deployed.
@@ -441,7 +441,7 @@ _Appears in:_
 **Type:** _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 NamespaceSelector decides whether to run the webhook on an object based
 on whether the namespace for that object matches the selector. If the
@@ -493,7 +493,7 @@ Default to the empty LabelSelector, which matches everything.
 **Type:** _[ContextAwareResource](#contextawareresource) array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 List of Kubernetes resources the policy is allowed to access at evaluation time.
 Access to these resources is done using the `ServiceAccount` of the PolicyServer
@@ -503,7 +503,7 @@ the policy is assigned to.
 **Type:** _boolean_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 AllowInsideAdmissionControllerNamespace controls whether the policy should also be
 evaluated for resources in the namespace where Kubewarden is deployed.
@@ -536,7 +536,7 @@ _Appears in:_
 **Type:** _[PolicyGroupMembersWithContext](#policygroupmemberswithcontext)_
 
 **Validation:**
-- Required: \{\}
+- Required
 
 Policies is a list of policies that are part of the group that will
 be available to be called in the evaluation expression field.
@@ -586,7 +586,7 @@ _Appears in:_
 **Default:** default
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 PolicyServer identifies an existing PolicyServer resource.
 ##### `mode`
@@ -597,7 +597,7 @@ PolicyServer identifies an existing PolicyServer resource.
 
 **Validation:**
 - Enum: [protect monitor]
-- Optional: \{\}
+- Optional
 
 Mode defines the execution mode of this policy. Can be set to
 either "protect" or "monitor". If it's empty, it is defaulted to
@@ -617,7 +617,7 @@ The webhook cares about an operation if it matches _any_ Rule.
 **Type:** _[FailurePolicyType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#failurepolicytype-v1-admissionregistration)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 FailurePolicy defines how unrecognized errors and timeout errors from the
 policy are handled. Allowed values are "Ignore" or "Fail".
@@ -633,7 +633,7 @@ The default behaviour is "Fail"
 **Default:** true
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 BackgroundAudit indicates whether a policy should be used or skipped when
 performing audit checks. If false, the policy cannot produce meaningful
@@ -644,7 +644,7 @@ The default is "true".
 **Type:** _[MatchPolicyType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchpolicytype-v1-admissionregistration)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 matchPolicy defines how the "rules" list is used to match incoming requests.
 Allowed values are "Exact" or "Equivalent".
@@ -664,7 +664,7 @@ Defaults to "Equivalent"
 **Type:** _[MatchCondition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchcondition-v1-admissionregistration) array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 MatchConditions are a list of conditions that must be met for a request to be
 validated. Match conditions filter requests that have already been matched by
@@ -683,7 +683,7 @@ Only available if the feature gate AdmissionWebhookMatchConditions is enabled.
 **Type:** _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 ObjectSelector decides whether to run the webhook based on if the
 object has matching labels. objectSelector is evaluated against both
@@ -715,7 +715,7 @@ sideEffects == Unknown or Some.
 **Validation:**
 - Maximum: 30
 - Minimum: 2
-- Optional: \{\}
+- Optional
 
 TimeoutSeconds specifies the timeout for this webhook. After the timeout passes,
 the webhook call will be ignored or the API call will fail based on the
@@ -727,7 +727,7 @@ Default to 10 seconds.
 **Type:** _string_
 
 **Validation:**
-- Required: \{\}
+- Required
 
 Expression is the evaluation expression to accept or reject the
 admission request under evaluation. This field uses CEL as the
@@ -745,7 +745,7 @@ documentation to learn about all the features available.
 **Type:** _string_
 
 **Validation:**
-- Required: \{\}
+- Required
 
 Message is  used to specify the message that will be returned when
 the policy group is rejected. The specific policy results will be
@@ -783,7 +783,7 @@ _Appears in:_
 **Type:** _string_
 
 **Validation:**
-- Required: \{\}
+- Required
 
 Module is the location of the WASM module to be loaded. Can be a
 local file (file://), a remote file served by an HTTP server
@@ -796,7 +796,7 @@ internally.
 **Type:** _[RawExtension](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rawextension-runtime-pkg)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Settings is a free-form object that contains the policy configuration
 values.
@@ -808,7 +808,7 @@ x-kubernetes-embedded-resource: false
 **Validation:**
 - Maximum: 30
 - Minimum: 2
-- Optional: \{\}
+- Optional
 
 TimeoutEvalSeconds specifies the timeout for the policy evaluation. After
 the timeout passes, the policy evaluation call will fail based on the
@@ -837,7 +837,7 @@ _Appears in:_
 **Type:** _[ContextAwareResource](#contextawareresource) array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 List of Kubernetes resources the policy is allowed to access at evaluation time.
 Access to these resources is done using the `ServiceAccount` of the PolicyServer
@@ -891,7 +891,7 @@ _Appears in:_
 **Type:** _[PolicyGroupMembers](#policygroupmembers)_
 
 **Validation:**
-- Required: \{\}
+- Required
 
 Policies is a list of policies that are part of the group that will
 be available to be called in the evaluation expression field.
@@ -1024,7 +1024,7 @@ _Appears in:_
 **Type:** _[SecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#securitycontext-v1-core)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 securityContext definition to be used in the policy server container
 ##### `pod`
@@ -1032,7 +1032,7 @@ securityContext definition to be used in the policy server container
 **Type:** _[PodSecurityContext](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#podsecuritycontext-v1-core)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 podSecurityContext definition to be used in the policy server Pod
 
@@ -1077,7 +1077,7 @@ MinAvailable or Max MaxUnavailable can be set.
 **Type:** _object (keys:string, values:string)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Annotations is an unstructured key value map stored with a resource that may be
 set by external tools to store and retrieve arbitrary metadata. They are not
@@ -1088,7 +1088,7 @@ More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/ann
 **Type:** _object (keys:string, values:string)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Labels is a map of custom labels to be applied to the Deployment created by the
 PolicyServer and to the Pods managed by that Deployment. System labels set by
@@ -1099,7 +1099,7 @@ More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/lab
 **Type:** _[EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#envvar-v1-core) array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 List of environment variables to set in the container.
 ##### `serviceAccountName`
@@ -1107,7 +1107,7 @@ List of environment variables to set in the container.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Name of the service account associated with the policy server.
 Namespace service account will be used if not specified.
@@ -1116,7 +1116,7 @@ Namespace service account will be used if not specified.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Name of ImagePullSecret secret in the same namespace, used for pulling
 policies from repositories.
@@ -1125,7 +1125,7 @@ policies from repositories.
 **Type:** _string array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 List of insecure URIs to policy repositories. The `insecureSources`
 content format corresponds with the contents of the `insecure_sources`
@@ -1136,7 +1136,7 @@ Kubewarden documentation in the reference section.
 **Type:** _object (keys:string, values:string array)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Key value map of registry URIs endpoints to a list of their associated
 PEM encoded certificate authorities that have to be used to verify the
@@ -1149,7 +1149,7 @@ documentation in the reference section.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Name of VerificationConfig configmap in the kubewarden namespace (same
 namespace as the controller deployment), containing Sigstore verification
@@ -1160,7 +1160,7 @@ verification-config in the ConfigMap.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Name of SigstoreTrustConfig configmap in the kubewarden namespace (same
 namespace as the controller deployment), containing Sigstore trust
@@ -1174,7 +1174,7 @@ to this ConfigMap can influence policy signature verification.
 **Type:** _[PolicyServerSecurity](#policyserversecurity)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Security configuration to be used in the Policy Server workload.
 The field allows different configurations for the pod and containers.
@@ -1185,7 +1185,7 @@ containers added by other controllers (e.g. telemetry sidecars)
 **Type:** _[Affinity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#affinity-v1-core)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Affinity rules for the associated Policy Server pods.
 ##### `limits`
@@ -1193,7 +1193,7 @@ Affinity rules for the associated Policy Server pods.
 **Type:** _[ResourceList](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#resourcelist-v1-core)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Limits describes the maximum amount of compute resources allowed.
 ##### `requests`
@@ -1201,7 +1201,7 @@ Limits describes the maximum amount of compute resources allowed.
 **Type:** _[ResourceList](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#resourcelist-v1-core)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Requests describes the minimum amount of compute resources required.
 If Request is omitted for, it defaults to Limits if that is explicitly specified,
@@ -1218,7 +1218,7 @@ node with a taint.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 PriorityClassName is the name of the PriorityClass to be used for the
 policy server pods. Useful to schedule policy server pods with higher
@@ -1231,7 +1231,7 @@ remain unchanged, but new pods that reference it cannot be created.
 **Type:** _string array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 NamespacedPoliciesCapabilities lists host capability API calls allowed
 for namespaced policies running on this PolicyServer. When not set,
@@ -1248,7 +1248,7 @@ Supported wildcard patterns:
 **Validation:**
 - Maximum: 65535
 - Minimum: 1
-- Optional: \{\}
+- Optional
 
 Port where the policy server listens for incoming webhook requests.
 When unset, defaults to 8443. This is the port the Kubernetes API server
@@ -1260,7 +1260,7 @@ reaches when evaluating admission requests.
 **Validation:**
 - Maximum: 65535
 - Minimum: 1
-- Optional: \{\}
+- Optional
 
 Port used by the policy server to expose the readiness probe endpoint.
 When unset, defaults to 8081.
@@ -1271,7 +1271,7 @@ When unset, defaults to 8081.
 **Validation:**
 - Maximum: 65535
 - Minimum: 1
-- Optional: \{\}
+- Optional
 
 Port exposed by the metrics Service for this policy server.
 When unset, defaults to the controller-wide default
@@ -1316,7 +1316,7 @@ _Appears in:_
 **Default:** default
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 PolicyServer identifies an existing PolicyServer resource.
 ##### `mode`
@@ -1327,7 +1327,7 @@ PolicyServer identifies an existing PolicyServer resource.
 
 **Validation:**
 - Enum: [protect monitor]
-- Optional: \{\}
+- Optional
 
 Mode defines the execution mode of this policy. Can be set to
 either "protect" or "monitor". If it's empty, it is defaulted to
@@ -1341,7 +1341,7 @@ recreated in "monitor" mode instead.
 **Type:** _string_
 
 **Validation:**
-- Required: \{\}
+- Required
 
 Module is the location of the WASM module to be loaded. Can be a
 local file (file://), a remote file served by an HTTP server
@@ -1354,7 +1354,7 @@ internally.
 **Type:** _[RawExtension](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rawextension-runtime-pkg)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Settings is a free-form object that contains the policy configuration
 values.
@@ -1370,7 +1370,7 @@ The webhook cares about an operation if it matches _any_ Rule.
 **Type:** _[FailurePolicyType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#failurepolicytype-v1-admissionregistration)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 FailurePolicy defines how unrecognized errors and timeout errors from the
 policy are handled. Allowed values are "Ignore" or "Fail".
@@ -1392,7 +1392,7 @@ incoming requests or not.
 **Default:** true
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 BackgroundAudit indicates whether a policy should be used or skipped when
 performing audit checks. If false, the policy cannot produce meaningful
@@ -1403,7 +1403,7 @@ The default is "true".
 **Type:** _[MatchPolicyType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchpolicytype-v1-admissionregistration)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 matchPolicy defines how the "rules" list is used to match incoming requests.
 Allowed values are "Exact" or "Equivalent".
@@ -1423,7 +1423,7 @@ Defaults to "Equivalent"
 **Type:** _[MatchCondition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchcondition-v1-admissionregistration) array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 MatchConditions are a list of conditions that must be met for a request to be
 validated. Match conditions filter requests that have already been matched by
@@ -1442,7 +1442,7 @@ Only available if the feature gate AdmissionWebhookMatchConditions is enabled.
 **Type:** _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 ObjectSelector decides whether to run the webhook based on if the
 object has matching labels. objectSelector is evaluated against both
@@ -1474,7 +1474,7 @@ sideEffects == Unknown or Some.
 **Validation:**
 - Maximum: 30
 - Minimum: 2
-- Optional: \{\}
+- Optional
 
 TimeoutSeconds specifies the timeout for the policy webhook. After the timeout passes,
 the webhook call will be ignored or the API call will fail based on the
@@ -1488,7 +1488,7 @@ Default to 10 seconds.
 **Validation:**
 - Maximum: 30
 - Minimum: 2
-- Optional: \{\}
+- Optional
 
 TimeoutEvalSeconds specifies the timeout for the policy evaluation. After
 the timeout passes, the policy evaluation call will fail based on the
@@ -1499,7 +1499,7 @@ The timeout value must be between 2 and 30 seconds.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Message overrides the rejection message of the policy.
 When provided, the policy's rejection message can be found
@@ -1719,7 +1719,7 @@ _Appears in:_
 **Type:** _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 NamespaceSelector decides whether to run the webhook on an object based
 on whether the namespace for that object matches the selector. If the
@@ -1899,7 +1899,7 @@ Replicas is the number of desired replicas.
 **Type:** _object (keys:string, values:string)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Annotations is an unstructured key value map stored with a resource that may be
 set by external tools to store and retrieve arbitrary metadata. They are not
@@ -1910,7 +1910,7 @@ More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/ann
 **Type:** _[EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#envvar-v1-core) array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 List of environment variables to set in the container.
 ##### `serviceAccountName`
@@ -1918,7 +1918,7 @@ List of environment variables to set in the container.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Name of the service account associated with the policy server.
 Namespace service account will be used if not specified.
@@ -1927,7 +1927,7 @@ Namespace service account will be used if not specified.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Name of ImagePullSecret secret in the same namespace, used for pulling
 policies from repositories.
@@ -1936,7 +1936,7 @@ policies from repositories.
 **Type:** _string array_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 List of insecure URIs to policy repositories. The `insecureSources`
 content format corresponds with the contents of the `insecure_sources`
@@ -1947,7 +1947,7 @@ Kubewarden documentation in the reference section.
 **Type:** _object (keys:string, values:string array)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Key value map of registry URIs endpoints to a list of their associated
 PEM encoded certificate authorities that have to be used to verify the
@@ -1960,7 +1960,7 @@ documentation in the reference section.
 **Type:** _string_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Name of VerificationConfig configmap in the same namespace, containing
 Sigstore verification configuration. The configuration must be under a
@@ -1988,7 +1988,7 @@ _Appears in:_
 **Default:** default
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 PolicyServer identifies an existing PolicyServer resource.
 ##### `module`
@@ -1996,7 +1996,7 @@ PolicyServer identifies an existing PolicyServer resource.
 **Type:** _string_
 
 **Validation:**
-- Required: \{\}
+- Required
 
 Module is the location of the WASM module to be loaded. Can be a
 local file (file://), a remote file served by an HTTP server
@@ -2010,7 +2010,7 @@ registry (registry://).
 
 **Validation:**
 - Enum: [protect monitor]
-- Optional: \{\}
+- Optional
 
 Mode defines the execution mode of this policy. Can be set to
 either "protect" or "monitor". If it's empty, it is defaulted to
@@ -2024,7 +2024,7 @@ recreated in "monitor" mode instead.
 **Type:** _[RawExtension](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rawextension-runtime-pkg)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 Settings is a free-form object that contains the policy configuration
 values.
@@ -2040,7 +2040,7 @@ The webhook cares about an operation if it matches _any_ Rule.
 **Type:** _[FailurePolicyType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#failurepolicytype-v1-admissionregistration)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 FailurePolicy defines how unrecognized errors and timeout errors from the
 policy are handled. Allowed values are "Ignore" or "Fail".
@@ -2060,7 +2060,7 @@ incoming requests or not.
 **Type:** _[MatchPolicyType](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchpolicytype-v1-admissionregistration)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 matchPolicy defines how the "rules" list is used to match incoming requests.
 Allowed values are "Exact" or "Equivalent".
@@ -2080,7 +2080,7 @@ Defaults to "Equivalent"
 **Type:** _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta)_
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 ObjectSelector decides whether to run the webhook based on if the
 object has matching labels. objectSelector is evaluated against both
@@ -2110,7 +2110,7 @@ sideEffects == Unknown or Some.
 **Default:** 10
 
 **Validation:**
-- Optional: \{\}
+- Optional
 
 TimeoutSeconds specifies the timeout for this webhook. After the timeout passes,
 the webhook call will be ignored or the API call will fail based on the

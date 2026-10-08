@@ -362,7 +362,7 @@ for more examples of label selectors.
 
 Default to the empty LabelSelector, which matches everything.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`allowInsideAdmissionControllerNamespace`* __boolean__
 a| AllowInsideAdmissionControllerNamespace controls whether the policy should also be
@@ -374,7 +374,7 @@ inside the Kubewarden namespace.
 Warning: setting this to true may cause a deadlock if the policy prevents
 Kubewarden components from starting.
 | 
-| Optional: \{} +
+| Optional +
 
 |===
 
@@ -477,14 +477,14 @@ for more examples of label selectors.
 
 Default to the empty LabelSelector, which matches everything.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`contextAwareResources`* __xref:{anchor_prefix}-github-com-kubewarden-adm-controller-api-policies-v1-contextawareresource[$$ContextAwareResource$$] array__
 a| List of Kubernetes resources the policy is allowed to access at evaluation time.
 Access to these resources is done using the `ServiceAccount` of the PolicyServer
 the policy is assigned to.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`allowInsideAdmissionControllerNamespace`* __boolean__
 a| AllowInsideAdmissionControllerNamespace controls whether the policy should also be
@@ -496,7 +496,7 @@ inside the Kubewarden namespace.
 Warning: setting this to true may cause a deadlock if the policy prevents
 Kubewarden components from starting.
 | 
-| Optional: \{} +
+| Optional +
 
 |===
 
@@ -527,7 +527,7 @@ a| Policies is a list of policies that are part of the group that will
 be available to be called in the evaluation expression field.
 Each policy in the group should be a Kubewarden policy.
 | 
-| Required: \{} +
+| Required +
 
 |===
 
@@ -582,7 +582,7 @@ a| Singular PascalCase name of the resource
 | *`policyServer`* __string__
 a| PolicyServer identifies an existing PolicyServer resource.
 | default
-| Optional: \{} +
+| Optional +
 
 | *`mode`* __xref:{anchor_prefix}-github-com-kubewarden-adm-controller-api-policies-v1-policymode[$$PolicyMode$$]__
 a| Mode defines the execution mode of this policy. Can be set to
@@ -594,7 +594,7 @@ allowed, but is disallowed to transition from "protect" to
 recreated in "monitor" mode instead.
 | protect
 | Enum: [protect monitor] +
-Optional: \{} +
+Optional +
 
 | *`rules`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rulewithoperations-v1-admissionregistration[$$RuleWithOperations$$] array__
 a| Rules describes what operations on what resources/subresources the webhook cares about.
@@ -610,7 +610,7 @@ policy are handled. Allowed values are "Ignore" or "Fail".
   fail and the API request to be rejected.
 The default behaviour is "Fail"
 | 
-| Optional: \{} +
+| Optional +
 
 | *`backgroundAudit`* __boolean__
 a| BackgroundAudit indicates whether a policy should be used or skipped when
@@ -618,7 +618,7 @@ performing audit checks. If false, the policy cannot produce meaningful
 evaluation results during audit checks and will be skipped.
 The default is "true".
 | true
-| Optional: \{} +
+| Optional +
 
 | *`matchPolicy`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchpolicytype-v1-admissionregistration[$$MatchPolicyType$$]__
 a| matchPolicy defines how the "rules" list is used to match incoming requests.
@@ -635,7 +635,7 @@ a request to apps/v1beta1 or extensions/v1beta1 would be converted to apps/v1 an
 
 Defaults to "Equivalent"
 | 
-| Optional: \{} +
+| Optional +
 
 | *`matchConditions`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchcondition-v1-admissionregistration[$$MatchCondition$$] array__
 a| MatchConditions are a list of conditions that must be met for a request to be
@@ -651,7 +651,7 @@ FALSE): - If failurePolicy=Fail, reject the request - If
 failurePolicy=Ignore, the policy is skipped.
 Only available if the feature gate AdmissionWebhookMatchConditions is enabled.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`objectSelector`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta[$$LabelSelector$$]__
 a| ObjectSelector decides whether to run the webhook based on if the
@@ -666,7 +666,7 @@ Use the object selector only if the webhook is opt-in, because end
 users may skip the admission webhook by setting the labels.
 Default to the empty LabelSelector, which matches everything.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`sideEffects`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#sideeffectclass-v1-admissionregistration[$$SideEffectClass$$]__
 a| SideEffects states whether this webhook has side effects.
@@ -686,7 +686,7 @@ Default to 10 seconds.
 | 10
 | Maximum: 30 +
 Minimum: 2 +
-Optional: \{} +
+Optional +
 
 | *`expression`* __string__
 a| Expression is the evaluation expression to accept or reject the
@@ -701,14 +701,14 @@ rejected. This expression allows grouping policies calls and perform
 logical operations on the results of the policies. See Kubewarden
 documentation to learn about all the features available.
 | 
-| Required: \{} +
+| Required +
 
 | *`message`* __string__
 a| Message is  used to specify the message that will be returned when
 the policy group is rejected. The specific policy results will be
 returned in the warning field of the response.
 | 
-| Required: \{} +
+| Required +
 
 |===
 
@@ -753,14 +753,14 @@ registry (registry://).
 If prefix is missing, it will default to registry:// and use that
 internally.
 | 
-| Required: \{} +
+| Required +
 
 | *`settings`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rawextension-runtime-pkg[$$RawExtension$$]__
 a| Settings is a free-form object that contains the policy configuration
 values.
 x-kubernetes-embedded-resource: false
 | 
-| Optional: \{} +
+| Optional +
 
 | *`timeoutEvalSeconds`* __integer__
 a| TimeoutEvalSeconds specifies the timeout for the policy evaluation. After
@@ -770,7 +770,7 @@ The timeout value must be between 2 and 30 seconds.
 | 
 | Maximum: 30 +
 Minimum: 2 +
-Optional: \{} +
+Optional +
 
 |===
 
@@ -801,7 +801,7 @@ a| List of Kubernetes resources the policy is allowed to access at evaluation ti
 Access to these resources is done using the `ServiceAccount` of the PolicyServer
 the policy is assigned to.
 | 
-| Optional: \{} +
+| Optional +
 
 |===
 
@@ -864,7 +864,7 @@ a| Policies is a list of policies that are part of the group that will
 be available to be called in the evaluation expression field.
 Each policy in the group should be a Kubewarden policy.
 | 
-| Required: \{} +
+| Required +
 
 |===
 
@@ -992,12 +992,12 @@ PolicyServerSecurity defines securityContext configuration to be used in the Pol
 | *`container`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#securitycontext-v1-core[$$SecurityContext$$]__
 a| securityContext definition to be used in the policy server container
 | 
-| Optional: \{} +
+| Optional +
 
 | *`pod`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#podsecuritycontext-v1-core[$$PodSecurityContext$$]__
 a| podSecurityContext definition to be used in the policy server Pod
 | 
-| Optional: \{} +
+| Optional +
 
 |===
 
@@ -1045,7 +1045,7 @@ set by external tools to store and retrieve arbitrary metadata. They are not
 queryable and should be preserved when modifying objects.
 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
 | 
-| Optional: \{} +
+| Optional +
 
 | *`labels`* __object (keys:string, values:string)__
 a| Labels is a map of custom labels to be applied to the Deployment created by the
@@ -1053,24 +1053,24 @@ PolicyServer and to the Pods managed by that Deployment. System labels set by
 the controller always take precedence over user-defined labels with the same key.
 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 | 
-| Optional: \{} +
+| Optional +
 
 | *`env`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#envvar-v1-core[$$EnvVar$$] array__
 a| List of environment variables to set in the container.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`serviceAccountName`* __string__
 a| Name of the service account associated with the policy server.
 Namespace service account will be used if not specified.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`imagePullSecret`* __string__
 a| Name of ImagePullSecret secret in the same namespace, used for pulling
 policies from repositories.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`insecureSources`* __string array__
 a| List of insecure URIs to policy repositories. The `insecureSources`
@@ -1078,7 +1078,7 @@ content format corresponds with the contents of the `insecure_sources`
 key in `sources.yaml`. Reference for `sources.yaml` is found in the
 Kubewarden documentation in the reference section.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`sourceAuthorities`* __object (keys:string, values:string array)__
 a| Key value map of registry URIs endpoints to a list of their associated
@@ -1088,7 +1088,7 @@ corresponds with the contents of the `source_authorities` key in
 `sources.yaml`. Reference for `sources.yaml` is found in the Kubewarden
 documentation in the reference section.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`verificationConfig`* __string__
 a| Name of VerificationConfig configmap in the kubewarden namespace (same
@@ -1096,7 +1096,7 @@ namespace as the controller deployment), containing Sigstore verification
 configuration. The configuration must be under a key named
 verification-config in the ConfigMap.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`sigstoreTrustConfig`* __string__
 a| Name of SigstoreTrustConfig configmap in the kubewarden namespace (same
@@ -1107,7 +1107,7 @@ a custom Sigstore instance instead of the default public Sigstore infrastructure
 WARNING: This feature requires strict access control. Users with write access
 to this ConfigMap can influence policy signature verification.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`securityContexts`* __xref:{anchor_prefix}-github-com-kubewarden-adm-controller-api-policies-v1-policyserversecurity[$$PolicyServerSecurity$$]__
 a| Security configuration to be used in the Policy Server workload.
@@ -1115,24 +1115,24 @@ The field allows different configurations for the pod and containers.
 If set for the containers, this configuration will not be used in
 containers added by other controllers (e.g. telemetry sidecars)
 | 
-| Optional: \{} +
+| Optional +
 
 | *`affinity`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#affinity-v1-core[$$Affinity$$]__
 a| Affinity rules for the associated Policy Server pods.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`limits`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#resourcelist-v1-core[$$ResourceList$$]__
 a| Limits describes the maximum amount of compute resources allowed.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`requests`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#resourcelist-v1-core[$$ResourceList$$]__
 a| Requests describes the minimum amount of compute resources required.
 If Request is omitted for, it defaults to Limits if that is explicitly specified,
 otherwise to an implementation-defined value
 | 
-| Optional: \{} +
+| Optional +
 
 | *`tolerations`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#toleration-v1-core[$$Toleration$$] array__
 a| Tolerations describe the policy server pod's tolerations. It can be
@@ -1148,7 +1148,7 @@ resources.
 Note: If the referenced PriorityClass is deleted, existing pods
 remain unchanged, but new pods that reference it cannot be created.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`namespacedPoliciesCapabilities`* __string array__
 a| NamespacedPoliciesCapabilities lists host capability API calls allowed
@@ -1160,7 +1160,7 @@ Supported wildcard patterns:
 - "category/version/*": allow all capabilities of a specific version (e.g. "oci/v1/*")
 - Specific capability paths (e.g. "oci/v1/verify", "net/v1/dns_lookup_host")
 | 
-| Optional: \{} +
+| Optional +
 
 | *`webhookPort`* __integer__
 a| Port where the policy server listens for incoming webhook requests.
@@ -1169,7 +1169,7 @@ reaches when evaluating admission requests.
 | 
 | Maximum: 65535 +
 Minimum: 1 +
-Optional: \{} +
+Optional +
 
 | *`readinessProbePort`* __integer__
 a| Port used by the policy server to expose the readiness probe endpoint.
@@ -1177,7 +1177,7 @@ When unset, defaults to 8081.
 | 
 | Maximum: 65535 +
 Minimum: 1 +
-Optional: \{} +
+Optional +
 
 | *`metricsPort`* __integer__
 a| Port exposed by the metrics Service for this policy server.
@@ -1201,7 +1201,7 @@ such as those caused by hostNetwork.
 | 
 | Maximum: 65535 +
 Minimum: 1 +
-Optional: \{} +
+Optional +
 
 |===
 
@@ -1231,7 +1231,7 @@ Optional: \{} +
 | *`policyServer`* __string__
 a| PolicyServer identifies an existing PolicyServer resource.
 | default
-| Optional: \{} +
+| Optional +
 
 | *`mode`* __xref:{anchor_prefix}-github-com-kubewarden-adm-controller-api-policies-v1-policymode[$$PolicyMode$$]__
 a| Mode defines the execution mode of this policy. Can be set to
@@ -1243,7 +1243,7 @@ allowed, but is disallowed to transition from "protect" to
 recreated in "monitor" mode instead.
 | protect
 | Enum: [protect monitor] +
-Optional: \{} +
+Optional +
 
 | *`module`* __string__
 a| Module is the location of the WASM module to be loaded. Can be a
@@ -1253,14 +1253,14 @@ registry (registry://).
 If prefix is missing, it will default to registry:// and use that
 internally.
 | 
-| Required: \{} +
+| Required +
 
 | *`settings`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rawextension-runtime-pkg[$$RawExtension$$]__
 a| Settings is a free-form object that contains the policy configuration
 values.
 x-kubernetes-embedded-resource: false
 | 
-| Optional: \{} +
+| Optional +
 
 | *`rules`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rulewithoperations-v1-admissionregistration[$$RuleWithOperations$$] array__
 a| Rules describes what operations on what resources/subresources the webhook cares about.
@@ -1276,7 +1276,7 @@ policy are handled. Allowed values are "Ignore" or "Fail".
   fail and the API request to be rejected.
 The default behaviour is "Fail"
 | 
-| Optional: \{} +
+| Optional +
 
 | *`mutating`* __boolean__
 a| Mutating indicates whether a policy has the ability to mutate
@@ -1289,7 +1289,7 @@ performing audit checks. If false, the policy cannot produce meaningful
 evaluation results during audit checks and will be skipped.
 The default is "true".
 | true
-| Optional: \{} +
+| Optional +
 
 | *`matchPolicy`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchpolicytype-v1-admissionregistration[$$MatchPolicyType$$]__
 a| matchPolicy defines how the "rules" list is used to match incoming requests.
@@ -1306,7 +1306,7 @@ a request to apps/v1beta1 or extensions/v1beta1 would be converted to apps/v1 an
 
 Defaults to "Equivalent"
 | 
-| Optional: \{} +
+| Optional +
 
 | *`matchConditions`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#matchcondition-v1-admissionregistration[$$MatchCondition$$] array__
 a| MatchConditions are a list of conditions that must be met for a request to be
@@ -1322,7 +1322,7 @@ FALSE): - If failurePolicy=Fail, reject the request - If
 failurePolicy=Ignore, the policy is skipped.
 Only available if the feature gate AdmissionWebhookMatchConditions is enabled.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`objectSelector`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta[$$LabelSelector$$]__
 a| ObjectSelector decides whether to run the webhook based on if the
@@ -1337,7 +1337,7 @@ Use the object selector only if the webhook is opt-in, because end
 users may skip the admission webhook by setting the labels.
 Default to the empty LabelSelector, which matches everything.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`sideEffects`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#sideeffectclass-v1-admissionregistration[$$SideEffectClass$$]__
 a| SideEffects states whether this webhook has side effects.
@@ -1357,7 +1357,7 @@ Default to 10 seconds.
 | 10
 | Maximum: 30 +
 Minimum: 2 +
-Optional: \{} +
+Optional +
 
 | *`timeoutEvalSeconds`* __integer__
 a| TimeoutEvalSeconds specifies the timeout for the policy evaluation. After
@@ -1367,7 +1367,7 @@ The timeout value must be between 2 and 30 seconds.
 | 
 | Maximum: 30 +
 Minimum: 2 +
-Optional: \{} +
+Optional +
 
 | *`message`* __string__
 a| Message overrides the rejection message of the policy.
@@ -1375,7 +1375,7 @@ When provided, the policy's rejection message can be found
 inside of the `.status.details.causes` field of the
 AdmissionResponse object
 | 
-| Optional: \{} +
+| Optional +
 
 |===
 
@@ -1628,7 +1628,7 @@ for more examples of label selectors.
 
 Default to the empty LabelSelector, which matches everything.
 | 
-| Optional: \{} +
+| Optional +
 
 |===
 
@@ -1762,24 +1762,24 @@ set by external tools to store and retrieve arbitrary metadata. They are not
 queryable and should be preserved when modifying objects.
 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
 | 
-| Optional: \{} +
+| Optional +
 
 | *`env`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#envvar-v1-core[$$EnvVar$$] array__
 a| List of environment variables to set in the container.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`serviceAccountName`* __string__
 a| Name of the service account associated with the policy server.
 Namespace service account will be used if not specified.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`imagePullSecret`* __string__
 a| Name of ImagePullSecret secret in the same namespace, used for pulling
 policies from repositories.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`insecureSources`* __string array__
 a| List of insecure URIs to policy repositories. The `insecureSources`
@@ -1787,7 +1787,7 @@ content format corresponds with the contents of the `insecure_sources`
 key in `sources.yaml`. Reference for `sources.yaml` is found in the
 Kubewarden documentation in the reference section.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`sourceAuthorities`* __object (keys:string, values:string array)__
 a| Key value map of registry URIs endpoints to a list of their associated
@@ -1797,14 +1797,14 @@ corresponds with the contents of the `source_authorities` key in
 `sources.yaml`. Reference for `sources.yaml` is found in the Kubewarden
 documentation in the reference section.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`verificationConfig`* __string__
 a| Name of VerificationConfig configmap in the same namespace, containing
 Sigstore verification configuration. The configuration must be under a
 key named verification-config in the Configmap.
 | 
-| Optional: \{} +
+| Optional +
 
 |===
 
@@ -1832,7 +1832,7 @@ key named verification-config in the Configmap.
 | *`policyServer`* __string__
 a| PolicyServer identifies an existing PolicyServer resource.
 | default
-| Optional: \{} +
+| Optional +
 
 | *`module`* __string__
 a| Module is the location of the WASM module to be loaded. Can be a
@@ -1840,7 +1840,7 @@ local file (file://), a remote file served by an HTTP server
 (http://, https://), or an artifact served by an OCI-compatible
 registry (registry://).
 | 
-| Required: \{} +
+| Required +
 
 | *`mode`* __xref:{anchor_prefix}-github-com-kubewarden-adm-controller-api-policies-v1alpha2-policymode[$$PolicyMode$$]__
 a| Mode defines the execution mode of this policy. Can be set to
@@ -1852,14 +1852,14 @@ allowed, but is disallowed to transition from "protect" to
 recreated in "monitor" mode instead.
 | protect
 | Enum: [protect monitor] +
-Optional: \{} +
+Optional +
 
 | *`settings`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rawextension-runtime-pkg[$$RawExtension$$]__
 a| Settings is a free-form object that contains the policy configuration
 values.
 x-kubernetes-embedded-resource: false
 | 
-| Optional: \{} +
+| Optional +
 
 | *`rules`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rulewithoperations-v1-admissionregistration[$$RuleWithOperations$$] array__
 a| Rules describes what operations on what resources/subresources the webhook cares about.
@@ -1875,7 +1875,7 @@ policy are handled. Allowed values are "Ignore" or "Fail".
   fail and the API request to be rejected.
 The default behaviour is "Fail"
 | 
-| Optional: \{} +
+| Optional +
 
 | *`mutating`* __boolean__
 a| Mutating indicates whether a policy has the ability to mutate
@@ -1897,7 +1897,7 @@ a request to apps/v1beta1 or extensions/v1beta1 would be converted to apps/v1 an
 
 Defaults to "Equivalent"
 | 
-| Optional: \{} +
+| Optional +
 
 | *`objectSelector`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#labelselector-v1-meta[$$LabelSelector$$]__
 a| ObjectSelector decides whether to run the webhook based on if the
@@ -1912,7 +1912,7 @@ Use the object selector only if the webhook is opt-in, because end
 users may skip the admission webhook by setting the labels.
 Default to the empty LabelSelector, which matches everything.
 | 
-| Optional: \{} +
+| Optional +
 
 | *`sideEffects`* __link:https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#sideeffectclass-v1-admissionregistration[$$SideEffectClass$$]__
 a| SideEffects states whether this webhook has side effects.
@@ -1930,7 +1930,7 @@ failure policy.
 The timeout value must be between 1 and 30 seconds.
 Default to 10 seconds.
 | 10
-| Optional: \{} +
+| Optional +
 
 |===
 

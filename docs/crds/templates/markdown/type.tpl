@@ -50,8 +50,11 @@ _Appears in:_
 {{ end -}}
 {{ if .Validation -}}
 **Validation:**
+{{- /* crd-ref-docs emits valueless markers as "Optional: {}", which the renderer
+       then escapes into "Optional: \{\}". Trim the empty value until the upstream
+       fix lands: https://github.com/elastic/crd-ref-docs/issues/198 */ -}}
 {{- range .Validation }}
-- {{ markdownRenderFieldDoc . }}
+- {{ markdownRenderFieldDoc (trimSuffix ": {}" .) }}
 {{- end }}
 
 {{ end -}}
