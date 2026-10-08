@@ -402,7 +402,6 @@ fn subcommand_annotate() -> Command {
         Arg::new("metadata-path")
             .long("metadata-path")
             .short('m')
-            .required_unless_present_any(["annotation", "usage-path"])
             .value_name("PATH")
             .help("File containing the metadata"),
         Arg::new("annotation")
@@ -444,6 +443,13 @@ fn subcommand_annotate() -> Command {
     Command::new("annotate")
         .about("Add Kubewarden metadata to a WebAssembly module")
         .args(args)
+        .group(
+            // at least one source of metadata must be given
+            ArgGroup::new("metadata-source")
+                .args(["metadata-path", "annotation", "usage-path"])
+                .multiple(true)
+                .required(true),
+        )
 }
 
 fn subcommand_inspect() -> Command {

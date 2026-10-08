@@ -65,7 +65,7 @@ Tool to manage Kubewarden policies
 
 Add Kubewarden metadata to a WebAssembly module
 
-*Usage:* `kwctl annotate [OPTIONS] --output-path <PATH> <wasm-path>`
+*Usage:* `kwctl annotate [OPTIONS] --output-path <PATH> <--metadata-path <PATH>|--annotation <KEY=VALUE>|--usage-path <PATH>> <wasm-path>`
 
 === *Arguments:*
 
