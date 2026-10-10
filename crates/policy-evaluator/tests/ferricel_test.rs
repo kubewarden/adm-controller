@@ -2754,3 +2754,188 @@ spec:
         "expected {needle:?} in the rejection message, got: {message:?}"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// examples/deny-node-selection (kubewarden/adm-controller#1850)
+//
+// The example VAP denies spec.nodeName, spec.nodeSelector and
+// spec.affinity.nodeAffinity in a Pod or in a pod template. These tests
+// compile the example file as it is, so the example cannot drift from the
+// tests.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DENY_NODE_SELECTION_VAP: &str =
+    include_str!("../../../examples/deny-node-selection/vap.yaml");
+
+const DAEMON_SET_CONTROLLER: &str = "system:serviceaccount:kube-system:daemon-set-controller";
+
+/// A pod spec with one container and the given extra fields.
+fn pod_spec(extra: serde_json::Value) -> serde_json::Value {
+    let mut spec = json!({"containers": [{"name": "nginx", "image": "nginx:latest"}]});
+    spec.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    spec
+}
+
+/// An object of `kind` that holds `spec` where Kubernetes puts the pod spec
+/// for that kind.
+fn workload(kind: &str, spec: serde_json::Value) -> serde_json::Value {
+    let (api_version, workload_spec) = match kind {
+        "Pod" => ("v1", spec),
+        "CronJob" => (
+            "batch/v1",
+            json!({"schedule": "* * * * *", "jobTemplate": {"spec": {"template": {"spec": spec}}}}),
+        ),
+        "Deployment" | "DaemonSet" => ("apps/v1", json!({"template": {"spec": spec}})),
+        other => panic!("no fixture for kind {other}"),
+    };
+    json!({
+        "apiVersion": api_version,
+        "kind": kind,
+        "metadata": {"name": "workload", "namespace": "default"},
+        "spec": workload_spec
+    })
+}
+
+/// An AdmissionRequest for `object`. `old_object` makes it an UPDATE.
+fn workload_request(
+    object: serde_json::Value,
+    old_object: Option<serde_json::Value>,
+    username: &str,
+) -> AdmissionRequest {
+    let mut request: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(data_path("deployment_accept.json")).expect("cannot read fixture"),
+    )
+    .expect("cannot parse fixture");
+    request["object"] = object;
+    request["userInfo"]["username"] = json!(username);
+    if let Some(old_object) = old_object {
+        request["operation"] = json!("UPDATE");
+        request["oldObject"] = old_object;
+    }
+    serde_json::from_value(request).expect("cannot deserialize AdmissionRequest")
+}
+
+fn node_affinity() -> serde_json::Value {
+    json!({"affinity": {"nodeAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": {
+        "nodeSelectorTerms": [{"matchFields": [{"key": "metadata.name", "operator": "In", "values": ["node-1"]}]}]
+    }}}})
+}
+
+#[rstest]
+#[case::no_node_selection("Deployment", json!({}), None, "user", None)]
+#[case::empty_node_selector("Deployment", json!({"nodeSelector": {}}), None, "user", None)]
+#[case::pod_affinity_only(
+    "Deployment",
+    json!({"affinity": {"podAffinity": {}}}),
+    None,
+    "user",
+    None
+)]
+#[case::deployment_node_selector(
+    "Deployment",
+    json!({"nodeSelector": {"disk": "ssd"}}),
+    None,
+    "user",
+    Some("Deployment must not set spec.nodeSelector")
+)]
+#[case::deployment_node_affinity(
+    "Deployment",
+    node_affinity(),
+    None,
+    "user",
+    Some("Deployment must not set spec.affinity.nodeAffinity")
+)]
+#[case::cron_job_node_selector(
+    "CronJob",
+    json!({"nodeSelector": {"disk": "ssd"}}),
+    None,
+    "user",
+    Some("CronJob must not set spec.nodeSelector")
+)]
+#[case::pod_node_name(
+    "Pod",
+    json!({"nodeName": "node-1"}),
+    None,
+    "user",
+    Some("Pod must not set spec.nodeName")
+)]
+#[case::scheduled_pod_update(
+    "Pod",
+    json!({"nodeName": "node-1"}),
+    Some(json!({"nodeName": "node-1"})),
+    "user",
+    None
+)]
+#[case::pod_update_changes_node_selector(
+    "Pod",
+    json!({"nodeSelector": {"disk": "hdd"}}),
+    Some(json!({"nodeSelector": {"disk": "ssd"}})),
+    "user",
+    Some("Pod must not set spec.nodeSelector")
+)]
+#[case::existing_deployment_update(
+    "Deployment",
+    json!({"nodeSelector": {"disk": "ssd"}}),
+    Some(json!({"nodeSelector": {"disk": "ssd"}})),
+    "user",
+    None
+)]
+#[case::deployment_update_adds_node_selector(
+    "Deployment",
+    json!({"nodeSelector": {"disk": "ssd"}}),
+    Some(json!({})),
+    "user",
+    Some("Deployment must not set spec.nodeSelector")
+)]
+#[case::daemon_set_controller_pod("Pod", node_affinity(), None, DAEMON_SET_CONTROLLER, None)]
+#[case::user_pod_with_daemon_set_affinity(
+    "Pod",
+    node_affinity(),
+    None,
+    "user",
+    Some("Pod must not set spec.affinity.nodeAffinity")
+)]
+#[case::daemon_set_controller_pod_node_selector(
+    "Pod",
+    json!({"nodeSelector": {"disk": "ssd"}}),
+    None,
+    DAEMON_SET_CONTROLLER,
+    Some("Pod must not set spec.nodeSelector")
+)]
+#[case::daemon_set_node_affinity(
+    "DaemonSet",
+    node_affinity(),
+    None,
+    DAEMON_SET_CONTROLLER,
+    Some("DaemonSet must not set spec.affinity.nodeAffinity")
+)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_deny_node_selection(
+    #[case] kind: &str,
+    #[case] spec: serde_json::Value,
+    #[case] old_spec: Option<serde_json::Value>,
+    #[case] username: &str,
+    #[case] expected_rejection: Option<&str>,
+) {
+    let mut evaluator =
+        build_evaluator(&compile_vap(DENY_NODE_SELECTION_VAP), None, BTreeSet::new());
+    let request = workload_request(
+        workload(kind, pod_spec(spec)),
+        old_spec.map(|old_spec| workload(kind, pod_spec(old_spec))),
+        username,
+    );
+
+    let response = tokio::task::block_in_place(|| {
+        evaluator.validate(
+            ValidateRequest::AdmissionRequest(Box::new(request)),
+            &PolicySettings::default(),
+        )
+    });
+
+    match expected_rejection {
+        None => assert!(response.allowed, "unexpected response: {response:?}"),
+        Some(message) => assert_eq!(rejection_message(&response), message),
+    }
+}

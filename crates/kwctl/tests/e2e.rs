@@ -1232,6 +1232,52 @@ fn test_scaffold_vap_compile_to_wasm_maps_validation_actions_to_mode(
     );
 }
 
+/// `examples/deny-node-selection` must convert in both modes. The admin
+/// namespaces in the binding must reach the `namespaceSelector` of the
+/// generated policy, or the policy also runs in the admin namespaces.
+#[rstest]
+#[case::interpreted(false)]
+#[case::compiled(true)]
+fn test_scaffold_vap_deny_node_selection_example(#[case] compile: bool) {
+    let tempdir = tempdir().unwrap();
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/deny-node-selection");
+
+    let mut cmd = setup_command(tempdir.path());
+    cmd.arg("scaffold")
+        .arg("vap")
+        .arg("--policy")
+        .arg(example.join("vap.yaml"))
+        .arg("--binding")
+        .arg(example.join("binding.yaml"));
+    if compile {
+        cmd.arg("--compile-to-wasm")
+            .arg(tempdir.path().join("policy.wasm"));
+    }
+
+    let output = cmd.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let cap: serde_yaml::Value = serde_yaml::from_slice(&output.stdout).unwrap();
+    assert_eq!(cap["spec"]["mode"].as_str(), Some("protect"));
+    let expression = &cap["spec"]["namespaceSelector"]["matchExpressions"][0];
+    assert_eq!(
+        expression["key"].as_str(),
+        Some("kubernetes.io/metadata.name")
+    );
+    assert_eq!(expression["operator"].as_str(), Some("NotIn"));
+    assert!(
+        expression["values"]
+            .as_sequence()
+            .unwrap()
+            .contains(&"kube-system".into()),
+        "got: {expression:?}"
+    );
+}
+
 /// Kubernetes itself rejects a binding whose `validationActions` names
 /// both `Deny` and `Warn`: a validation cannot both reject the request
 /// and only warn about it. The scaffold must refuse this binding rather

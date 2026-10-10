@@ -1,0 +1,23 @@
+# Apply deny-node-selection to every namespace that is not an admin
+# namespace. Edit the list in `values` to match the admin namespaces of
+# your cluster.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: deny-node-selection
+spec:
+  policyName: deny-node-selection
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - kube-public
+            - kube-node-lease
+            - kubewarden
+            - cattle-system
+            - cattle-fleet-system
+            - cattle-monitoring-system
