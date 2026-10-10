@@ -320,9 +320,9 @@ jobs:
         uses: kubewarden/github-actions/opa-installer@143b9e4b11ddc47370482267383586e6f1bc7efe # v7.0.1
         with:
           # renovate: datasource=github-release-attachments depName=open-policy-agent/opa
-          opa-version: v1.21.0
-          # renovate: datasource=github-release-attachments depName=open-policy-agent/opa digestVersion=v1.21.0
-          checksum: 5eef70644868bb04d0556bcc795ee42f2ab379e73f51d1bfa30f83e1305bc9b9
+          opa-version: v1.21.1
+          # renovate: datasource=github-release-attachments depName=open-policy-agent/opa digestVersion=v1.21.1
+          checksum: 668506eb17a2eaa1fce6cc0d1f42ef85125d4ac5bda5fc74d1152d0c77145031
       - name: Install bats
         run: sudo apt-get install -y bats
       - name: Run e2e tests
