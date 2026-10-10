@@ -2754,3 +2754,137 @@ spec:
         "expected {needle:?} in the rejection message, got: {message:?}"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CEL port of a JMESPath character lookup (kubewarden/adm-controller#1189)
+//
+// The JMESPath expression
+//
+//   {{ request.object.metadata.labels.Hostname | split(@, '') | [2] }}
+//
+// reads the third character of the `Hostname` label. The user gives the
+// reference value. In a VAP the reference value comes from a `paramKind`
+// ConfigMap. CEL reads the character with `charAt(2)` or with
+// `substring(2, 3)`. Both index Unicode code points, not bytes.
+//
+// The direct port `split('')[2]` is not portable. cel-go splits 'abcde' on
+// '' into ['a', 'b', 'c', 'd', 'e']. ferricel 0.13 splits it like Rust's
+// `str::split`: ['', 'a', 'b', 'c', 'd', 'e', '']. Thus `split('')[2]` is
+// 'b' in ferricel and 'c' in the Kubernetes API server.
+//
+// `charAt` fails on an index past the end of the string, so the expressions
+// check the size first. A missing label gives the empty string, so it fails
+// the size check as well.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const HOSTNAME_CHAR_AT: &str =
+    "size(variables.hostname) > 2 && variables.hostname.charAt(2) == params.data.expected";
+const HOSTNAME_SUBSTRING: &str =
+    "size(variables.hostname) > 2 && variables.hostname.substring(2, 3) == params.data.expected";
+const HOSTNAME_SPLIT: &str =
+    "size(variables.hostname) > 2 && variables.hostname.split('')[2] == params.data.expected";
+
+/// A VAP that compares the third character of the `Hostname` label with
+/// `params.data.expected`.
+fn hostname_char_vap(expression: &str) -> String {
+    format!(
+        r#"
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: hostname-char
+spec:
+  paramKind:
+    apiVersion: v1
+    kind: ConfigMap
+  variables:
+    - name: hostname
+      expression: >-
+        has(object.metadata.labels) && 'Hostname' in object.metadata.labels
+        ? object.metadata.labels['Hostname'] : ''
+  validations:
+    - expression: >-
+        {expression}
+      messageExpression: "'the third character of the Hostname label must be ' + params.data.expected"
+"#
+    )
+}
+
+/// `deployment_accept.json` with the `Hostname` label set to `hostname`. The
+/// fixture has no labels, so `None` leaves `metadata.labels` out.
+fn deployment_request_with_hostname(hostname: Option<&str>) -> AdmissionRequest {
+    let mut request: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(data_path("deployment_accept.json")).expect("cannot read fixture"),
+    )
+    .expect("cannot parse fixture");
+    if let Some(hostname) = hostname {
+        request["object"]["metadata"]["labels"] = json!({"Hostname": hostname});
+    }
+    serde_json::from_value(request).expect("cannot deserialize AdmissionRequest")
+}
+
+/// Evaluate `expression` against a Deployment with the `Hostname` label set
+/// to `hostname`, with `expected` as the reference value in the ConfigMap
+/// param.
+fn validate_hostname_char(
+    expression: &str,
+    hostname: Option<&str>,
+    expected: &str,
+) -> policy_evaluator::admission_response::AdmissionResponse {
+    let (channel, _) = spawn_params_mock(ParamsResponse::Get(Ok(json!({
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {"name": "hostname-char"},
+        "data": {"expected": expected}
+    }))));
+    let mut evaluator = build_params_evaluator(&hostname_char_vap(expression), channel);
+    validate(
+        &mut evaluator,
+        deployment_request_with_hostname(hostname),
+        param_settings(json!({"name": "hostname-char", "namespace": "default"})),
+    )
+}
+
+#[rstest]
+#[case::match_(Some("abcde"), "c", true)]
+#[case::mismatch(Some("abXde"), "c", false)]
+#[case::too_short(Some("ab"), "c", false)]
+#[case::empty(Some(""), "c", false)]
+#[case::missing_label(None, "c", false)]
+#[case::multibyte(Some("ñüçx"), "ç", true)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_hostname_label_char_matches_param(
+    #[values(HOSTNAME_CHAR_AT, HOSTNAME_SUBSTRING)] expression: &str,
+    #[case] hostname: Option<&str>,
+    #[case] expected: &str,
+    #[case] expected_allowed: bool,
+) {
+    let response = validate_hostname_char(expression, hostname, expected);
+
+    assert_eq!(
+        expected_allowed, response.allowed,
+        "unexpected response: {response:?}"
+    );
+    if !expected_allowed {
+        assert_eq!(
+            rejection_message(&response),
+            format!("the third character of the Hostname label must be {expected}")
+        );
+    }
+}
+
+/// `split('')` in ferricel keeps the empty strings at both ends, so index 2
+/// is the second character. The Kubernetes API server (cel-go) drops them.
+/// This test records the current behavior. Change it when ferricel follows
+/// cel-go.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_hostname_label_split_on_empty_string_differs_from_cel_go() {
+    let response = validate_hostname_char(HOSTNAME_SPLIT, Some("abcde"), "c");
+    assert!(
+        !response.allowed,
+        "ferricel now splits like cel-go: `split('')[2]` is a valid port, update the comment above"
+    );
+
+    let response = validate_hostname_char(HOSTNAME_SPLIT, Some("abcde"), "b");
+    assert!(response.allowed, "unexpected response: {response:?}");
+}
