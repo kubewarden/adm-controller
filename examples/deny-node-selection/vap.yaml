@@ -1,0 +1,69 @@
+# Deny the selection of a node by a workload: spec.nodeName,
+# spec.nodeSelector and spec.affinity.nodeAffinity in a Pod or in a pod
+# template. The binding (binding.yaml) limits the policy to the namespaces
+# that are not in the list of admin namespaces.
+#
+# An UPDATE is denied only when it adds or changes one of these fields. The
+# scheduler sets spec.nodeName on every Pod, and a workload can exist before
+# the policy does, so an update that keeps the old value is allowed.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: deny-node-selection
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods", "replicationcontrollers"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  variables:
+    - name: podSpec
+      expression: >-
+        object.kind == 'Pod' ? object.spec :
+        object.kind == 'CronJob' ? object.spec.jobTemplate.spec.template.spec :
+        object.spec.template.spec
+    - name: oldPodSpec
+      expression: >-
+        oldObject == null ? {} :
+        oldObject.kind == 'Pod' ? oldObject.spec :
+        oldObject.kind == 'CronJob' ? oldObject.spec.jobTemplate.spec.template.spec :
+        oldObject.spec.template.spec
+    # The DaemonSet controller adds a nodeAffinity to each Pod that it
+    # creates, to put the Pod on its node. The user did not select that node.
+    - name: isDaemonSetController
+      expression: >-
+        object.kind == 'Pod' &&
+        request.userInfo.username == 'system:serviceaccount:kube-system:daemon-set-controller'
+  validations:
+    - expression: >-
+        !has(variables.podSpec.nodeName) ||
+        (has(variables.oldPodSpec.nodeName) &&
+         variables.oldPodSpec.nodeName == variables.podSpec.nodeName)
+      messageExpression: "object.kind + ' must not set spec.nodeName'"
+      reason: Forbidden
+    - expression: >-
+        !has(variables.podSpec.nodeSelector) ||
+        size(variables.podSpec.nodeSelector) == 0 ||
+        (has(variables.oldPodSpec.nodeSelector) &&
+         variables.oldPodSpec.nodeSelector == variables.podSpec.nodeSelector)
+      messageExpression: "object.kind + ' must not set spec.nodeSelector'"
+      reason: Forbidden
+    - expression: >-
+        variables.isDaemonSetController ||
+        !has(variables.podSpec.affinity) ||
+        !has(variables.podSpec.affinity.nodeAffinity) ||
+        (has(variables.oldPodSpec.affinity) &&
+         has(variables.oldPodSpec.affinity.nodeAffinity) &&
+         variables.oldPodSpec.affinity.nodeAffinity == variables.podSpec.affinity.nodeAffinity)
+      messageExpression: "object.kind + ' must not set spec.affinity.nodeAffinity'"
+      reason: Forbidden
