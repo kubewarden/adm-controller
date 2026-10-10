@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS builder
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS chef
 
 ARG TARGETARCH # provided by docker buildkit
 
@@ -39,6 +39,11 @@ RUN <<EOF
 EOF
 
 ENV PATH=/root/.cargo/bin:$PATH
+RUN cargo install cargo-chef --locked --version 0.1.77
+
+#this stage contains only tools/enviornment.
+
+FROM chef AS planner
 
 WORKDIR /usr/src/policy-server
 
@@ -46,12 +51,26 @@ WORKDIR /usr/src/policy-server
 COPY ./Cargo.toml ./Cargo.lock ./
 COPY crates/ ./crates
 
+RUN rm -rf crates/context-aware-test-policy && \
+    cargo chef prepare --recipe-path recipe.json
+#this stage figures out the dependencies
+
+FROM chef AS builder
+
+WORKDIR /usr/src/policy-server
+
 # Install cargo-auditable
 RUN cargo install --locked --version 0.7.4 cargo-auditable
+
+COPY --from=planner /usr/src/policy-server/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json --target $(cat /tmp/rust_target) 
 
 # Enable static linking after cargo-audit is installed,
 # apparetnly it cannot be statically linked.
 ENV RUSTFLAGS="-C target-feature=+crt-static"
+
+COPY ./Cargo.toml ./Cargo.lock ./
+COPY crates/ ./crates
 
 # Build the policy-server binary statically linked
 RUN cargo auditable build --release -p policy-server --target $(cat /tmp/rust_target)
