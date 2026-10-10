@@ -65,7 +65,7 @@ rstest         = { workspace = true }
 sha2           = { workspace = true }
 testcontainers = { version = "0.28", features = ["blocking"] }
 tower-test     = "0.4"
-wasm-encoder   = "0.259"
+wasm-encoder   = "0.261"
 
 
 [features]

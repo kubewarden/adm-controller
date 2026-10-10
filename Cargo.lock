@@ -3851,7 +3851,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "walrus",
- "wasm-encoder 0.259.0",
+ "wasm-encoder 0.261.0",
  "yaml_serde",
 ]
 
@@ -5208,7 +5208,7 @@ dependencies = [
  "validator",
  "walrus",
  "wapc",
- "wasmparser 0.259.0",
+ "wasmparser 0.261.0",
  "wasmtime",
  "wasmtime-provider",
  "wasmtime-wasi",
@@ -8352,16 +8352,6 @@ dependencies = [
 
 [[package]]
 name = "wasm-encoder"
-version = "0.259.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1d0246511d901aacf25d2dc9111f0054947de5e093fe662099e709ff7530dc3"
-dependencies = [
- "leb128fmt",
- "wasmparser 0.259.0",
-]
-
-[[package]]
-name = "wasm-encoder"
 version = "0.261.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2608e8bb6d67fd68f5a8d0eb1363d6e7bcbc1f8ded5a0bd3a1e382462b876b22"
@@ -8441,8 +8431,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f20f20e44f7e8aeb6744823ea9d869ede51e51be4fdaedede2852282e54d2d8"
 dependencies = [
  "bitflags 2.13.2",
+ "hashbrown 0.17.1",
  "indexmap 2.14.2",
  "semver",
+ "serde",
 ]
 
 [[package]]
