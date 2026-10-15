@@ -37,7 +37,10 @@ async fn create_tls_config_and_watch_certificate_changes(
 pub(crate) async fn create_tls_config_and_watch_certificate_changes(
     tls_config: TlsConfig,
 ) -> Result<axum_server::tls_rustls::RustlsConfig> {
-    use std::collections::{BTreeSet, HashMap};
+    use std::{
+        collections::{BTreeSet, HashMap},
+        path::PathBuf,
+    };
 
     use ::tracing::error;
     use axum_server::tls_rustls::RustlsConfig;
@@ -51,7 +54,9 @@ pub(crate) async fn create_tls_config_and_watch_certificate_changes(
         .chain(tls_config.client_ca_file.iter())
         .map(|path| parent_dir(path))
         .collect();
-    let mut watched_dirs = HashMap::new();
+    // The kernel returns the same watch for two paths to the same directory, for example
+    // `certs` and `./certs`. Keep each path, because changed_files compares the paths.
+    let mut watched_dirs: HashMap<_, Vec<PathBuf>> = HashMap::new();
     for dir in dirs {
         let watch = inotify
             .watches()
@@ -60,7 +65,10 @@ pub(crate) async fn create_tls_config_and_watch_certificate_changes(
                 WatchMask::CLOSE_WRITE | WatchMask::MOVED_TO | WatchMask::ONLYDIR,
             )
             .map_err(|e| anyhow!("Cannot watch directory {}: {e}", dir.display()))?;
-        watched_dirs.insert(watch, dir.to_path_buf());
+        watched_dirs
+            .entry(watch)
+            .or_default()
+            .push(dir.to_path_buf());
     }
 
     // Build initial TLS configuration
@@ -105,20 +113,26 @@ pub(crate) async fn create_tls_config_and_watch_certificate_changes(
                     client_ca: !tls_config.client_ca_file.is_empty(),
                 }
             } else {
-                let Some(dir) = watched_dirs.get(&event.wd) else {
+                let Some(dirs) = watched_dirs.get(&event.wd) else {
                     continue;
                 };
                 if event.mask.contains(EventMask::IGNORED) {
+                    // The kernel removed the watch: the directory was deleted or unmounted. In
+                    // a pod, the directories are mount points and the kubelet never removes
+                    // them while the pod runs, so this happens only with a layout that the
+                    // controller does not create, for example a file in a subdirectory of the
+                    // volume. Without the watch, the process keeps stale TLS material until a
+                    // restart. Exit, so that the restart loads the files on disk.
                     error!(
-                        directory = %dir.display(),
-                        "Directory is no longer watched, changes of the TLS files in it will not be detected"
+                        directories = ?dirs,
+                        "Directory is no longer watched, exiting so that the TLS files are loaded again on restart"
                     );
-                    continue;
+                    std::process::exit(1);
                 }
                 let Some(name) = &event.name else {
                     continue;
                 };
-                changed_files(&tls_config, dir, name)
+                changed_files(&tls_config, dirs, name)
             };
 
             if changed.cert {
@@ -182,6 +196,13 @@ pub(crate) async fn create_tls_config_and_watch_certificate_changes(
                 }
             }
         }
+
+        // The stream ends only on an error of the inotify file descriptor. Without it, no
+        // change of the TLS files is detected until a restart.
+        error!(
+            "Inotify event stream ended, exiting so that the TLS files are loaded again on restart"
+        );
+        std::process::exit(1);
     });
 
     Ok(rust_config)
@@ -209,13 +230,18 @@ fn parent_dir(path: &Path) -> &Path {
     }
 }
 
-/// Return the files of the TLS configuration that an inotify event on `event_name` in `dir` changes.
+/// Return the files of the TLS configuration that an inotify event on `event_name` changes.
 ///
-/// An event on `..data` changes all the files in `dir`, because the kubelet swaps them together.
+/// `dirs` are all the paths of the watched directory. An event on `..data` changes all the
+/// files in the directory, because the kubelet swaps them together.
 #[cfg(target_os = "linux")]
-fn changed_files(tls_config: &TlsConfig, dir: &Path, event_name: &std::ffi::OsStr) -> ChangedFiles {
+fn changed_files(
+    tls_config: &TlsConfig,
+    dirs: &[std::path::PathBuf],
+    event_name: &std::ffi::OsStr,
+) -> ChangedFiles {
     let is_changed = |path: &Path| {
-        parent_dir(path) == dir
+        dirs.iter().any(|dir| parent_dir(path) == dir)
             && (event_name == KUBELET_DATA_DIR || path.file_name() == Some(event_name))
     };
 
@@ -359,7 +385,7 @@ mod tests {
         #[case] client_ca: bool,
     ) {
         assert_eq!(
-            changed_files(&tls_config(), Path::new(dir), OsStr::new(event_name)),
+            changed_files(&tls_config(), &[PathBuf::from(dir)], OsStr::new(event_name)),
             ChangedFiles {
                 cert,
                 key,
@@ -377,7 +403,30 @@ mod tests {
         };
 
         assert_eq!(
-            changed_files(&tls_config, Path::new("."), OsStr::new("..data")),
+            changed_files(&tls_config, &[PathBuf::from(".")], OsStr::new("..data")),
+            ChangedFiles {
+                cert: true,
+                key: true,
+                client_ca: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_changed_files_with_two_paths_to_the_same_directory() {
+        let tls_config = TlsConfig {
+            cert_file: PathBuf::from("./certs/tls.crt"),
+            key_file: PathBuf::from("certs/tls.key"),
+            client_ca_file: vec![],
+        };
+
+        // The kernel returns the same watch for both paths, so the event comes with both.
+        assert_eq!(
+            changed_files(
+                &tls_config,
+                &[PathBuf::from("./certs"), PathBuf::from("certs")],
+                OsStr::new("..data")
+            ),
             ChangedFiles {
                 cert: true,
                 key: true,
