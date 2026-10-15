@@ -1062,6 +1062,75 @@ mod certificate_reload_helpers {
         let response = client.get(url).send().await?;
         Ok(response.status())
     }
+
+    /// Create a directory for TLS files that a policy server of a test watches.
+    ///
+    /// The directory is not removed at the end of the test. The reload task of the policy
+    /// server lives until the test binary ends. If the directory were removed before that,
+    /// the task would see the watch disappear and exit the whole test binary.
+    pub fn tls_dir() -> std::path::PathBuf {
+        tempfile::tempdir()
+            .expect("cannot create the TLS directory")
+            .keep()
+    }
+
+    /// A directory with the layout that the kubelet uses for a Secret or a ConfigMap volume.
+    ///
+    /// Each file is a symlink to `..data/<name>`, and `..data` is a symlink to a timestamped
+    /// directory. An update writes a new timestamped directory, swaps `..data` with a rename,
+    /// then removes the old directory. The kubelet never writes to a file that a reader has
+    /// open, so a watch on a file sees no write.
+    pub struct KubeletVolume {
+        dir: std::path::PathBuf,
+        generation: u32,
+    }
+
+    impl KubeletVolume {
+        pub fn new(files: &[(&str, &str)]) -> Self {
+            let mut volume = KubeletVolume {
+                dir: tls_dir(),
+                generation: 0,
+            };
+            volume.update(files);
+            for (name, _) in files {
+                std::os::unix::fs::symlink(format!("..data/{name}"), volume.path(name))
+                    .expect("cannot create the user-visible symlink");
+            }
+            volume
+        }
+
+        pub fn update(&mut self, files: &[(&str, &str)]) {
+            let old_data_dir = self.data_dir(self.generation);
+            self.generation += 1;
+            let new_data_dir = self.data_dir(self.generation);
+
+            std::fs::create_dir(self.dir.join(&new_data_dir))
+                .expect("cannot create the timestamped directory");
+            for (name, contents) in files {
+                std::fs::write(self.dir.join(&new_data_dir).join(name), contents)
+                    .expect("cannot write the file");
+            }
+
+            let data_tmp = self.dir.join("..data_tmp");
+            std::os::unix::fs::symlink(&new_data_dir, &data_tmp)
+                .expect("cannot create the ..data_tmp symlink");
+            std::fs::rename(&data_tmp, self.dir.join("..data"))
+                .expect("cannot swap the ..data symlink");
+
+            if self.generation > 1 {
+                std::fs::remove_dir_all(self.dir.join(&old_data_dir))
+                    .expect("cannot remove the old timestamped directory");
+            }
+        }
+
+        pub fn path(&self, name: &str) -> std::path::PathBuf {
+            self.dir.join(name)
+        }
+
+        fn data_dir(&self, generation: u32) -> String {
+            format!("..{generation}")
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -1071,11 +1140,11 @@ async fn test_detect_certificate_rotation() {
 
     setup();
 
-    let certs_dir = tempfile::tempdir().unwrap();
-    let cert_file = certs_dir.path().join("policy-server.pem");
-    let key_file = certs_dir.path().join("policy-server-key.pem");
-    let first_client_ca = certs_dir.path().join("client_cert1.pem");
-    let second_client_ca = certs_dir.path().join("client_cert2.pem");
+    let certs_dir = tls_dir();
+    let cert_file = certs_dir.join("policy-server.pem");
+    let key_file = certs_dir.join("policy-server-key.pem");
+    let first_client_ca = certs_dir.join("client_cert1.pem");
+    let second_client_ca = certs_dir.join("client_cert2.pem");
 
     let hostname1 = "cert1.example.com";
     let tls_data1 = create_cert(hostname1);
@@ -1201,6 +1270,167 @@ async fn test_detect_certificate_rotation() {
         .await
         .expect("failed to send validation request");
         assert_eq!(status_code, reqwest::StatusCode::OK);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn certificate_reload_backoff() -> backon::ConstantBuilder {
+    backon::ConstantBuilder::default()
+        .with_delay(Duration::from_millis(250))
+        .with_max_times(40)
+}
+
+#[cfg(target_os = "linux")]
+async fn start_policy_server_with_tls(tls_config: policy_server::config::TlsConfig) -> String {
+    use certificate_reload_helpers::*;
+
+    let mut config = default_test_config();
+    config.tls_config = Some(tls_config);
+    let address = config.addr.to_string();
+    let readiness_probe_address = config.readiness_probe_addr.to_string();
+
+    tokio::spawn(async move {
+        let api_server = policy_server::PolicyServer::new_from_config(config)
+            .await
+            .unwrap();
+        api_server.run().await.unwrap();
+    });
+
+    let status_code = (|| async { policy_server_is_ready(&readiness_probe_address).await })
+        .retry(
+            ExponentialBuilder::default()
+                .with_min_delay(Duration::from_millis(500))
+                .with_max_delay(Duration::from_secs(10))
+                .with_max_times(10),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status_code, reqwest::StatusCode::OK);
+
+    address
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_detect_certificate_rotation_on_kubelet_volume() {
+    use certificate_reload_helpers::*;
+
+    setup();
+
+    let tls_data = create_cert("cert1.example.com");
+    let mut volume = KubeletVolume::new(&[
+        ("tls.crt", tls_data.cert.as_str()),
+        ("tls.key", tls_data.key.as_str()),
+    ]);
+
+    let address = start_policy_server_with_tls(policy_server::config::TlsConfig {
+        cert_file: volume.path("tls.crt"),
+        key_file: volume.path("tls.key"),
+        client_ca_file: vec![],
+    })
+    .await;
+    let (host, port) = address.split_once(':').unwrap();
+
+    check_tls_san_name(host, port, "cert1.example.com")
+        .await
+        .expect("certificate served doesn't use the expected SAN name");
+
+    // The second update makes sure that the watch survives the first one.
+    for hostname in ["cert2.example.com", "cert3.example.com"] {
+        let tls_data = create_cert(hostname);
+        volume.update(&[
+            ("tls.crt", tls_data.cert.as_str()),
+            ("tls.key", tls_data.key.as_str()),
+        ]);
+
+        (|| async { check_tls_san_name(host, port, hostname).await })
+            .retry(certificate_reload_backoff())
+            .await
+            .unwrap_or_else(|e| panic!("certificate for {hostname} hasn't been reloaded: {e}"));
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn check_client_ca_trust(
+    address: &str,
+    server_tls_data: &certificate_reload_helpers::TlsData,
+    trusted_client: &certificate_reload_helpers::TlsData,
+    untrusted_client: Option<&certificate_reload_helpers::TlsData>,
+) -> anyhow::Result<()> {
+    // Build a new client for each request, so that a pooled connection cannot hide a change of trust.
+    let client = build_request_client(
+        Some(server_tls_data),
+        Some(trusted_client.cert.clone()),
+        Some(trusted_client.key.clone()),
+        true,
+    );
+    let status_code =
+        send_validate_request(&client, address.to_owned(), Some(server_tls_data)).await?;
+    anyhow::ensure!(
+        status_code == reqwest::StatusCode::OK,
+        "trusted client got the status code {status_code}"
+    );
+
+    if let Some(untrusted_client) = untrusted_client {
+        let client = build_request_client(
+            Some(server_tls_data),
+            Some(untrusted_client.cert.clone()),
+            Some(untrusted_client.key.clone()),
+            true,
+        );
+        anyhow::ensure!(
+            send_validate_request(&client, address.to_owned(), Some(server_tls_data))
+                .await
+                .is_err(),
+            "a client of a removed CA is still trusted"
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_detect_client_ca_rotation_on_kubelet_volume() {
+    use certificate_reload_helpers::*;
+
+    setup();
+
+    let certs_dir = tls_dir();
+    let cert_file = certs_dir.join("policy-server.pem");
+    let key_file = certs_dir.join("policy-server-key.pem");
+    let server_tls_data = create_cert("server.example.com");
+    fs::write(&cert_file, &server_tls_data.cert).await.unwrap();
+    fs::write(&key_file, &server_tls_data.key).await.unwrap();
+
+    // Each client certificate is self-signed, so it is also its own client CA.
+    let mut previous_client = create_cert("client1.example.com");
+    let mut volume = KubeletVolume::new(&[("client-ca.crt", previous_client.cert.as_str())]);
+
+    let address = start_policy_server_with_tls(policy_server::config::TlsConfig {
+        cert_file,
+        key_file,
+        client_ca_file: vec![volume.path("client-ca.crt")],
+    })
+    .await;
+
+    check_client_ca_trust(&address, &server_tls_data, &previous_client, None)
+        .await
+        .expect("the first client CA isn't trusted");
+
+    // The second update makes sure that the watch survives the first one.
+    for hostname in ["client2.example.com", "client3.example.com"] {
+        let client = create_cert(hostname);
+        volume.update(&[("client-ca.crt", client.cert.as_str())]);
+
+        (|| async {
+            check_client_ca_trust(&address, &server_tls_data, &client, Some(&previous_client)).await
+        })
+        .retry(certificate_reload_backoff())
+        .await
+        .unwrap_or_else(|e| panic!("client CA of {hostname} hasn't been reloaded: {e}"));
+
+        previous_client = client;
     }
 }
 
@@ -1445,9 +1675,9 @@ async fn test_tls(
 
     setup();
 
-    let certs_dir = tempfile::tempdir().unwrap();
-    let cert_file = certs_dir.path().join("policy-server.pem");
-    let key_file = certs_dir.path().join("policy-server-key.pem");
+    let certs_dir = tls_dir();
+    let cert_file = certs_dir.join("policy-server.pem");
+    let key_file = certs_dir.join("policy-server-key.pem");
 
     if let Some(ref tls_data) = server_tls_data {
         fs::write(&cert_file, tls_data.cert.clone()).await.unwrap();
@@ -1461,10 +1691,7 @@ async fn test_tls(
                 .iter()
                 .enumerate()
                 .map(|(i, tls_data)| {
-                    let client_ca = certs_dir
-                        .path()
-                        .join(format!("client_cert_{}.pem", i))
-                        .to_owned();
+                    let client_ca = certs_dir.join(format!("client_cert_{}.pem", i));
 
                     (client_ca, tls_data.cert.clone(), tls_data.key.clone())
                 })
@@ -1574,8 +1801,7 @@ async fn send_validate_request(
         .header(header::CONTENT_TYPE, "application/json")
         .body(include_str!("data/pod_without_privileged_containers.json"))
         .send()
-        .await
-        .expect("successful request")
+        .await?
         .status())
 }
 
