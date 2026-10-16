@@ -40,24 +40,38 @@ EOF
 
 ENV PATH=/root/.cargo/bin:$PATH
 
+# Install cargo-auditable. It does not need the workspace files, so this step
+# stays here, before the COPY commands. A change to a crate then does not
+# invalidate this layer. The two mounts hold the cargo download cache. The
+# cache stays on the build machine. It does not go into the image.
+RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
+    cargo install --locked --version 0.7.4 cargo-auditable
+
 WORKDIR /usr/src/policy-server
 
 # Copy workspace files
 COPY ./Cargo.toml ./Cargo.lock ./
 COPY crates/ ./crates
 
-# Install cargo-auditable
-RUN cargo install --locked --version 0.7.4 cargo-auditable
-
 # Enable static linking after cargo-audit is installed,
 # apparetnly it cannot be statically linked.
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 
-# Build the policy-server binary statically linked
-RUN cargo auditable build --release -p policy-server --target $(cat /tmp/rust_target)
+# Build the policy-server binary statically linked.
+# The cargo-target mount holds the compiled dependencies between builds, so a
+# change to one crate does not force a rebuild of the full dependency tree.
+# A docker build with this cache stores it on the build machine only, not in
+# the image, so you must copy the binary out before the mount closes.
+# Run "docker builder prune" to clear this cache.
+RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
+    --mount=type=cache,id=cargo-target-${TARGETARCH},target=/usr/src/policy-server/target \
+    cargo auditable build --release -p policy-server --target $(cat /tmp/rust_target) && \
+    cp target/$(cat /tmp/rust_target)/release/policy-server /policy-server
 
 # Verify the binary is statically linked
-RUN ldd /usr/src/policy-server/target/$(cat /tmp/rust_target)/release/policy-server || echo "Static binary confirmed"
+RUN ldd /policy-server || echo "Static binary confirmed"
 
 # Create minimal user configuration
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS cfg
@@ -67,7 +81,7 @@ RUN echo "policy-server:x:65533:65533::/tmp:/sbin/nologin" >> /etc/passwd && \
 
 # Final stage with distroless image
 FROM gcr.io/distroless/static:nonroot
-COPY --from=builder /usr/src/policy-server/target/*/release/policy-server /policy-server
+COPY --from=builder /policy-server /policy-server
 COPY --from=cfg /etc/passwd /etc/passwd
 COPY --from=cfg /etc/group /etc/group
 COPY ./Cargo.lock /Cargo.lock
