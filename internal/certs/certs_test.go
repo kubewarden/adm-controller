@@ -100,3 +100,51 @@ func TestVerifyCertValidPEMHeader(t *testing.T) {
 		t.Fatalf("VerifyCert failed with valid PEM header: %v", err)
 	}
 }
+
+func TestInvalidPEMReturnsError(t *testing.T) {
+	caCert, caPrivateKey, err := GenerateCA(time.Now(), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	garbage := []byte("not a PEM block")
+
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "VerifyCert with an invalid certificate",
+			run: func() error {
+				return VerifyCert(garbage, nil, x509.NewCertPool(), "", time.Now())
+			},
+		},
+		{
+			name: "VerifyCA with an invalid certificate",
+			run: func() error {
+				return VerifyCA(garbage, nil, time.Now())
+			},
+		},
+		{
+			name: "GenerateCert with an invalid CA certificate",
+			run: func() error {
+				_, _, err := GenerateCert(garbage, caPrivateKey, time.Now(), time.Now().Add(time.Hour), "example.com")
+				return err
+			},
+		},
+		{
+			name: "GenerateCert with an invalid CA private key",
+			run: func() error {
+				_, _, err := GenerateCert(caCert, garbage, time.Now(), time.Now().Add(time.Hour), "example.com")
+				return err
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.run(); err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+		})
+	}
+}

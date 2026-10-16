@@ -478,12 +478,13 @@ func setupReconcilers(mgr ctrl.Manager,
 	}
 
 	if err := (&controller.CertReconciler{
-		Client:                      mgr.GetClient(),
-		Log:                         ctrl.Log.WithName("cert-recociler"),
-		DeploymentsNamespace:        deploymentsNamespace,
-		WebhookServiceName:          config.WebhookServiceName,
-		CARootSecretName:            constants.CARootSecretName,
-		WebhookServerCertSecretName: constants.WebhookServerCertSecretName,
+		Client:                           mgr.GetClient(),
+		Log:                              ctrl.Log.WithName("cert-recociler"),
+		DeploymentsNamespace:             deploymentsNamespace,
+		WebhookServiceName:               config.WebhookServiceName,
+		CARootSecretName:                 constants.CARootSecretName,
+		WebhookServerCertSecretName:      constants.WebhookServerCertSecretName,
+		AuditScannerClientCertSecretName: constants.AuditScannerClientCertSecretName,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create Cert controller"), err)
 	}

@@ -125,6 +125,11 @@ const (
 	ServerCertSecretFormatVersion    = "1"
 	ServerCertSecretFormatAnnotation = "kubewarden.io/cert-format-version" //nolint:gosec // This is not a credential
 
+	AuditScannerClientCertSecretName = "kubewarden-audit-scanner-client-cert"
+	// AuditScannerClientCertCommonName is the same as the cert CN that the Helm chart sets, so that a rotated
+	// certificate has the same subject as the first one. No component reads the CN.
+	AuditScannerClientCertCommonName = "audit-scanner-client"
+
 	CARootSecretName = "kubewarden-ca"
 	CARootCert       = "ca.crt"
 	CARootPrivateKey = "ca.key"

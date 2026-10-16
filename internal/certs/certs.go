@@ -82,12 +82,18 @@ func GenerateCert(caCertPEM []byte,
 	dnsName string,
 ) ([]byte, []byte, error) {
 	caCertBlock, _ := pem.Decode(caCertPEM)
+	if caCertBlock == nil {
+		return nil, nil, errors.New("failed to decode ca root certificate PEM")
+	}
 	caCert, err := x509.ParseCertificate(caCertBlock.Bytes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error parsing ca root certificate: %w", err)
 	}
 
 	caPrivateKeyBlock, _ := pem.Decode(caPrivateKeyPEM)
+	if caPrivateKeyBlock == nil {
+		return nil, nil, errors.New("failed to decode ca root private key PEM")
+	}
 	caPrivateKey, err := x509.ParseECPrivateKey(caPrivateKeyBlock.Bytes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error parsing ca root private key: %w", err)
@@ -211,6 +217,9 @@ func VerifyCA(caCertPEM, caPrivateKeyPEM []byte, at time.Time) error {
 func VerifyCert(certPEM, privateKeyPEM []byte, certPool *x509.CertPool, dnsName string, at time.Time) error {
 	// Decode and parse the certificate
 	certBlock, _ := pem.Decode(certPEM)
+	if certBlock == nil {
+		return errors.New("failed to decode certificate PEM")
+	}
 	cert, err := x509.ParseCertificate(certBlock.Bytes)
 	if err != nil {
 		return fmt.Errorf("error parsing certificate: %w", err)
