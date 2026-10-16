@@ -181,13 +181,34 @@ Kubewarden publishes three images: `controller`, `audit-scanner` and
 Kubewarden signs the container images and the SBOM and provenance files in the
 [release assets](https://github.com/kubewarden/adm-controller/releases). The
 signatures use keyless signing with the GitHub Actions OIDC identity of the
-release workflow.
+shared `container-release.yml` reusable workflow in the
+`kubewarden/github-actions` repository. The `@<ref>` part of that identity is
+the commit of the reusable workflow, not the Kubewarden tag, so the commands
+match it with `--certificate-identity-regexp`. That identity alone names the
+builder, not the release. The commands also pin the caller repository and the
+release tag with `--certificate-github-workflow-repository` and
+`--certificate-github-workflow-ref`, so a signed file from another repository
+or another release does not pass. The flags do not bind the component. Every
+component of one release shares these certificate values, so a blob and its
+bundle from one component verify under another component's filename. To check
+which image a file describes, read the `subject` field inside the file.
 
-To verify the signature of an image, run:
+The same workflow runs `actions/attest` on each multi-architecture image. That
+attestation gives the images SLSA Build L3. To verify it, run:
+
+```shell
+gh attestation verify oci://ghcr.io/kubewarden/adm-controller/controller:<TAG TO VERIFY> \
+    --repo kubewarden/adm-controller \
+    --signer-workflow kubewarden/github-actions/.github/workflows/container-release.yml
+```
+
+To verify the cosign signature of an image, run:
 
 ```shell
 cosign verify --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-    --certificate-identity="https://github.com/kubewarden/adm-controller/.github/workflows/release.yml@refs/tags/<TAG TO VERIFY>" \
+    --certificate-identity-regexp='^https://github\.com/kubewarden/github-actions/\.github/workflows/container-release\.yml@' \
+    --certificate-github-workflow-repository=kubewarden/adm-controller \
+    --certificate-github-workflow-ref='refs/tags/<TAG TO VERIFY>' \
     ghcr.io/kubewarden/adm-controller/controller:<TAG TO VERIFY>
 ```
 
@@ -198,7 +219,9 @@ To verify the provenance file from the release assets, run:
 
 ```shell
 cosign verify-blob --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-    --certificate-identity="https://github.com/kubewarden/adm-controller/.github/workflows/release.yml@refs/tags/<TAG TO VERIFY>" \
+    --certificate-identity-regexp='^https://github\.com/kubewarden/github-actions/\.github/workflows/container-release\.yml@' \
+    --certificate-github-workflow-repository=kubewarden/adm-controller \
+    --certificate-github-workflow-ref='refs/tags/<TAG TO VERIFY>' \
     --bundle controller-attestation-amd64-provenance.intoto.jsonl.bundle.sigstore \
     controller-attestation-amd64-provenance.intoto.jsonl
 ```
@@ -207,7 +230,9 @@ To verify the SBOM file, use the same command with the `sbom.json` files:
 
 ```shell
 cosign verify-blob --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-    --certificate-identity="https://github.com/kubewarden/adm-controller/.github/workflows/release.yml@refs/tags/<TAG TO VERIFY>" \
+    --certificate-identity-regexp='^https://github\.com/kubewarden/github-actions/\.github/workflows/container-release\.yml@' \
+    --certificate-github-workflow-repository=kubewarden/adm-controller \
+    --certificate-github-workflow-ref='refs/tags/<TAG TO VERIFY>' \
     --bundle controller-attestation-amd64-sbom.json.bundle.sigstore \
     controller-attestation-amd64-sbom.json
 ```

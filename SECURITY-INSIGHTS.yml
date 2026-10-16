@@ -52,9 +52,9 @@ dependencies:
   dependencies-lists:
     - https://github.com/kubewarden/adm-controller/blob/main/go.sum
   sbom:
-    - sbom-file: https://github.com/kubewarden/adm-controller/releases/latest/download/controller-sbom-adm64.spdx
+    - sbom-file: https://github.com/kubewarden/adm-controller/releases/latest/download/controller-attestation-amd64-sbom.json
       sbom-format: SPDX
-      sbom-url: https://github.com/anchore/sbom-action
+      sbom-url: https://github.com/docker/buildx
   dependencies-lifecycle:
     policy-url: https://github.com/kubewarden/community/blob/main/SECURITY.md#security-patch-policy
   env-dependencies-policy:
