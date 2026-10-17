@@ -7,7 +7,7 @@ runs:
   using: "composite"
   steps:
     - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-    - uses: sigstore/scaffolding/actions/setup@5444af42e303f5ceb37e077637f953133a4eba7c # v0.7.37
+    - uses: sigstore/scaffolding/actions/setup@9cbe5a1e1b01b29a875ddb7cdc77027d20a0a2d9 # v0.7.39
       with:
         # Pin the release installed by the action. Without this it defaults to
         # "latest-release" (currently v0.7.37), which dropped release-rekor.yaml
