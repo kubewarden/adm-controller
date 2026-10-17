@@ -11,7 +11,7 @@ require (
 	// CEL needs to be pinned to the same version as the one used by the k8s.io/apiserver package
 	github.com/google/cel-go v0.29.2
 	github.com/google/uuid v1.6.0
-	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/openreports/reports-api v0.2.1
 	github.com/spf13/cobra v1.10.2
