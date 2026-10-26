@@ -58,7 +58,7 @@ annotations:
     - name: kuberlr-kubectl
       image: ghcr.io/rancher/kuberlr-kubectl:v8.1.2
     - name: policy-reporter
-      image: ghcr.io/kyverno/policy-reporter:3.11.1
+      image: ghcr.io/kyverno/policy-reporter:3.11.2
     - name: policy-reporter-ui
       image: ghcr.io/kyverno/policy-reporter-ui:2.9.1
 dependencies:
