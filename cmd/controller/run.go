@@ -229,6 +229,7 @@ func setupManager(mgrOpts ManagerOptions) (ctrl.Manager, error) {
 			},
 		},
 		WebhookServer: webhook.NewServer(webhook.Options{
+			CertDir:      constants.WebhookServerCertDir,
 			ClientCAName: clientCAName,
 			Port:         mgrOpts.WebhookServerPort,
 		}),

@@ -56,6 +56,9 @@ const (
 const (
 	// modeRun starts the controller manager. It is the default mode.
 	modeRun = "run"
+	// modeInit prepares the certificates and the webhook configurations of the controller. The init container of
+	// the controller pod runs it.
+	modeInit = "init"
 	// modeCleanup removes what the controller created. The pre-delete hook of the Helm chart runs it.
 	modeCleanup = "cleanup"
 )
@@ -116,6 +119,11 @@ func main() {
 	switch opts.Mode {
 	case modeRun:
 		os.Exit(runManager(opts))
+	case modeInit:
+		if err := runInit(opts.Manager.DeploymentsNamespace, opts.Configuration.WebhookServiceName); err != nil {
+			setupLog.Error(err, "init failed")
+			os.Exit(1)
+		}
 	case modeCleanup:
 		if err := runCleanup(opts.Manager.DeploymentsNamespace, opts.ControllerDeploymentName); err != nil {
 			setupLog.Error(err, "cleanup failed")
@@ -123,7 +131,7 @@ func main() {
 		}
 	default:
 		setupLog.Error(fmt.Errorf("unknown mode %q", opts.Mode), "invalid flag",
-			"flag", "--mode", "accepted", []string{modeRun, modeCleanup})
+			"flag", "--mode", "accepted", []string{modeRun, modeInit, modeCleanup})
 		os.Exit(1)
 	}
 }
@@ -136,6 +144,7 @@ func parseFlags() Options {
 	flag.StringVar(&opts.Mode, "mode", modeRun,
 		"The mode of the binary: "+
 			"\""+modeRun+"\" starts the controller manager, "+
+			"\""+modeInit+"\" prepares the certificates and the webhook configurations of the controller, "+
 			"\""+modeCleanup+"\" runs the uninstall cleanup of the Helm chart pre-delete hook.")
 	flag.StringVar(&opts.Manager.MetricsAddr, "metrics-bind-address", ":8088", "The address the controller-runtime metric endpoint binds to.")
 	flag.StringVar(&opts.Manager.ProbeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")

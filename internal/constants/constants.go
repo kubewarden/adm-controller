@@ -137,6 +137,18 @@ const (
 
 	ClientCACert = "client-ca.crt"
 
+	// WebhookServerCertDir is the directory where the webhook server of the controller reads its certificate. The
+	// Helm chart mounts the Secret WebhookServerCertSecretName there, in the init container and in the controller
+	// container.
+	WebhookServerCertDir = "/tmp/k8s-webhook-server/serving-certs"
+
+	// ControllerValidatingWebhookConfigurationName is the name of the validating webhook configuration of the
+	// controller. The controller creates it at startup.
+	ControllerValidatingWebhookConfigurationName = "kubewarden-controller-validating-webhook-configuration"
+	// ControllerMutatingWebhookConfigurationName is the name of the mutating webhook configuration of the controller.
+	// The controller creates it at startup.
+	ControllerMutatingWebhookConfigurationName = "kubewarden-controller-mutating-webhook-configuration"
+
 	CertExpirationYears  = 10
 	CACertExpiration     = 10 * 365 * 24 * time.Hour
 	ServerCertExpiration = 1 * 365 * 24 * time.Hour
