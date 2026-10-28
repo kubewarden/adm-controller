@@ -53,6 +53,7 @@ const (
 	pollInterval         = 250 * time.Millisecond
 	consistencyTimeout   = 5 * time.Second
 	deploymentsNamespace = "kubewarden-integration-tests"
+	webhookServiceName   = "kubewarden-integration-tests-webhook-service"
 )
 
 // kubewardenCRDPaths returns the paths to the Kubewarden admission controller
@@ -165,6 +166,17 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	err = (&CertReconciler{
+		Client:                           k8sManager.GetClient(),
+		Log:                              ctrl.Log.WithName("cert-reconciler-test"),
+		DeploymentsNamespace:             deploymentsNamespace,
+		WebhookServiceName:               webhookServiceName,
+		CARootSecretName:                 constants.CARootSecretName,
+		WebhookServerCertSecretName:      constants.WebhookServerCertSecretName,
+		AuditScannerClientCertSecretName: constants.AuditScannerClientCertSecretName,
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	err = (&DefaultsApplierReconciler{
 		Client:               k8sManager.GetClient(),
 		Scheme:               k8sManager.GetScheme(),
@@ -182,18 +194,52 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	// Create the CA root secret
+	// Create the certificate Secrets, with the labels of the Helm chart
+	kubewardenLabels := map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue}
 	caCertBytes, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
 	Expect(err).NotTo(HaveOccurred())
 	err = k8sClient.Create(ctx, &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      constants.CARootSecretName,
 			Namespace: deploymentsNamespace,
+			Labels:    kubewardenLabels,
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: map[string][]byte{
 			constants.CARootCert:       caCertBytes,
 			constants.CARootPrivateKey: caPrivateKey,
+		},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	webhookServerCert, webhookServerPrivateKey, err := certs.GenerateCert(caCertBytes, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), certs.DNSName(webhookServiceName, deploymentsNamespace))
+	Expect(err).NotTo(HaveOccurred())
+	err = k8sClient.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      constants.WebhookServerCertSecretName,
+			Namespace: deploymentsNamespace,
+			Labels:    kubewardenLabels,
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			constants.ServerCert:       webhookServerCert,
+			constants.ServerPrivateKey: webhookServerPrivateKey,
+		},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	auditScannerClientCert, auditScannerClientPrivateKey, err := certs.GenerateCert(caCertBytes, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
+	Expect(err).NotTo(HaveOccurred())
+	err = k8sClient.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      constants.AuditScannerClientCertSecretName,
+			Namespace: deploymentsNamespace,
+			Labels:    kubewardenLabels,
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			constants.ServerCert:       auditScannerClientCert,
+			constants.ServerPrivateKey: auditScannerClientPrivateKey,
 		},
 	})
 	Expect(err).NotTo(HaveOccurred())

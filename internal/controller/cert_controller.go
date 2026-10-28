@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -12,35 +14,22 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/kubewarden/adm-controller/internal/certs"
 	"github.com/kubewarden/adm-controller/internal/constants"
 )
 
-const tickerDuration = 12 * time.Hour
-
-const (
-	startupReconcileFirstDelay = 5 * time.Second
-	startupReconcileFactor     = 2
-	startupReconcileJitter     = 0.1
-	startupReconcileTries      = 8
-	startupReconcileMaxDelay   = time.Minute
-)
-
-// startupReconcileBackoff makes up to 8 tries in about 4 minutes: it waits 5s, 10s, 20s, 40s, then 1m between tries.
-func startupReconcileBackoff() wait.Backoff {
-	return wait.Backoff{
-		Duration: startupReconcileFirstDelay,
-		Factor:   startupReconcileFactor,
-		Jitter:   startupReconcileJitter,
-		Steps:    startupReconcileTries,
-		Cap:      startupReconcileMaxDelay,
-	}
-}
+// reconcileInterval is the time between two passes when nothing changes. A pass renews a certificate 60 days before
+// its end, so a pass every 12 hours is enough.
+const reconcileInterval = 12 * time.Hour
 
 // CertReconciler owns the certificate Secrets of the stack, all in DeploymentsNamespace:
 //   - the CA root secret CARootSecretName (ca.crt, ca.key, and old-ca.crt for 60 days after a rotation of the CA root)
@@ -50,8 +39,13 @@ func startupReconcileBackoff() wait.Backoff {
 //   - the secret of every policy server, found by the label app.kubernetes.io/component: policy-server. The webhook
 //     configurations of the policies send the requests to the policy servers.
 //
-// It is a Runnable, not a controller: it watches nothing. It runs on the leader, at startup and every 12 hours. It
-// replaces each certificate that expires within constants.CertLookahead or that the current CA root did not sign.
+// It is a controller that runs on the leader. One pass rotates the CA root and replaces each certificate that expires
+// within constants.CertLookahead or that the current CA root did not sign. A pass runs:
+//   - at startup
+//   - every reconcileInterval
+//   - when a Secret with the label app.kubernetes.io/part-of: kubewarden in DeploymentsNamespace changes
+//   - when a webhook configuration with that label is created, or its caBundle changes
+//   - again, with the backoff of the work queue, after a failed pass.
 //
 // Before it signs any certificate, it writes the CA bundle of the CA root secret into every webhook configuration with
 // the label app.kubernetes.io/part-of: kubewarden: the webhook configurations of the controller, and those of the
@@ -72,57 +66,112 @@ type CertReconciler struct {
 	AuditScannerClientCertSecretName string
 }
 
-// Start begins the periodic reconciler.
-// Implements the Runnable interface, see https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/manager#Runnable.
-func (r *CertReconciler) Start(ctx context.Context) error {
-	r.Log.Info("Starting CertController ticker")
-
-	// The certificates can be expired when the controller starts, for example
-	// after a long downtime. Then the webhooks with failurePolicy Fail block
-	// admission until the certificates rotate. Do not wait for the first tick.
-	// A failed pass at startup must not wait 12 hours for the next tick.
-	// The writes of the secrets already retry on a conflict. This backoff
-	// covers the other failures: the API server is not reachable, or a
-	// conflict lasts longer than the retry of one write.
-	// Retry for a few minutes before the ticker takes over.
-	if err := wait.ExponentialBackoffWithContext(ctx, startupReconcileBackoff(), func(ctx context.Context) (bool, error) {
-		if err := r.reconcile(ctx); err != nil {
-			r.Log.Error(err, "Failed to reconcile certificates at startup, retrying")
-			return false, nil
-		}
-		return true, nil
-	}); err != nil {
-		r.Log.Error(err, "Failed to reconcile certificates at startup, waiting for the next tick", "tick", tickerDuration)
-	}
-
-	ticker := time.NewTicker(tickerDuration)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			r.Log.Info("Stopping CertController")
-			return nil
-		case <-ticker.C:
-			if err := r.reconcile(ctx); err != nil {
-				r.Log.Error(err, "Failed to reconcile certificates")
-			}
-		}
-	}
-}
-
-// NeedLeaderElection returns true to ensure that only one instance of the controller is running at a time.
-// Implements the LeaderElectionRunnable interface, see https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/manager#LeaderElectionRunnable.
-func (r *CertReconciler) NeedLeaderElection() bool {
-	return true
-}
-
+// SetupWithManager sets up the controller with the Manager.
 func (r *CertReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.Add(r); err != nil {
+	// Every event maps to the same request, because every pass handles every certificate and every webhook
+	// configuration. The work queue merges the duplicate requests, so at most one pass waits in the queue.
+	enqueuePass := handler.EnqueueRequestsFromMapFunc(func(context.Context, client.Object) []reconcile.Request {
+		return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: r.DeploymentsNamespace, Name: r.CARootSecretName}}}
+	})
+
+	err := ctrl.NewControllerManagedBy(mgr).
+		Named("cert").
+		Watches(
+			&corev1.Secret{},
+			enqueuePass,
+			builder.WithPredicates(kubewardenObjectPredicate(r.DeploymentsNamespace, secretDataChanged)),
+		).
+		Watches(
+			&admissionregistrationv1.ValidatingWebhookConfiguration{},
+			enqueuePass,
+			builder.WithPredicates(kubewardenObjectPredicate("", caBundleChanged)),
+		).
+		Watches(
+			&admissionregistrationv1.MutatingWebhookConfiguration{},
+			enqueuePass,
+			builder.WithPredicates(kubewardenObjectPredicate("", caBundleChanged)),
+		).
+		Complete(r)
+	if err != nil {
 		return fmt.Errorf("failed enrolling controller with manager: %w", err)
 	}
 
 	return nil
+}
+
+// Reconcile runs one pass. After a successful pass, it runs the next one after reconcileInterval. After a failed pass,
+// the work queue runs it again with a backoff.
+func (r *CertReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+	if err := r.reconcile(ctx); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{RequeueAfter: reconcileInterval}, nil
+}
+
+// kubewardenObjectPredicate passes the events of an object with the label app.kubernetes.io/part-of: kubewarden that
+// can need a pass: a creation, an update that adds the label, and an update where changed returns true. If namespace
+// is not empty, it passes only the objects in that namespace. A deletion does not pass: there is nothing to write into
+// an object that is gone.
+func kubewardenObjectPredicate(namespace string, changed func(oldObject, newObject client.Object) bool) predicate.Funcs {
+	isKubewardenObject := func(object client.Object) bool {
+		if namespace != "" && object.GetNamespace() != namespace {
+			return false
+		}
+		return object.GetLabels()[constants.PartOfLabelKey] == constants.PartOfLabelValue
+	}
+
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return isKubewardenObject(e.Object)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !isKubewardenObject(e.ObjectNew) {
+				return false
+			}
+			return !isKubewardenObject(e.ObjectOld) || changed(e.ObjectOld, e.ObjectNew)
+		},
+		DeleteFunc: func(event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+// secretDataChanged returns true if the data of two versions of a Secret differ.
+func secretDataChanged(oldObject, newObject client.Object) bool {
+	oldSecret, ok := oldObject.(*corev1.Secret)
+	if !ok {
+		return false
+	}
+	newSecret, ok := newObject.(*corev1.Secret)
+	if !ok {
+		return false
+	}
+	return !maps.EqualFunc(oldSecret.Data, newSecret.Data, bytes.Equal)
+}
+
+// caBundleChanged returns true if a caBundle differs between two versions of a webhook configuration.
+func caBundleChanged(oldObject, newObject client.Object) bool {
+	_, oldClientConfigs, err := webhookClientConfigs(oldObject)
+	if err != nil {
+		return false
+	}
+	_, newClientConfigs, err := webhookClientConfigs(newObject)
+	if err != nil {
+		return false
+	}
+	if len(oldClientConfigs) != len(newClientConfigs) {
+		return true
+	}
+	for i := range newClientConfigs {
+		if !bytes.Equal(oldClientConfigs[i].CABundle, newClientConfigs[i].CABundle) {
+			return true
+		}
+	}
+	return false
 }
 
 // reconcile reconciles the CA root and server certificates by rotating them if they are about to expire.
