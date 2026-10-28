@@ -51,6 +51,34 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       {{- end }}
+      # The init container creates the certificate Secrets that are missing,
+      # creates or updates the webhook configurations of the controller, and
+      # waits until the kubelet copies the certificate of the webhook server
+      # into the "cert" volume. The volume belongs to the pod, so the
+      # controller container finds the certificate when it starts.
+      initContainers:
+      - name: init
+        image: '{{ template "system_default_registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}'
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /controller
+        args:
+        - --mode=init
+        - --deployments-namespace={{ .Release.Namespace }}
+        - --webhook-service-name={{ include "admission-controller.webhookServiceName" . }}
+        - --zap-log-level={{ .Values.logLevel }}
+        {{- if and .Values.resources .Values.resources.controller }}
+        resources:
+{{ toYaml .Values.resources.controller | indent 10 }}
+        {{- end }}
+        {{- if .Values.containerSecurityContext }}
+        securityContext:
+{{ toYaml .Values.containerSecurityContext | indent 10 }}
+        {{- end }}
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
       containers:
       - name: controller
         args:
@@ -177,10 +205,13 @@ spec:
           name: webhook-server
           protocol: TCP
       volumes:
+      # The init container creates the Secret on the first install, so the
+      # volume must not block the start of the pod.
       - name: cert
         secret:
           defaultMode: 420
           secretName: kubewarden-webhook-server-cert
+          optional: true
       {{- if and (.Values.mTLS.enable) .Values.mTLS.configMapName }}
       - name: client-ca
         configMap:

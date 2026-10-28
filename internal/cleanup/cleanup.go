@@ -113,8 +113,8 @@ func Run(ctx context.Context, c client.Client, log logr.Logger, opts Options) er
 	}
 
 	// Delete the certificate Secrets of the controller. They hold the CA, and
-	// a new installation must not reuse it. Helm does not delete them when they
-	// do not belong to the release, or carry the keep resource policy.
+	// a new installation must not reuse it. Helm does not delete them: the
+	// controller creates them, and the chart does not render them.
 	log.Info("deleting the certificate secrets of the controller", "namespace", opts.DeploymentsNamespace)
 	if err := deleteControllerCertificateSecrets(ctx, c, opts.DeploymentsNamespace); err != nil {
 		return fmt.Errorf("failed to delete the certificate secrets of the controller: %w", err)

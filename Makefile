@@ -177,7 +177,6 @@ manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefin
 			output:crd:artifacts:config=charts/admission-controller/templates/crds \
 			output:rbac:artifacts:config=charts/admission-controller/templates/controller \
 			output:webhook:artifacts:config=internal/bootstrap
-	echo "# to be merged manually into admission-controller/templates/webhooks.yaml" | cat - internal/bootstrap/manifests.yaml > charts/generated-webhooks-manifests.yaml
 	sed -i '/^metadata:/a\  labels:\n    {{- include "admission-controller.labels" . | nindent 4 }}\n  annotations:\n    {{- include "admission-controller.annotations" . | nindent 4 }}' charts/admission-controller/templates/controller/controller-rbac-roles.yaml
 	sed -i 's/  namespace: kubewarden/  namespace: {{ .Release.Namespace }}/' charts/admission-controller/templates/controller/controller-rbac-roles.yaml
 

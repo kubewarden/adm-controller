@@ -13,10 +13,10 @@ cluster.
 The Job runs the controller image in cleanup mode, which:
   1. Deletes the controller Deployment and waits for its pods to be gone, so
      nothing recreates the resources removed by the following steps.
-  2. Deletes every Kubewarden webhook configuration, so no orphaned webhook
-     keeps intercepting admission requests and the following writes to the
-     Kubewarden custom resources are not rejected by webhooks pointing to the
-     deleted controller.
+  2. Deletes every Kubewarden webhook configuration, the ones of the policies
+     and the ones of the controller, so no orphaned webhook keeps intercepting
+     admission requests and the following writes to the Kubewarden custom
+     resources are not rejected by webhooks pointing to the deleted controller.
   3. Strips the Kubewarden finalizers from the Kubewarden CRs, so they can be
      deleted with plain kubectl commands without a running controller honoring
      their finalizers.
@@ -29,7 +29,8 @@ The Job runs the controller image in cleanup mode, which:
      resources (e.g. the controller Services) are left for Helm to delete right
      after this hook.
   6. Deletes the certificate Secrets of the controller. They hold the CA, and
-     a new installation must not reuse it.
+     a new installation must not reuse it. Helm does not delete them: the
+     controller creates them, and the chart does not render them.
 */}}
 apiVersion: batch/v1
 kind: Job
