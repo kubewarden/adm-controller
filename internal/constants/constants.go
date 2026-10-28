@@ -105,11 +105,6 @@ const (
 	WebhookConfigurationPolicyNameAnnotationKey      = "kubewardenPolicyName"
 	WebhookConfigurationPolicyNamespaceAnnotationKey = "kubewardenPolicyNamespace"
 
-	// InjectCAFromAnnotationKey marks a webhook configuration whose caBundle the controller keeps equal to the CA
-	// bundle of a secret. The value is "<namespace>/<secret>". The Helm chart sets it on the webhook configurations of
-	// the controller. The controller accepts only its own CA root secret as the value.
-	InjectCAFromAnnotationKey = "kubewarden.io/inject-ca-from"
-
 	// WebhookNameSuffix is appended to a policy's unique name to build the
 	// name of the individual webhook entry inside a Mutating/Validating
 	// WebhookConfiguration. The resulting string cannot exceed the

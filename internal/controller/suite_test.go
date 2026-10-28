@@ -158,14 +158,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&WebhookCABundleReconciler{
-		Client:               k8sManager.GetClient(),
-		Log:                  ctrl.Log.WithName("webhook-cabundle-test"),
-		DeploymentsNamespace: deploymentsNamespace,
-		CARootSecretName:     constants.CARootSecretName,
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
 	err = (&CertReconciler{
 		Client:                           k8sManager.GetClient(),
 		Log:                              ctrl.Log.WithName("cert-reconciler-test"),

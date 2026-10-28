@@ -489,15 +489,6 @@ func setupReconcilers(mgr ctrl.Manager,
 		return errors.Join(errors.New("unable to create Cert controller"), err)
 	}
 
-	if err := (&controller.WebhookCABundleReconciler{
-		Client:               mgr.GetClient(),
-		Log:                  ctrl.Log.WithName("webhook-cabundle-reconciler"),
-		DeploymentsNamespace: deploymentsNamespace,
-		CARootSecretName:     constants.CARootSecretName,
-	}).SetupWithManager(mgr); err != nil {
-		return errors.Join(errors.New("unable to create WebhookCABundle controller"), err)
-	}
-
 	if err := (&controller.AdmissionPolicyGroupReconciler{
 		Client:                  mgr.GetClient(),
 		Scheme:                  mgr.GetScheme(),

@@ -51,11 +51,8 @@ const reconcileInterval = 12 * time.Hour
 // the label app.kubernetes.io/part-of: kubewarden: the webhook configurations of the controller, and those of the
 // policies. Then the API server trusts a new CA root before any server presents a certificate from it.
 //
-// Other components also write caBundle:
-//   - WebhookCABundleReconciler for the webhook configurations of the controller
-//   - the policy reconcilers, once, when they create the webhook configuration of a policy.
-//
-// All of them write certs.CABundleFromSecret, so they agree.
+// It is the only writer of caBundle after the creation of a webhook configuration. The policy reconcilers write
+// certs.CABundleFromSecret once, when they create the webhook configuration of a policy.
 type CertReconciler struct {
 	client.Client
 	Log                              logr.Logger
@@ -453,4 +450,59 @@ func (r *CertReconciler) reconcileAuditScannerClientCert(ctx context.Context, ca
 	}
 
 	return nil
+}
+
+// injectCABundle sets caBundle in every webhook of a validating or a mutating webhook configuration. If a value
+// changed, it patches the object and logs the change. It is the only code that writes caBundle into an existing
+// webhook configuration.
+func injectCABundle(ctx context.Context, c client.Client, log logr.Logger, webhookConfiguration client.Object, caBundle []byte) error {
+	original, ok := webhookConfiguration.DeepCopyObject().(client.Object)
+	if !ok {
+		return fmt.Errorf("cannot copy webhook configuration %q", webhookConfiguration.GetName())
+	}
+
+	kind, clientConfigs, err := webhookClientConfigs(webhookConfiguration)
+	if err != nil {
+		return err
+	}
+
+	changed := false
+	for _, clientConfig := range clientConfigs {
+		if !bytes.Equal(clientConfig.CABundle, caBundle) {
+			clientConfig.CABundle = caBundle
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+
+	// The merge patch replaces the whole webhooks list. The optimistic lock makes a concurrent change of the object
+	// fail with a conflict, so that the reconcile runs again on the new object instead of overwriting it.
+	if err = c.Patch(ctx, webhookConfiguration, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); err != nil {
+		return fmt.Errorf("cannot patch the CA bundle of %s %q: %w", kind, webhookConfiguration.GetName(), err)
+	}
+	log.Info("Injected the CA bundle", "kind", kind, "name", webhookConfiguration.GetName())
+
+	return nil
+}
+
+// webhookClientConfigs returns the kind of a validating or a mutating webhook configuration, and a pointer to the
+// client configuration of each of its webhooks.
+func webhookClientConfigs(webhookConfiguration client.Object) (string, []*admissionregistrationv1.WebhookClientConfig, error) {
+	var clientConfigs []*admissionregistrationv1.WebhookClientConfig
+	switch typed := webhookConfiguration.(type) {
+	case *admissionregistrationv1.ValidatingWebhookConfiguration:
+		for i := range typed.Webhooks {
+			clientConfigs = append(clientConfigs, &typed.Webhooks[i].ClientConfig)
+		}
+		return "ValidatingWebhookConfiguration", clientConfigs, nil
+	case *admissionregistrationv1.MutatingWebhookConfiguration:
+		for i := range typed.Webhooks {
+			clientConfigs = append(clientConfigs, &typed.Webhooks[i].ClientConfig)
+		}
+		return "MutatingWebhookConfiguration", clientConfigs, nil
+	default:
+		return "", nil, fmt.Errorf("%T is not a webhook configuration", webhookConfiguration)
+	}
 }
