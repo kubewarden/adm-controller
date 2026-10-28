@@ -69,7 +69,7 @@ spec:
           command:
             - /controller
           args:
-            - --cleanup
+            - --mode=cleanup
             - --deployments-namespace={{ .Release.Namespace }}
             - --controller-deployment-name={{ include "admission-controller.fullname" . }}
             - --zap-log-level={{ .Values.logLevel }}

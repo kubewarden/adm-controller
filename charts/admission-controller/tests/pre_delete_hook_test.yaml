@@ -49,7 +49,7 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args
           value:
-            - --cleanup
+            - --mode=cleanup
             - --deployments-namespace=kubewarden
             - --controller-deployment-name=kubewarden-admission-controller
             - --zap-log-level=info
