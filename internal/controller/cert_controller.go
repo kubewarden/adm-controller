@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/kubewarden/adm-controller/internal/bootstrap"
 	"github.com/kubewarden/adm-controller/internal/certs"
 	"github.com/kubewarden/adm-controller/internal/constants"
 )
@@ -32,18 +33,20 @@ import (
 const reconcileInterval = 12 * time.Hour
 
 // CertReconciler owns the certificate Secrets of the stack, all in DeploymentsNamespace:
-//   - the CA root secret CARootSecretName (ca.crt, ca.key, and old-ca.crt for 60 days after a rotation of the CA root)
-//   - the secret WebhookServerCertSecretName of the webhook server of the controller (the one for Kubewarden CRDs),
-//     for the DNS name of its service WebhookServiceName.
-//   - the audit scanner client secret AuditScannerClientCertSecretName
+//   - the CA root secret constants.CARootSecretName (ca.crt, ca.key, and old-ca.crt for 60 days after a rotation of
+//     the CA root)
+//   - the secret constants.WebhookServerCertSecretName of the webhook server of the controller (the one for Kubewarden
+//     CRDs), for the DNS name of its service WebhookServiceName.
+//   - the audit scanner client secret constants.AuditScannerClientCertSecretName
 //   - the secret of every policy server, found by the label app.kubernetes.io/component: policy-server. The webhook
 //     configurations of the policies send the requests to the policy servers.
 //
-// It is a controller that runs on the leader. One pass rotates the CA root and replaces each certificate that expires
-// within constants.CertLookahead or that the current CA root did not sign. A pass runs:
+// It is a controller that runs on the leader. One pass creates the certificate Secrets of the controller that are
+// missing, rotates the CA root, and replaces each certificate that expires within constants.CertLookahead or that the
+// current CA root did not sign. A pass runs:
 //   - at startup
 //   - every reconcileInterval
-//   - when a Secret with the label app.kubernetes.io/part-of: kubewarden in DeploymentsNamespace changes
+//   - when a Secret with the label app.kubernetes.io/part-of: kubewarden in DeploymentsNamespace changes or is deleted
 //   - when a webhook configuration with that label is created, or its caBundle changes
 //   - again, with the backoff of the work queue, after a failed pass.
 //
@@ -55,12 +58,9 @@ const reconcileInterval = 12 * time.Hour
 // certs.CABundleFromSecret once, when they create the webhook configuration of a policy.
 type CertReconciler struct {
 	client.Client
-	Log                              logr.Logger
-	DeploymentsNamespace             string
-	WebhookServiceName               string
-	CARootSecretName                 string
-	WebhookServerCertSecretName      string
-	AuditScannerClientCertSecretName string
+	Log                  logr.Logger
+	DeploymentsNamespace string
+	WebhookServiceName   string
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -68,7 +68,7 @@ func (r *CertReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Every event maps to the same request, because every pass handles every certificate and every webhook
 	// configuration. The work queue merges the duplicate requests, so at most one pass waits in the queue.
 	enqueuePass := handler.EnqueueRequestsFromMapFunc(func(context.Context, client.Object) []reconcile.Request {
-		return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: r.DeploymentsNamespace, Name: r.CARootSecretName}}}
+		return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: r.DeploymentsNamespace, Name: constants.CARootSecretName}}}
 	})
 
 	err := ctrl.NewControllerManagedBy(mgr).
@@ -107,9 +107,9 @@ func (r *CertReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Re
 }
 
 // kubewardenObjectPredicate passes the events of an object with the label app.kubernetes.io/part-of: kubewarden that
-// can need a pass: a creation, an update that adds the label, and an update where changed returns true. If namespace
-// is not empty, it passes only the objects in that namespace. A deletion does not pass: there is nothing to write into
-// an object that is gone.
+// can need a pass: a creation, a deletion, an update that adds the label, and an update where changed returns true. If
+// namespace is not empty, it passes only the objects in that namespace. A deletion passes, because the pass creates a
+// certificate Secret of the controller again.
 func kubewardenObjectPredicate(namespace string, changed func(oldObject, newObject client.Object) bool) predicate.Funcs {
 	isKubewardenObject := func(object client.Object) bool {
 		if namespace != "" && object.GetNamespace() != namespace {
@@ -128,8 +128,8 @@ func kubewardenObjectPredicate(namespace string, changed func(oldObject, newObje
 			}
 			return !isKubewardenObject(e.ObjectOld) || changed(e.ObjectOld, e.ObjectNew)
 		},
-		DeleteFunc: func(event.DeleteEvent) bool {
-			return false
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return isKubewardenObject(e.Object)
 		},
 		GenericFunc: func(event.GenericEvent) bool {
 			return false
@@ -173,27 +173,29 @@ func caBundleChanged(oldObject, newObject client.Object) bool {
 
 // reconcile reconciles the CA root and server certificates by rotating them if they are about to expire.
 func (r *CertReconciler) reconcile(ctx context.Context) error {
-	caCertSecret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Name: r.CARootSecretName, Namespace: r.DeploymentsNamespace}, caCertSecret); err != nil {
-		return fmt.Errorf("failed to get CA cert secret: %w", err)
+	// The init container of the controller creates the certificate Secrets. A user or a tool can delete one of them
+	// later. Create it again, in the same way.
+	caCertSecret, err := bootstrap.EnsureCertificateSecrets(ctx, r.Client, r.Log, r.DeploymentsNamespace, r.WebhookServiceName)
+	if err != nil {
+		return fmt.Errorf("failed to make sure that the certificate secrets exist: %w", err)
 	}
 
-	if err := r.reconcileCARoot(ctx, caCertSecret); err != nil {
+	if err = r.reconcileCARoot(ctx, caCertSecret); err != nil {
 		return fmt.Errorf("failed to reconcile CA root: %w", err)
 	}
-	if err := r.reconcileOldCARoot(ctx, caCertSecret); err != nil {
+	if err = r.reconcileOldCARoot(ctx, caCertSecret); err != nil {
 		return fmt.Errorf("failed to reconcile old CA root: %w", err)
 	}
 	// No certificate is signed before the API server trusts the CA root that signs it.
-	if err := r.reconcileCABundles(ctx, caCertSecret); err != nil {
+	if err = r.reconcileCABundles(ctx, caCertSecret); err != nil {
 		return fmt.Errorf("failed to reconcile the CA bundle of the webhook configurations: %w", err)
 	}
 	// A server certificate that cannot rotate must not hold back the others.
 	var errs []error
-	if err := r.reconcileServerCerts(ctx, caCertSecret); err != nil {
+	if err = r.reconcileServerCerts(ctx, caCertSecret); err != nil {
 		errs = append(errs, fmt.Errorf("failed to reconcile server certs: %w", err))
 	}
-	if err := r.reconcileAuditScannerClientCert(ctx, caCertSecret); err != nil {
+	if err = r.reconcileAuditScannerClientCert(ctx, caCertSecret); err != nil {
 		errs = append(errs, fmt.Errorf("failed to reconcile audit scanner client cert: %w", err))
 	}
 
@@ -323,7 +325,7 @@ func (r *CertReconciler) reconcileServerCerts(ctx context.Context, caRootSecret 
 	var errs []error
 
 	webhookServerCertSecret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Name: r.WebhookServerCertSecretName, Namespace: r.DeploymentsNamespace}, webhookServerCertSecret); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: constants.WebhookServerCertSecretName, Namespace: r.DeploymentsNamespace}, webhookServerCertSecret); err != nil {
 		errs = append(errs, fmt.Errorf("failed to get webhook server cert secret: %w", err))
 	} else if err = r.reconcileServerCert(ctx, webhookServerCertSecret, caRootSecret, r.WebhookServiceName); err != nil {
 		errs = append(errs, fmt.Errorf("failed to rotate server cert: %w", err))
@@ -399,12 +401,12 @@ func (r *CertReconciler) reconcileServerCert(ctx context.Context, serverCertSecr
 
 // reconcileAuditScannerClientCert rotates the client certificate of the audit scanner if it is about to expire,
 // or if it is not signed by the current CA root.
-// The Helm chart creates the secret. If the secret does not exist, there is nothing to rotate.
+// The pass creates the secret at its start. If a user deletes it during the pass, there is nothing to rotate.
 func (r *CertReconciler) reconcileAuditScannerClientCert(ctx context.Context, caRootSecret *corev1.Secret) error {
 	clientCertSecret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Name: r.AuditScannerClientCertSecretName, Namespace: r.DeploymentsNamespace}, clientCertSecret)
+	err := r.Get(ctx, types.NamespacedName{Name: constants.AuditScannerClientCertSecretName, Namespace: r.DeploymentsNamespace}, clientCertSecret)
 	if apierrors.IsNotFound(err) {
-		r.Log.Info("Audit scanner client cert secret not found, skipping its rotation", "secret", r.AuditScannerClientCertSecretName)
+		r.Log.Info("Audit scanner client cert secret not found, skipping its rotation", "secret", constants.AuditScannerClientCertSecretName)
 		return nil
 	}
 	if err != nil {

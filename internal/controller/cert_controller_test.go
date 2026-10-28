@@ -386,6 +386,41 @@ var _ = Describe("Cert controller", Serial, func() {
 		})
 	})
 
+	Context("A deleted certificate Secret", func() {
+		deleteSecret := func(name string) {
+			Expect(k8sClient.Delete(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Namespace: deploymentsNamespace, Name: name},
+			})).To(Succeed())
+		}
+
+		It("should create the webhook server certificate Secret again", func() {
+			deleteSecret(constants.WebhookServerCertSecretName)
+
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+			Expect(getSecret(constants.WebhookServerCertSecretName).Labels).To(HaveKeyWithValue(constants.PartOfLabelKey, constants.PartOfLabelValue))
+		})
+
+		It("should create the CA root Secret again, write the CA bundle, and sign every certificate again", func() {
+			validating, _ := createWebhookConfigurations("cert-controller-deleted-ca", true, currentCABundle())
+			deletedCACert, _ := currentCARoot()
+
+			deleteSecret(constants.CARootSecretName)
+
+			By("checking that a new CA root exists")
+			Eventually(func(g Gomega) {
+				caRootSecret := &corev1.Secret{}
+				g.Expect(k8sClient.Get(ctx, caRootSecretKey, caRootSecret)).To(Succeed())
+				g.Expect(caRootSecret.Data[constants.CARootCert]).ToNot(Equal(deletedCACert))
+			}, timeout, pollInterval).Should(Succeed())
+
+			By("checking that the webhook configurations trust the new CA root, and that it signs every certificate")
+			caCert, _ := currentCARoot()
+			Eventually(caBundles(validating), timeout, pollInterval).Should(HaveEach(Equal(caCert)))
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+			Eventually(signedByCurrentCARoot(constants.AuditScannerClientCertSecretName, ""), timeout, pollInterval).Should(Succeed())
+		})
+	})
+
 	Context("CA bundle of the webhook configurations", func() {
 		It("should repair a webhook configuration with the Kubewarden label that is created with the CA bundle of another CA", func() {
 			otherCACert, _ := newCA(time.Now(), time.Now().Add(constants.CACertExpiration))
@@ -510,13 +545,10 @@ func TestReconcileWritesTheCABundleBeforeItSigns(t *testing.T) {
 				Build()
 
 			certController := CertReconciler{
-				Client:                           k8sClient,
-				Log:                              logr.Discard(),
-				DeploymentsNamespace:             namespace,
-				WebhookServiceName:               serviceName,
-				CARootSecretName:                 constants.CARootSecretName,
-				WebhookServerCertSecretName:      constants.WebhookServerCertSecretName,
-				AuditScannerClientCertSecretName: constants.AuditScannerClientCertSecretName,
+				Client:               k8sClient,
+				Log:                  logr.Discard(),
+				DeploymentsNamespace: namespace,
+				WebhookServiceName:   serviceName,
 			}
 
 			err = certController.reconcile(t.Context())
