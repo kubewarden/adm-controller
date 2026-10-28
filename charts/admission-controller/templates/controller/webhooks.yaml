@@ -91,7 +91,7 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   annotations:
-    {{- include "admission-controller.webhookConfigurationAnnotations" . | nindent 4 }}
+    {{- include "admission-controller.annotations" . | nindent 4 }}
   name: kubewarden-controller-mutating-webhook-configuration
   labels:
     {{- include "admission-controller.labels" . | nindent 4 }}
@@ -189,7 +189,7 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   annotations:
-    {{- include "admission-controller.webhookConfigurationAnnotations" . | nindent 4 }}
+    {{- include "admission-controller.annotations" . | nindent 4 }}
   name: kubewarden-controller-validating-webhook-configuration
   labels:
     {{- include "admission-controller.labels" . | nindent 4 }}
