@@ -1,11 +1,9 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -31,14 +29,6 @@ const (
 	startupReconcileJitter     = 0.1
 	startupReconcileTries      = 8
 	startupReconcileMaxDelay   = time.Minute
-)
-
-const (
-	// caBundlePublicationTimeout is the time that one pass waits, in total, for the webhook configurations to trust
-	// the CA root before it signs server certificates with it. The owners of the webhook configurations usually
-	// write the CA bundle a few seconds after the CA root secret changes.
-	caBundlePublicationTimeout      = 2 * time.Minute
-	caBundlePublicationPollInterval = 2 * time.Second
 )
 
 // startupReconcileBackoff makes up to 8 tries in about 4 minutes: it waits 5s, 10s, 20s, 40s, then 1m between tries.
@@ -71,9 +61,7 @@ func startupReconcileBackoff() wait.Backoff {
 //   - WebhookCABundleReconciler for the webhook configurations of the controller
 //   - the policy reconcilers for the webhook configurations of the policies.
 //
-// All of them write certs.CABundleFromSecret, so they agree. Before it signs a server certificate, it waits until every
-// webhook configuration that sends requests to that server trusts the CA root. If they do not trust it in time, it
-// keeps the current certificate and tries again on the next pass.
+// All of them write certs.CABundleFromSecret, so they agree.
 type CertReconciler struct {
 	client.Client
 	Log                              logr.Logger
@@ -82,9 +70,6 @@ type CertReconciler struct {
 	CARootSecretName                 string
 	WebhookServerCertSecretName      string
 	AuditScannerClientCertSecretName string
-
-	// caBundlePublicationTimeout overrides the default caBundlePublicationTimeout. The tests set it.
-	caBundlePublicationTimeout time.Duration
 }
 
 // Start begins the periodic reconciler.
@@ -157,8 +142,7 @@ func (r *CertReconciler) reconcile(ctx context.Context) error {
 	if err := r.reconcileCABundles(ctx, caCertSecret); err != nil {
 		return fmt.Errorf("failed to reconcile the CA bundle of the webhook configurations: %w", err)
 	}
-	// A server certificate waits until the webhook configurations trust the CA root. That wait must not hold back
-	// the client certificate of the audit scanner, which no webhook configuration verifies.
+	// A server certificate that cannot rotate must not hold back the others.
 	var errs []error
 	if err := r.reconcileServerCerts(ctx, caCertSecret); err != nil {
 		errs = append(errs, fmt.Errorf("failed to reconcile server certs: %w", err))
@@ -290,13 +274,12 @@ func (r *CertReconciler) reconcileCABundles(ctx context.Context, caRootSecret *c
 // reconcileServerCerts reconciles the webhook server and policy server certificates by rotating them if they are about to expire.
 // A certificate that cannot rotate does not stop the rotation of the others.
 func (r *CertReconciler) reconcileServerCerts(ctx context.Context, caRootSecret *corev1.Secret) error {
-	publicationDeadline := time.Now().Add(r.publicationTimeout())
 	var errs []error
 
 	webhookServerCertSecret := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Name: r.WebhookServerCertSecretName, Namespace: r.DeploymentsNamespace}, webhookServerCertSecret); err != nil {
 		errs = append(errs, fmt.Errorf("failed to get webhook server cert secret: %w", err))
-	} else if err = r.reconcileServerCert(ctx, webhookServerCertSecret, caRootSecret, r.WebhookServiceName, publicationDeadline); err != nil {
+	} else if err = r.reconcileServerCert(ctx, webhookServerCertSecret, caRootSecret, r.WebhookServiceName); err != nil {
 		errs = append(errs, fmt.Errorf("failed to rotate server cert: %w", err))
 	}
 
@@ -317,7 +300,7 @@ func (r *CertReconciler) reconcileServerCerts(ctx context.Context, caRootSecret 
 
 	// The name of the secret of a policy server is the name of its service.
 	for _, serverCertSecret := range serverCertSecretList.Items {
-		if err = r.reconcileServerCert(ctx, &serverCertSecret, caRootSecret, serverCertSecret.GetName(), publicationDeadline); err != nil {
+		if err = r.reconcileServerCert(ctx, &serverCertSecret, caRootSecret, serverCertSecret.GetName()); err != nil {
 			errs = append(errs, fmt.Errorf("failed to rotate server cert: %w", err))
 		}
 	}
@@ -326,9 +309,8 @@ func (r *CertReconciler) reconcileServerCerts(ctx context.Context, caRootSecret 
 }
 
 // reconcileServerCert reconciles the certificate of the server behind the service serviceName by rotating it if it is
-// about to expire. Before it signs a new certificate, it waits until publicationDeadline for the webhook
-// configurations that send requests to the service to trust the CA root.
-func (r *CertReconciler) reconcileServerCert(ctx context.Context, serverCertSecret *corev1.Secret, caRootSecret *corev1.Secret, serviceName string, publicationDeadline time.Time) error {
+// about to expire, or if the current CA root did not sign it.
+func (r *CertReconciler) reconcileServerCert(ctx context.Context, serverCertSecret *corev1.Secret, caRootSecret *corev1.Secret, serviceName string) error {
 	dnsName := certs.DNSName(serviceName, r.DeploymentsNamespace)
 
 	cert, privateKey, err := certs.ExtractServerCertFromSecret(serverCertSecret)
@@ -349,10 +331,6 @@ func (r *CertReconciler) reconcileServerCert(ctx context.Context, serverCertSecr
 	if err = certs.VerifyCert(cert, privateKey, pool, dnsName, time.Now().Add(constants.CertLookahead)); err != nil {
 		r.Log.Info("Certificate verification failed, rotating the certificate", "dnsName", dnsName, "verification error", err)
 
-		if err = r.waitForCABundlePublication(ctx, serviceName, caCert, publicationDeadline); err != nil {
-			return fmt.Errorf("failed to rotate the certificate for %s: %w", dnsName, err)
-		}
-
 		var newCert, newPrivateKey []byte
 		newCert, newPrivateKey, err = certs.GenerateCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), dnsName)
 		if err != nil {
@@ -371,85 +349,6 @@ func (r *CertReconciler) reconcileServerCert(ctx context.Context, serverCertSecr
 	}
 
 	return nil
-}
-
-// waitForCABundlePublication waits until every webhook configuration that sends requests to the service serviceName
-// has caCert in each of its CA bundles, or until deadline. A server must not serve a certificate that the API server
-// cannot verify with the CA bundle of its webhook configuration.
-func (r *CertReconciler) waitForCABundlePublication(ctx context.Context, serviceName string, caCert []byte, deadline time.Time) error {
-	untrusted, err := r.webhookConfigurationsWithoutCA(ctx, serviceName, caCert)
-	if err != nil {
-		return err
-	}
-	if len(untrusted) == 0 {
-		return nil
-	}
-	r.Log.Info("Waiting for the webhook configurations to trust the CA root before rotating the certificate",
-		"service", serviceName, "webhookConfigurations", untrusted)
-
-	pollCtx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
-	err = wait.PollUntilContextCancel(pollCtx, caBundlePublicationPollInterval, false, func(context.Context) (bool, error) {
-		var listErr error
-		untrusted, listErr = r.webhookConfigurationsWithoutCA(ctx, serviceName, caCert)
-		if listErr != nil {
-			return false, listErr
-		}
-		return len(untrusted) == 0, nil
-	})
-	if err != nil {
-		return fmt.Errorf("the webhook configurations %s do not trust the CA root yet, keeping the current certificate: %w",
-			strings.Join(untrusted, ", "), err)
-	}
-
-	return nil
-}
-
-// webhookConfigurationsWithoutCA returns the webhook configurations that send requests to the service serviceName in
-// DeploymentsNamespace from a webhook whose CA bundle does not contain caCert. Every writer of a CA bundle concatenates
-// the PEM certificates, so the PEM bytes of caCert appear in a bundle that trusts it.
-func (r *CertReconciler) webhookConfigurationsWithoutCA(ctx context.Context, serviceName string, caCert []byte) ([]string, error) {
-	validatingWebhookConfigurations := &admissionregistrationv1.ValidatingWebhookConfigurationList{}
-	if err := r.List(ctx, validatingWebhookConfigurations); err != nil {
-		return nil, fmt.Errorf("failed to list validating webhook configurations: %w", err)
-	}
-	mutatingWebhookConfigurations := &admissionregistrationv1.MutatingWebhookConfigurationList{}
-	if err := r.List(ctx, mutatingWebhookConfigurations); err != nil {
-		return nil, fmt.Errorf("failed to list mutating webhook configurations: %w", err)
-	}
-
-	webhookConfigurations := make([]client.Object, 0, len(validatingWebhookConfigurations.Items)+len(mutatingWebhookConfigurations.Items))
-	for i := range validatingWebhookConfigurations.Items {
-		webhookConfigurations = append(webhookConfigurations, &validatingWebhookConfigurations.Items[i])
-	}
-	for i := range mutatingWebhookConfigurations.Items {
-		webhookConfigurations = append(webhookConfigurations, &mutatingWebhookConfigurations.Items[i])
-	}
-
-	var untrusted []string
-	for _, webhookConfiguration := range webhookConfigurations {
-		kind, clientConfigs, err := webhookClientConfigs(webhookConfiguration)
-		if err != nil {
-			return nil, err
-		}
-		for _, clientConfig := range clientConfigs {
-			service := clientConfig.Service
-			if service != nil && service.Namespace == r.DeploymentsNamespace && service.Name == serviceName &&
-				!bytes.Contains(clientConfig.CABundle, caCert) {
-				untrusted = append(untrusted, kind+"/"+webhookConfiguration.GetName())
-				break
-			}
-		}
-	}
-
-	return untrusted, nil
-}
-
-func (r *CertReconciler) publicationTimeout() time.Duration {
-	if r.caBundlePublicationTimeout > 0 {
-		return r.caBundlePublicationTimeout
-	}
-	return caBundlePublicationTimeout
 }
 
 // reconcileAuditScannerClientCert rotates the client certificate of the audit scanner if it is about to expire,
