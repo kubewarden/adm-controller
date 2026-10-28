@@ -63,12 +63,15 @@ func startupReconcileBackoff() wait.Backoff {
 // It is a Runnable, not a controller: it watches nothing. It runs on the leader, at startup and every 12 hours. It
 // replaces each certificate that expires within constants.CertLookahead or that the current CA root did not sign.
 //
-// It does not write caBundle. The owners of the controller webhook configurations watch the CA root secret and write
-// certs.CABundleFromSecret. This is done by:
+// Before it signs any certificate, it writes the CA bundle of the CA root secret into every webhook configuration with
+// the label app.kubernetes.io/part-of: kubewarden: the webhook configurations of the controller, and those of the
+// policies. Then the API server trusts a new CA root before any server presents a certificate from it.
+//
+// Other components also write caBundle:
 //   - WebhookCABundleReconciler for the webhook configurations of the controller
 //   - the policy reconcilers for the webhook configurations of the policies.
 //
-// The owners write the CA bundle asynchronously. Thus, before it signs a server certificate, it waits until every
+// All of them write certs.CABundleFromSecret, so they agree. Before it signs a server certificate, it waits until every
 // webhook configuration that sends requests to that server trusts the CA root. If they do not trust it in time, it
 // keeps the current certificate and tries again on the next pass.
 type CertReconciler struct {
@@ -149,6 +152,10 @@ func (r *CertReconciler) reconcile(ctx context.Context) error {
 	}
 	if err := r.reconcileOldCARoot(ctx, caCertSecret); err != nil {
 		return fmt.Errorf("failed to reconcile old CA root: %w", err)
+	}
+	// No certificate is signed before the API server trusts the CA root that signs it.
+	if err := r.reconcileCABundles(ctx, caCertSecret); err != nil {
+		return fmt.Errorf("failed to reconcile the CA bundle of the webhook configurations: %w", err)
 	}
 	// A server certificate waits until the webhook configurations trust the CA root. That wait must not hold back
 	// the client certificate of the audit scanner, which no webhook configuration verifies.
@@ -239,6 +246,42 @@ func (r *CertReconciler) reconcileOldCARoot(ctx context.Context, caRootSecret *c
 		}
 
 		r.Log.Info("Old CA root certificate removed successfully")
+	}
+
+	return nil
+}
+
+// reconcileCABundles writes the CA bundle of the CA root secret into every webhook configuration with the label
+// app.kubernetes.io/part-of: kubewarden, if its caBundle differs. A webhook configuration that is deleted during the
+// pass is skipped.
+func (r *CertReconciler) reconcileCABundles(ctx context.Context, caRootSecret *corev1.Secret) error {
+	caBundle := certs.CABundleFromSecret(caRootSecret)
+	kubewardenLabels := client.MatchingLabels{constants.PartOfLabelKey: constants.PartOfLabelValue}
+
+	validatingWebhookConfigurations := &admissionregistrationv1.ValidatingWebhookConfigurationList{}
+	if err := r.List(ctx, validatingWebhookConfigurations, kubewardenLabels); err != nil {
+		return fmt.Errorf("failed to list validating webhook configurations: %w", err)
+	}
+	mutatingWebhookConfigurations := &admissionregistrationv1.MutatingWebhookConfigurationList{}
+	if err := r.List(ctx, mutatingWebhookConfigurations, kubewardenLabels); err != nil {
+		return fmt.Errorf("failed to list mutating webhook configurations: %w", err)
+	}
+
+	webhookConfigurations := make([]client.Object, 0, len(validatingWebhookConfigurations.Items)+len(mutatingWebhookConfigurations.Items))
+	for i := range validatingWebhookConfigurations.Items {
+		webhookConfigurations = append(webhookConfigurations, &validatingWebhookConfigurations.Items[i])
+	}
+	for i := range mutatingWebhookConfigurations.Items {
+		webhookConfigurations = append(webhookConfigurations, &mutatingWebhookConfigurations.Items[i])
+	}
+
+	for _, webhookConfiguration := range webhookConfigurations {
+		if err := injectCABundle(ctx, r.Client, r.Log, webhookConfiguration, caBundle); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
 	}
 
 	return nil

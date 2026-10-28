@@ -149,7 +149,8 @@ var _ = Describe("Cert controller", func() {
 			policyServerName            = "ca-root-rotation-test-policy-server"
 		)
 
-		var webhookServerCert, webhookServerPrivateKey []byte
+		var webhookServerCert, webhookServerPrivateKey, oldCACert []byte
+		var kubewardenWebhookConfigurationKey, otherWebhookConfigurationKey client.ObjectKey
 
 		BeforeAll(func() {
 			certController := CertReconciler{
@@ -164,6 +165,7 @@ var _ = Describe("Cert controller", func() {
 			By("generating a CA cert that is about to expire")
 			caCert, caPrivateKey, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
 			Expect(err).ToNot(HaveOccurred())
+			oldCACert = caCert
 			By("creating the CA cert secret")
 			caRootSecret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -217,8 +219,69 @@ var _ = Describe("Cert controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, policyServerCertSecret)).To(Succeed())
 
+			// The webhook configurations have no rules, so they intercept no request of the other specs.
+			By("creating a webhook configuration with the Kubewarden label that trusts only the old CA root")
+			kubewardenWebhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "ca-root-rotation-test-kubewarden-webhook-configuration",
+					Labels: map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue},
+				},
+				Webhooks: []admissionregistrationv1.ValidatingWebhook{
+					{
+						Name: "kubewarden.ca-root-rotation.kubewarden.test",
+						ClientConfig: admissionregistrationv1.WebhookClientConfig{
+							Service:  &admissionregistrationv1.ServiceReference{Namespace: deploymentsNamespace, Name: webhookServerServiceName},
+							CABundle: caCert,
+						},
+						AdmissionReviewVersions: []string{"v1"},
+						SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, kubewardenWebhookConfiguration)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, kubewardenWebhookConfiguration))).To(Succeed())
+			})
+			kubewardenWebhookConfigurationKey = client.ObjectKeyFromObject(kubewardenWebhookConfiguration)
+
+			By("creating a webhook configuration without the Kubewarden label")
+			otherWebhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{
+				ObjectMeta: metav1.ObjectMeta{Name: "ca-root-rotation-test-other-webhook-configuration"},
+				Webhooks: []admissionregistrationv1.ValidatingWebhook{
+					{
+						Name: "other.ca-root-rotation.kubewarden.test",
+						ClientConfig: admissionregistrationv1.WebhookClientConfig{
+							Service:  &admissionregistrationv1.ServiceReference{Namespace: deploymentsNamespace, Name: "ca-root-rotation-test-other-service"},
+							CABundle: caCert,
+						},
+						AdmissionReviewVersions: []string{"v1"},
+						SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, otherWebhookConfiguration)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, otherWebhookConfiguration))).To(Succeed())
+			})
+			otherWebhookConfigurationKey = client.ObjectKeyFromObject(otherWebhookConfiguration)
+
 			By("reconciling")
 			Expect(certController.reconcile(ctx)).To(Succeed())
+		})
+
+		It("should write the CA bundle into the webhook configurations with the Kubewarden label in the same pass", func() {
+			caRootSecret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: caRootSecretName, Namespace: deploymentsNamespace}, caRootSecret)).To(Succeed())
+
+			webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+			Expect(k8sClient.Get(ctx, kubewardenWebhookConfigurationKey, webhookConfiguration)).To(Succeed())
+			Expect(webhookConfiguration.Webhooks[0].ClientConfig.CABundle).To(Equal(certs.CABundleFromSecret(caRootSecret)))
+		})
+
+		It("should not touch a webhook configuration without the Kubewarden label", func() {
+			webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+			Expect(k8sClient.Get(ctx, otherWebhookConfigurationKey, webhookConfiguration)).To(Succeed())
+			Expect(webhookConfiguration.Webhooks[0].ClientConfig.CABundle).To(Equal(oldCACert))
 		})
 
 		It("should rotate the CA cert", func() {
