@@ -53,7 +53,7 @@ const reconcileInterval = 12 * time.Hour
 //
 // Other components also write caBundle:
 //   - WebhookCABundleReconciler for the webhook configurations of the controller
-//   - the policy reconcilers for the webhook configurations of the policies.
+//   - the policy reconcilers, once, when they create the webhook configuration of a policy.
 //
 // All of them write certs.CABundleFromSecret, so they agree.
 type CertReconciler struct {

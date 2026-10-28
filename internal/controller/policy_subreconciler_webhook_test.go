@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,7 +27,8 @@ var _ = Describe("Policy webhook configuration CA bundle of a policy server that
 
 	It("should follow a rotation of the CA root", func() {
 		// Envtest runs no pods, so the policy server is never uniquely reachable. That is the state of a stalled
-		// rollout, where the old pods still serve and load the certificates of a new CA root.
+		// rollout, where the old pods still serve and load the certificates of a new CA root. The cert controller
+		// writes the CA bundle with no check of the readiness.
 		policyServerName := newName("policy-server")
 		createPolicyServerAndWaitForItsService(ctx, policiesv1.NewPolicyServerFactory().WithName(policyServerName).Build())
 		Eventually(func() error {
@@ -43,9 +43,13 @@ var _ = Describe("Policy webhook configuration CA bundle of a policy server that
 
 		By("creating the webhook configuration of the policy, as before the rollout stalled")
 		// The controller writes the webhook configuration only when the policy server is uniquely reachable, so the
-		// spec creates it. It has no rules, so it intercepts no request of the other specs.
+		// spec creates it, with the label that the policy reconcilers set. It has no rules, so it intercepts no
+		// request of the other specs.
 		webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{Name: policy.GetUniqueName()},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   policy.GetUniqueName(),
+				Labels: map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue},
+			},
 			Webhooks: []admissionregistrationv1.ValidatingWebhook{
 				{
 					Name: policy.GetUniqueName() + constants.WebhookNameSuffix,
@@ -224,73 +228,84 @@ func TestPolicyWebhookConfigurationCABundle(t *testing.T) {
 	require.NoError(t, err)
 	oldCACert, _, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
 	require.NoError(t, err)
+	liveCABundle, _, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+	require.NoError(t, err)
 	caRootSecret := &corev1.Secret{Data: map[string][]byte{
 		constants.CARootCert:    caCert,
 		constants.OldCARootCert: oldCACert,
 	}}
-	expectedCABundle := append(append([]byte{}, caCert...), oldCACert...)
+	secretCABundle := append(append([]byte{}, caCert...), oldCACert...)
 
-	k8sClient := fake.NewClientBuilder().Build()
-	r := &policySubReconciler{Client: k8sClient, Log: logr.Discard(), deploymentsNamespace: testDeploymentsNamespace}
+	tests := []struct {
+		name     string
+		mutating bool
+		// existing is true if the webhook configuration exists, with liveCABundle as its caBundle, before the
+		// reconcile.
+		existing         bool
+		liveCABundle     []byte
+		expectedCABundle []byte
+	}{
+		{
+			name:             "a new validating webhook configuration gets the CA certificate and the old CA certificate",
+			expectedCABundle: secretCABundle,
+		},
+		{
+			name:             "a new mutating webhook configuration gets the CA certificate and the old CA certificate",
+			mutating:         true,
+			expectedCABundle: secretCABundle,
+		},
+		{
+			name:             "an existing validating webhook configuration keeps its CA bundle",
+			existing:         true,
+			liveCABundle:     liveCABundle,
+			expectedCABundle: liveCABundle,
+		},
+		{
+			name:             "an existing mutating webhook configuration keeps its CA bundle",
+			mutating:         true,
+			existing:         true,
+			liveCABundle:     liveCABundle,
+			expectedCABundle: liveCABundle,
+		},
+		{
+			name:             "an existing webhook configuration with an empty CA bundle gets the CA bundle of the CA root secret",
+			existing:         true,
+			expectedCABundle: secretCABundle,
+		},
+	}
 
-	t.Run("the validating webhook configuration of a policy has the CA certificate and the old CA certificate", func(t *testing.T) {
-		policy := policiesv1.NewClusterAdmissionPolicyFactory().Build()
-		require.NoError(t, r.reconcileValidatingWebhookConfiguration(t.Context(), policy, caRootSecret, "policy-server-default"))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			k8sClient := fake.NewClientBuilder().Build()
+			r := &policySubReconciler{Client: k8sClient, Log: logr.Discard(), deploymentsNamespace: testDeploymentsNamespace}
+			policy := policiesv1.NewClusterAdmissionPolicyFactory().WithMutating(tc.mutating).Build()
 
-		webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{}
-		require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKey{Name: policy.GetUniqueName()}, webhookConfiguration))
-		require.Len(t, webhookConfiguration.Webhooks, 1)
-		require.Equal(t, expectedCABundle, webhookConfiguration.Webhooks[0].ClientConfig.CABundle)
-	})
+			var webhookConfiguration client.Object = &admissionregistrationv1.ValidatingWebhookConfiguration{}
+			reconcileWebhookConfiguration := r.reconcileValidatingWebhookConfiguration
+			if tc.mutating {
+				webhookConfiguration = &admissionregistrationv1.MutatingWebhookConfiguration{}
+				reconcileWebhookConfiguration = r.reconcileMutatingWebhookConfiguration
+			}
+			key := client.ObjectKey{Name: policy.GetUniqueName()}
 
-	t.Run("the mutating webhook configuration of a policy has the CA certificate and the old CA certificate", func(t *testing.T) {
-		policy := policiesv1.NewClusterAdmissionPolicyFactory().WithMutating(true).Build()
-		require.NoError(t, r.reconcileMutatingWebhookConfiguration(t.Context(), policy, caRootSecret, "policy-server-default"))
+			if tc.existing {
+				require.NoError(t, reconcileWebhookConfiguration(t.Context(), policy, caRootSecret, "policy-server-default"))
+				require.NoError(t, k8sClient.Get(t.Context(), key, webhookConfiguration))
+				_, clientConfigs, err := webhookClientConfigs(webhookConfiguration)
+				require.NoError(t, err)
+				for _, clientConfig := range clientConfigs {
+					clientConfig.CABundle = tc.liveCABundle
+				}
+				require.NoError(t, k8sClient.Update(t.Context(), webhookConfiguration))
+			}
 
-		webhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{}
-		require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKey{Name: policy.GetUniqueName()}, webhookConfiguration))
-		require.Len(t, webhookConfiguration.Webhooks, 1)
-		require.Equal(t, expectedCABundle, webhookConfiguration.Webhooks[0].ClientConfig.CABundle)
-	})
-}
+			require.NoError(t, reconcileWebhookConfiguration(t.Context(), policy, caRootSecret, "policy-server-default"))
 
-func TestReconcileWebhookConfigurationCABundle(t *testing.T) {
-	caCert, _, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
-	require.NoError(t, err)
-	oldCACert, _, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
-	require.NoError(t, err)
-	caRootSecret := &corev1.Secret{Data: map[string][]byte{constants.CARootCert: caCert}}
-	rotatedCARootSecret := &corev1.Secret{Data: map[string][]byte{
-		constants.CARootCert:    caCert,
-		constants.OldCARootCert: oldCACert,
-	}}
-
-	k8sClient := fake.NewClientBuilder().Build()
-	r := &policySubReconciler{Client: k8sClient, Log: logr.Discard(), deploymentsNamespace: testDeploymentsNamespace}
-
-	t.Run("refreshes only the CA bundle of an existing webhook configuration", func(t *testing.T) {
-		policy := policiesv1.NewClusterAdmissionPolicyFactory().WithMutating(true).Build()
-		require.NoError(t, r.reconcileMutatingWebhookConfiguration(t.Context(), policy, caRootSecret, "policy-server-default"))
-		before := &admissionregistrationv1.MutatingWebhookConfiguration{}
-		require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKey{Name: policy.GetUniqueName()}, before))
-
-		require.NoError(t, r.reconcileWebhookConfigurationCABundle(t.Context(), policy, rotatedCARootSecret))
-
-		after := &admissionregistrationv1.MutatingWebhookConfiguration{}
-		require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKey{Name: policy.GetUniqueName()}, after))
-		require.Len(t, after.Webhooks, 1)
-		require.Equal(t, certs.CABundleFromSecret(rotatedCARootSecret), after.Webhooks[0].ClientConfig.CABundle)
-		require.Equal(t, before.Webhooks[0].ClientConfig.Service, after.Webhooks[0].ClientConfig.Service)
-		require.Equal(t, before.Webhooks[0].Rules, after.Webhooks[0].Rules)
-		require.Equal(t, before.Labels, after.Labels)
-		require.Equal(t, before.Annotations, after.Annotations)
-	})
-
-	t.Run("creates no webhook configuration for a policy that has none", func(t *testing.T) {
-		policy := policiesv1.NewClusterAdmissionPolicyFactory().Build()
-		require.NoError(t, r.reconcileWebhookConfigurationCABundle(t.Context(), policy, rotatedCARootSecret))
-
-		err := k8sClient.Get(t.Context(), client.ObjectKey{Name: policy.GetUniqueName()}, &admissionregistrationv1.ValidatingWebhookConfiguration{})
-		require.True(t, apierrors.IsNotFound(err))
-	})
+			require.NoError(t, k8sClient.Get(t.Context(), key, webhookConfiguration))
+			_, clientConfigs, err := webhookClientConfigs(webhookConfiguration)
+			require.NoError(t, err)
+			require.Len(t, clientConfigs, 1)
+			require.Equal(t, tc.expectedCABundle, clientConfigs[0].CABundle)
+		})
+	}
 }
