@@ -424,6 +424,36 @@ func TestDeletePolicyServerResources(t *testing.T) {
 
 // TestRun verifies the composition of the cleanup steps, with one resource
 // per category. The behavior of every step is covered by the per-step tests.
+func TestDeleteControllerCertificateSecrets(t *testing.T) {
+	ctx := t.Context()
+	namespace := "cleanup-test-certificate-secrets"
+	createNamespace(ctx, t, namespace)
+
+	for _, name := range []string{
+		constants.CARootSecretName,
+		constants.WebhookServerCertSecretName,
+		constants.AuditScannerClientCertSecretName,
+	} {
+		require.NoError(t, k8sClient.Create(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
+		}))
+	}
+	// A Secret that does not hold a certificate of the controller must be kept.
+	require.NoError(t, k8sClient.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "cleanup-test-unrelated"},
+	}))
+
+	require.NoError(t, deleteControllerCertificateSecrets(ctx, k8sClient, namespace))
+
+	assertNotFound(ctx, t, &corev1.Secret{}, namespace, constants.CARootSecretName)
+	assertNotFound(ctx, t, &corev1.Secret{}, namespace, constants.WebhookServerCertSecretName)
+	assertNotFound(ctx, t, &corev1.Secret{}, namespace, constants.AuditScannerClientCertSecretName)
+	assertFound(ctx, t, &corev1.Secret{}, namespace, "cleanup-test-unrelated")
+
+	// Must be idempotent
+	require.NoError(t, deleteControllerCertificateSecrets(ctx, k8sClient, namespace))
+}
+
 func TestRun(t *testing.T) {
 	ctx := t.Context()
 	namespace := "cleanup-test-run"
@@ -466,6 +496,10 @@ func TestRun(t *testing.T) {
 		constants.ComponentLabelKey: constants.ComponentPolicyServerLabelValue,
 	})
 
+	require.NoError(t, k8sClient.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: constants.CARootSecretName},
+	}))
+
 	opts := Options{DeploymentsNamespace: namespace, ControllerDeploymentName: deploymentName}
 	require.NoError(t, Run(ctx, k8sClient, logr.Discard(), opts))
 
@@ -474,6 +508,7 @@ func TestRun(t *testing.T) {
 	assertNotFound(ctx, t, &policiesv1.PolicyServer{}, "", defaultPolicyServer.GetName())
 	assertFinalizers(ctx, t, &policiesv1.PolicyServer{}, "", userPolicyServer.GetName(), []string{thirdPartyFinalizer})
 	assertNotFound(ctx, t, &appsv1.Deployment{}, namespace, "policy-server-cleanup-test-run")
+	assertNotFound(ctx, t, &corev1.Secret{}, namespace, constants.CARootSecretName)
 
 	// The cleanup must be idempotent.
 	require.NoError(t, Run(ctx, k8sClient, logr.Discard(), opts))

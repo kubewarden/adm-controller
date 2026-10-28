@@ -58,6 +58,11 @@ type Options struct {
 	ControllerDeploymentName string
 }
 
+// Run removes what the Kubewarden stack created, in this order: the controller
+// Deployment and its pods, every Kubewarden webhook configuration, the
+// Kubewarden finalizers of the kept custom resources, the default resources
+// of the chart, the resources backing the policy servers, and the certificate
+// Secrets of the controller.
 func Run(ctx context.Context, c client.Client, log logr.Logger, opts Options) error {
 	if opts.DeploymentsNamespace == "" {
 		return errors.New("the deployments namespace must be provided")
@@ -105,6 +110,14 @@ func Run(ctx context.Context, c client.Client, log logr.Logger, opts Options) er
 	log.Info("deleting the resources backing the policy servers", "namespace", opts.DeploymentsNamespace)
 	if err := deletePolicyServerResources(ctx, c, opts.DeploymentsNamespace); err != nil {
 		return fmt.Errorf("failed to delete the resources backing the policy servers: %w", err)
+	}
+
+	// Delete the certificate Secrets of the controller. They hold the CA, and
+	// a new installation must not reuse it. Helm does not delete them when they
+	// do not belong to the release, or carry the keep resource policy.
+	log.Info("deleting the certificate secrets of the controller", "namespace", opts.DeploymentsNamespace)
+	if err := deleteControllerCertificateSecrets(ctx, c, opts.DeploymentsNamespace); err != nil {
+		return fmt.Errorf("failed to delete the certificate secrets of the controller: %w", err)
 	}
 
 	log.Info("cleanup completed")
@@ -248,8 +261,8 @@ func deleteDefaultsResources(ctx context.Context, c client.Client) error {
 // "app.kubernetes.io/part-of=kubewarden" and
 // "app.kubernetes.io/component=policy-server" labels set by the controller
 // (the same selection used by the certificate rotation), so the chart-managed
-// resources carrying only the part-of label (e.g. the controller Secrets and
-// Services) are left for Helm to delete right after this hook.
+// resources carrying only the part-of label (e.g. the controller Services) are
+// left for Helm to delete right after this hook.
 func deletePolicyServerResources(ctx context.Context, c client.Client, namespace string) error {
 	inNamespace := client.InNamespace(namespace)
 	policyServerLabels := client.MatchingLabels{
@@ -278,6 +291,23 @@ func deletePolicyServerResources(ctx context.Context, c client.Client, namespace
 	// The extra selector can be removed once upgrades from chart versions
 	// without the ConfigMap tracking labels are no longer supported
 	return deleteEachListItem(ctx, c, &corev1.ConfigMapList{}, inNamespace, client.HasLabels{constants.PolicyServerLabelKey})
+}
+
+// deleteControllerCertificateSecrets deletes the CA root Secret, the Secret of
+// the webhook server certificate and the Secret of the audit scanner client
+// certificate.
+func deleteControllerCertificateSecrets(ctx context.Context, c client.Client, namespace string) error {
+	for _, name := range []string{
+		constants.CARootSecretName,
+		constants.WebhookServerCertSecretName,
+		constants.AuditScannerClientCertSecretName,
+	} {
+		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name}}
+		if err := c.Delete(ctx, secret); client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("failed to delete secret %q: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // deleteEachListItem lists the objects matching the given options and deletes

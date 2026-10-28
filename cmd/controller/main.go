@@ -171,11 +171,7 @@ func main() {
 	flag.BoolVar(&cleanupMode,
 		"cleanup",
 		false,
-		"Run in cleanup mode instead of starting the controller manager. "+
-			"Used by the Helm chart pre-delete hook: deletes the controller Deployment, "+
-			"the Kubewarden webhook configurations, the chart-managed default resources and "+
-			"the resources backing the policy servers, and strips the Kubewarden finalizers "+
-			"from the kept Kubewarden custom resources.")
+		"Run the uninstall cleanup of the Helm chart pre-delete hook, instead of the controller manager.")
 	flag.StringVar(&controllerDeploymentName,
 		"controller-deployment-name",
 		"",

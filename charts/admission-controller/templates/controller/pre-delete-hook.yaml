@@ -26,8 +26,10 @@ The Job runs the controller image in cleanup mode, which:
      their finalizers) on re-installation.
   5. Deletes the resources backing the remaining PolicyServers. Only the
      resources labeled as policy-server components are swept: the chart-managed
-     resources (e.g. the controller Secrets and Services) are left for Helm to
-     delete right after this hook.
+     resources (e.g. the controller Services) are left for Helm to delete right
+     after this hook.
+  6. Deletes the certificate Secrets of the controller. They hold the CA, and
+     a new installation must not reuse it.
 */}}
 apiVersion: batch/v1
 kind: Job
