@@ -1,0 +1,176 @@
+{{/*
+Pre-upgrade hook that keeps the objects that the controller took over from the
+chart.
+
+Older versions of this chart render the certificate Secrets and the webhook
+configurations of the controller. This version does not: the controller
+creates them. On an upgrade, Helm deletes each object that leaves the chart,
+and Argo CD prunes it, unless the live object says otherwise. The Job runs the
+controller image in pre-upgrade mode. It adds helm.sh/resource-policy: keep and
+the Argo CD sync option Prune=false to these objects, before Helm or Argo CD
+looks at them. An object that does not exist is skipped.
+
+Argo CD runs this hook on every sync, also on the first one, before the
+ServiceAccount of the controller exists. So the Job has its own ServiceAccount,
+with rules for these objects only.
+*/}}
+{{- $name := printf "%s-pre-upgrade" (include "admission-controller.fullname" .) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- include "admission-controller.annotations" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- include "admission-controller.annotations" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - kubewarden-ca
+      - kubewarden-webhook-server-cert
+      - kubewarden-audit-scanner-client-cert
+    verbs:
+      - get
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- include "admission-controller.annotations" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- include "admission-controller.annotations" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resources:
+      - validatingwebhookconfigurations
+    resourceNames:
+      - kubewarden-controller-validating-webhook-configuration
+    verbs:
+      - get
+      - patch
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resources:
+      - mutatingwebhookconfigurations
+    resourceNames:
+      - kubewarden-controller-mutating-webhook-configuration
+    verbs:
+      - get
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- include "admission-controller.annotations" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- include "admission-controller.annotations" . | nindent 4 }}
+spec:
+  template:
+    metadata:
+      name: {{ $name }}
+      labels:
+        {{- include "admission-controller.defaults.labels" . | nindent 8 }}
+      annotations:
+        {{- include "admission-controller.annotations" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ $name }}
+      {{- if .Values.preDeleteHook.podSecurityContext }}
+      securityContext:
+{{ toYaml .Values.preDeleteHook.podSecurityContext | indent 8 }}
+      {{- end }}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+      {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kubewarden-pre-upgrade
+          image: '{{ template "system_default_registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}'
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /controller
+          args:
+            - --mode=pre-upgrade
+            - --deployments-namespace={{ .Release.Namespace }}
+            - --zap-log-level={{ .Values.logLevel }}
+          {{- if .Values.preDeleteHook.containerSecurityContext }}
+          securityContext:
+{{ toYaml .Values.preDeleteHook.containerSecurityContext | indent 12 }}
+          {{- end }}
+          {{- if and .Values.resources .Values.resources.preDeleteJob }}
+          resources:
+{{ toYaml .Values.resources.preDeleteJob | indent 12 }}
+          {{- end }}

@@ -56,6 +56,12 @@ const (
 	HelmResourcePolicy       = "helm.sh/resource-policy"
 	HelmMetaReleaseName      = "meta.helm.sh/release-name"
 	HelmMetaReleaseNamespace = "meta.helm.sh/release-namespace"
+	// HelmResourcePolicyKeep is the value of HelmResourcePolicy that makes Helm keep an object that leaves the chart.
+	HelmResourcePolicyKeep = "keep"
+	// ArgoCDSyncOptions is the annotation that holds the Argo CD sync options of an object, separated by commas.
+	ArgoCDSyncOptions = "argocd.argoproj.io/sync-options"
+	// ArgoCDSyncOptionNoPrune is the Argo CD sync option that makes Argo CD keep an object that leaves the chart.
+	ArgoCDSyncOptionNoPrune = "Prune=false"
 
 	// DefaultsManagedByLabelKey is the label key for resources managed by DefaultsApplier.
 	DefaultsManagedByLabelKey = "kubewarden.io/managed-by"

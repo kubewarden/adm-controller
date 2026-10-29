@@ -1,0 +1,133 @@
+suite: pre-upgrade hook rendering
+templates:
+  - controller/pre-upgrade-hook.yaml
+release:
+  name: kubewarden
+  namespace: kubewarden
+set:
+  fullnameOverride: kubewarden-admission-controller
+tests:
+  - it: "should render the Job, its ServiceAccount and its RBAC rules as pre-upgrade hooks"
+    asserts:
+      - hasDocuments:
+          count: 6
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation,hook-succeeded
+      - equal:
+          path: metadata.name
+          value: kubewarden-admission-controller-pre-upgrade
+
+  - it: "should give the Job a higher hook weight than its ServiceAccount and RBAC rules"
+    documentSelector:
+      path: kind
+      value: Job
+      matchMany: false
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "0"
+
+  - it: "should create the RBAC rules with a lower hook weight than the Job"
+    documentSelector:
+      path: kind
+      value: ClusterRole
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "-1"
+
+  - it: "should run the controller image in pre-upgrade mode with its own ServiceAccount"
+    documentSelector:
+      path: kind
+      value: Job
+    set:
+      image:
+        repository: "kubewarden/kubewarden-controller"
+        tag: v99.0.0
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: kubewarden-admission-controller-pre-upgrade
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "ghcr.io/kubewarden/kubewarden-controller:v99.0.0"
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - --mode=pre-upgrade
+            - --deployments-namespace=kubewarden
+            - --zap-log-level=info
+      - equal:
+          path: spec.template.spec.restartPolicy
+          value: OnFailure
+
+  - it: "should not give the Job pod the controller component label, which the cleanup waits on"
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - notExists:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+
+  - it: "should let the Job read and patch only the certificate Secrets of the controller"
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - apiGroups:
+                - ""
+              resources:
+                - secrets
+              resourceNames:
+                - kubewarden-ca
+                - kubewarden-webhook-server-cert
+                - kubewarden-audit-scanner-client-cert
+              verbs:
+                - get
+                - patch
+
+  - it: "should let the Job read and patch only the webhook configurations of the controller"
+    documentSelector:
+      path: kind
+      value: ClusterRole
+    asserts:
+      - equal:
+          path: rules
+          value:
+            - apiGroups:
+                - admissionregistration.k8s.io
+              resources:
+                - validatingwebhookconfigurations
+              resourceNames:
+                - kubewarden-controller-validating-webhook-configuration
+              verbs:
+                - get
+                - patch
+            - apiGroups:
+                - admissionregistration.k8s.io
+              resources:
+                - mutatingwebhookconfigurations
+              resourceNames:
+                - kubewarden-controller-mutating-webhook-configuration
+              verbs:
+                - get
+                - patch
+
+  - it: "should bind the rules to the ServiceAccount of the Job"
+    documentSelector:
+      path: kind
+      value: ClusterRoleBinding
+    asserts:
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: kubewarden-admission-controller-pre-upgrade
+              namespace: kubewarden

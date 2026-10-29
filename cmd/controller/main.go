@@ -61,6 +61,9 @@ const (
 	modeInit = "init"
 	// modeCleanup removes what the controller created. The pre-delete hook of the Helm chart runs it.
 	modeCleanup = "cleanup"
+	// modePreUpgrade marks the certificate Secrets and the webhook configurations of the controller, so that Helm and
+	// Argo CD keep them when they leave the chart. The pre-upgrade hook of the Helm chart runs it.
+	modePreUpgrade = "pre-upgrade"
 )
 
 //nolint:gochecknoglobals // Following the kubebuilder pattern
@@ -129,9 +132,14 @@ func main() {
 			setupLog.Error(err, "cleanup failed")
 			os.Exit(1)
 		}
+	case modePreUpgrade:
+		if err := runPreUpgrade(opts.Manager.DeploymentsNamespace); err != nil {
+			setupLog.Error(err, "pre-upgrade failed")
+			os.Exit(1)
+		}
 	default:
 		setupLog.Error(fmt.Errorf("unknown mode %q", opts.Mode), "invalid flag",
-			"flag", "--mode", "accepted", []string{modeRun, modeInit, modeCleanup})
+			"flag", "--mode", "accepted", []string{modeRun, modeInit, modeCleanup, modePreUpgrade})
 		os.Exit(1)
 	}
 }
@@ -145,7 +153,8 @@ func parseFlags() Options {
 		"The mode of the binary: "+
 			"\""+modeRun+"\" starts the controller manager, "+
 			"\""+modeInit+"\" prepares the certificates and the webhook configurations of the controller, "+
-			"\""+modeCleanup+"\" runs the uninstall cleanup of the Helm chart pre-delete hook.")
+			"\""+modeCleanup+"\" runs the uninstall cleanup of the Helm chart pre-delete hook, "+
+			"\""+modePreUpgrade+"\" marks the objects of the controller, so that a Helm chart upgrade keeps them.")
 	flag.StringVar(&opts.Manager.MetricsAddr, "metrics-bind-address", ":8088", "The address the controller-runtime metric endpoint binds to.")
 	flag.StringVar(&opts.Manager.ProbeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.IntVar(&opts.Manager.WebhookServerPort, "webhook-server-port", 9443, "The port the webhook server listens on.")
