@@ -3,9 +3,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -26,13 +28,22 @@ import (
 
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch,namespace=kubewarden
 //+kubebuilder:rbac:groups=policies.kubewarden.io,resources=policyservers;clusteradmissionpolicies;admissionpolicies;clusteradmissionpolicygroups;admissionpolicygroups,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=list,namespace=kubewarden
+
+// webhookServiceWaitInterval is the time between two checks of the webhook Service, while it has no ready endpoint.
+const webhookServiceWaitInterval = 2 * time.Second
 
 type DefaultsApplierReconciler struct {
 	client.Client
+	// APIReader reads from the API server, with no cache. It reads the EndpointSlices of the webhook Service.
+	APIReader            client.Reader
 	Scheme               *runtime.Scheme
 	Log                  logr.Logger
 	DeploymentsNamespace string
 	ConfigMapName        string
+	// WebhookServiceName is the name of the Service of the controller webhooks. The API server calls the
+	// controller webhooks for every resource that this reconciler creates or updates.
+	WebhookServiceName string
 }
 
 // Reconcile watches the defaults ConfigMap and applies the resources it contains.
@@ -49,6 +60,18 @@ func (r *DefaultsApplierReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get ConfigMap: %w", err)
+	}
+
+	// The API server calls the controller webhooks for every resource that this reconciler creates or updates. The
+	// Service of the webhooks sends traffic only to ready controller pods. When the controller starts, its own pod is
+	// not ready yet, and on a fresh install no other pod is. Every apply would then fail with "connection refused".
+	ready, readyErr := r.webhookServiceIsReady(ctx)
+	if readyErr != nil {
+		return ctrl.Result{}, readyErr
+	}
+	if !ready {
+		log.Info("Waiting for a ready endpoint of the webhook service before applying the defaults", "service", r.WebhookServiceName)
+		return ctrl.Result{RequeueAfter: webhookServiceWaitInterval}, nil
 	}
 
 	desired := sets.New[resourceKey]()
@@ -87,6 +110,27 @@ func (r *DefaultsApplierReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	log.Info("Reconciliation complete", "appliedResources", len(desired))
 	return ctrl.Result{}, nil
+}
+
+// webhookServiceIsReady returns true if the Service of the controller webhooks has at least one ready endpoint.
+func (r *DefaultsApplierReconciler) webhookServiceIsReady(ctx context.Context) (bool, error) {
+	endpointSlices := &discoveryv1.EndpointSliceList{}
+	if err := r.APIReader.List(ctx, endpointSlices,
+		client.InNamespace(r.DeploymentsNamespace),
+		client.MatchingLabels{discoveryv1.LabelServiceName: r.WebhookServiceName},
+	); err != nil {
+		return false, fmt.Errorf("failed to list the endpoint slices of the webhook service %q: %w", r.WebhookServiceName, err)
+	}
+
+	for _, endpointSlice := range endpointSlices.Items {
+		for _, endpoint := range endpointSlice.Endpoints {
+			// A nil value means an unknown state, which consumers must treat as ready.
+			if endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // SetupWithManager registers the reconciler with the manager.

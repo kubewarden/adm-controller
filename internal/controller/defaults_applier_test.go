@@ -2,16 +2,24 @@ package controller
 
 import (
 	"context"
+	"testing"
 
+	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	sigsyaml "sigs.k8s.io/yaml"
 
 	policiesv1 "github.com/kubewarden/adm-controller/api/policies/v1"
@@ -358,3 +366,108 @@ var _ = Describe("DefaultsApplierReconciler", func() {
 		})
 	})
 })
+
+func TestWebhookServiceIsReady(t *testing.T) {
+	const (
+		namespace   = "kubewarden"
+		serviceName = "kubewarden-controller-webhook-service"
+	)
+	newEndpointSlice := func(service string, ready *bool) *discoveryv1.EndpointSlice {
+		return &discoveryv1.EndpointSlice{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      service + "-slice",
+				Namespace: namespace,
+				Labels:    map[string]string{discoveryv1.LabelServiceName: service},
+			},
+			AddressType: discoveryv1.AddressTypeIPv4,
+			Endpoints: []discoveryv1.Endpoint{{
+				Addresses:  []string{"10.0.0.1"},
+				Conditions: discoveryv1.EndpointConditions{Ready: ready},
+			}},
+		}
+	}
+
+	tests := []struct {
+		name           string
+		endpointSlices []client.Object
+		expected       bool
+	}{
+		{
+			name:     "the service has no endpoint slice",
+			expected: false,
+		},
+		{
+			name:           "the service has an endpoint that is not ready",
+			endpointSlices: []client.Object{newEndpointSlice(serviceName, ptr.To(false))},
+			expected:       false,
+		},
+		{
+			name:           "another service has a ready endpoint",
+			endpointSlices: []client.Object{newEndpointSlice("other-service", ptr.To(true))},
+			expected:       false,
+		},
+		{
+			name:           "the service has a ready endpoint",
+			endpointSlices: []client.Object{newEndpointSlice(serviceName, ptr.To(true))},
+			expected:       true,
+		},
+		{
+			name:           "the service has an endpoint with an unknown state",
+			endpointSlices: []client.Object{newEndpointSlice(serviceName, nil)},
+			expected:       true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			k8sClient := fake.NewClientBuilder().WithObjects(tc.endpointSlices...).Build()
+			r := &DefaultsApplierReconciler{
+				Client:               k8sClient,
+				APIReader:            k8sClient,
+				Log:                  logr.Discard(),
+				DeploymentsNamespace: namespace,
+				WebhookServiceName:   serviceName,
+			}
+
+			ready, err := r.webhookServiceIsReady(t.Context())
+
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, ready)
+		})
+	}
+}
+
+func TestDefaultsApplierWaitsForTheWebhookService(t *testing.T) {
+	const namespace = "kubewarden"
+	policyServer := policiesv1.NewPolicyServerFactory().WithName("default").Build()
+	policyServer.SetGroupVersionKind(policiesv1.GroupVersion.WithKind("PolicyServer"))
+	policyServerYAML, err := sigsyaml.Marshal(policyServer)
+	require.NoError(t, err)
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, policiesv1.AddToScheme(scheme))
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: constants.DefaultDefaultsConfigMapName, Namespace: namespace},
+		Data:       map[string]string{"policyserver-default.yaml": string(policyServerYAML)},
+	}).Build()
+	r := &DefaultsApplierReconciler{
+		Client:               k8sClient,
+		APIReader:            k8sClient,
+		Scheme:               scheme,
+		Log:                  logr.Discard(),
+		DeploymentsNamespace: namespace,
+		ConfigMapName:        constants.DefaultDefaultsConfigMapName,
+		WebhookServiceName:   "kubewarden-controller-webhook-service",
+	}
+
+	result, err := r.Reconcile(t.Context(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Namespace: namespace, Name: constants.DefaultDefaultsConfigMapName},
+	})
+
+	require.NoError(t, err, "a webhook service with no ready endpoint is not an error")
+	require.Equal(t, webhookServiceWaitInterval, result.RequeueAfter)
+	policyServers := &policiesv1.PolicyServerList{}
+	require.NoError(t, k8sClient.List(t.Context(), policyServers))
+	require.Empty(t, policyServers.Items, "nothing is applied before the webhook service is ready")
+}
