@@ -62,7 +62,7 @@ Helm chart renders no certificate. Each object has one owner:
 
 | Object | Content | Created by | Renewed or rotated by | `caBundle` written by | Mounted by |
 |---|---|---|---|---|---|
-| Secret `kubewarden-ca` | `ca.crt`, `ca.key`, and `old-ca.crt` for 60 days after a rotation | Init mode, or the cert controller if it is missing | Cert controller | — | Audit scanner (`ca.crt` only) |
+| Secret `kubewarden-ca` | `ca.crt`, `ca.key`, and `old-ca.crt` for up to 60 days after a rotation | Init mode, or the cert controller if it is missing | Cert controller | — | Audit scanner (`ca.crt` only) |
 | Secret `kubewarden-webhook-server-cert` | `tls.crt`, `tls.key` of the controller webhook server | Init mode, or the cert controller if it is missing | Cert controller | — | Controller pod, in the init container and in the controller container |
 | Secret `kubewarden-audit-scanner-client-cert` | `tls.crt`, `tls.key` of the audit scanner | Init mode, or the cert controller if it is missing | Cert controller | — | Audit scanner |
 | Secret `policy-server-<name>`, one per policy server | `tls.crt`, `tls.key` of that policy server | PolicyServer reconciler | Cert controller | — | That policy server |
@@ -203,8 +203,8 @@ configuration of a policy when its policy server is ready, and deletes it with
 the policy. When they create the webhook configuration, they write the CA
 bundle of `kubewarden-ca` into `caBundle`. The API server calls the policy
 server at once, so the first value must be correct. When the webhook
-configuration exists, they keep its live `caBundle` and change only the other
-fields.
+configuration exists, they keep its live `caBundle`, if it is not empty, and
+change only the other fields.
 
 A write replaces the list of webhooks as a whole, `caBundle` included. So the
 policy reconcilers write the object with an update, which carries the version
@@ -294,7 +294,7 @@ in this order:
 1. It writes the new CA root into `kubewarden-ca`, with the previous CA as
    `old-ca.crt`.
 2. It writes `ca.crt + old-ca.crt` into every `caBundle`. A successful patch
-   means that the API server stored it. The API server now accepts both CAs.
+   means that the API server stored it.
 3. It signs the serving certificates with the new CA, and creates the
    certificate Secrets that are missing.
 4. The kubelet updates the volumes. The servers reload. The API server accepts
@@ -304,6 +304,14 @@ Steps 1 to 3 run in one function. If step 2 fails, step 3 does not run. The
 next pass writes the bundle again before it signs or creates any certificate.
 So a certificate Secret that a user deletes after a failed step 2 does not
 come back with a certificate that the API server cannot accept.
+
+A stored bundle is not yet a bundle in use. The admission code of each API
+server reads the webhook configurations from a local cache. A watch updates
+that cache a short time after the write. A cluster with many API servers has
+one cache per server. The order still holds, because of the delay of step 4.
+A new certificate reaches a server only after the kubelet copies the Secret,
+about one minute later. Normally, every API server uses the new bundle by
+then.
 
 ## Scenarios
 
@@ -402,7 +410,8 @@ days. This happens about once in 10 years.
    a patch fails, the pass stops here and returns the error. The work queue
    runs the pass again with a backoff, and no certificate is signed before the
    patch succeeds.
-4. **API server.** It now accepts a certificate from either CA.
+4. **API server.** A short time later, its cache holds the new bundle. It
+   accepts a certificate from either CA.
 5. **Cert controller.** It looks at the webhook server certificate and at each
    policy server certificate. The previous CA signed all of them, and the new
    CA root does not accept them. It signs each one again with the new CA and
@@ -418,12 +427,14 @@ days. This happens about once in 10 years.
    bundle.
 
 Result: every certificate comes from the new CA, and every `caBundle` holds
-both CAs for 60 days. One actor did all the writes, in one function.
+both CAs until the previous CA expires, up to 60 days later. One actor did all
+the writes, in one function.
 
 ### Removal of the old CA
 
-Trigger: a pass of the cert controller, about 60 days after the rotation, finds
-that `old-ca.crt` is past its end.
+Trigger: a pass of the cert controller finds that `old-ca.crt` is past its end.
+This happens up to 60 days after the rotation. The time is shorter if the
+rotation ran late, for example after a long shutdown.
 
 1. **Cert controller.** The CA root Secret exists. The CA root is valid for almost
    10 years, so there is no rotation.
@@ -487,8 +498,8 @@ crosses the end of the ten-year CA root.
 5. **Cert controller.** It builds the bundle `ca.crt` alone. It lists every
    webhook configuration with the Kubewarden label and patches each
    `caBundle`, because all of them hold the expired CA.
-6. **API server.** It now accepts a certificate from the new CA, and nothing
-   else.
+6. **API server.** A short time later, its cache holds the new bundle. It
+   accepts a certificate from the new CA, and nothing else.
 7. **Cert controller.** It looks at the webhook server certificate and at each
    policy server certificate. All of them are past their end, and the expired
    CA signed them. It signs a new certificate for each server with the new CA,
@@ -574,9 +585,9 @@ Result: a new certificate from the same CA. No interruption.
 3. **Cert controller.** It builds the bundle: the new CA alone. It patches
    every `caBundle` with the Kubewarden label, because all of them hold the
    deleted CA.
-4. **API server.** It now trusts the new CA alone. Every server still presents
-   a certificate from the deleted CA. The API server rejects every call until
-   the servers reload.
+4. **API server.** A short time later, its cache holds the new bundle. It
+   trusts the new CA alone. Every server still presents a certificate from
+   the deleted CA. The API server rejects every call until the servers reload.
 5. **Cert controller.** It finds that the new CA did not sign any certificate.
    It signs every serving certificate and the audit scanner client certificate
    again, and writes each Secret.
@@ -665,21 +676,24 @@ user stay.
 | Start of the first controller pod of a fresh install | about one minute more, set by the kubelet |
 | Detection of a certificate that ends soon | up to 12 hours, 60 days before the end |
 | Detection of an expired certificate at startup | the first pass, at once |
-| Life of `old-ca.crt` in the bundle | 60 days |
+| Life of `old-ca.crt` in the bundle | up to 60 days, until the previous CA expires |
 
 ## Known limits
 
 This section is an analysis of the code. Unless a limit says otherwise, no
 test confirms it.
 
-1. **An uninstall with Argo CD leaves objects behind.** Argo CD does not run
-   the pre-delete hook of the chart. After the deletion of the Application, the
-   webhook configurations of the controller and of the policies, and the
-   certificate Secrets, stay. A webhook configuration with
-   `failurePolicy: Fail` that points at a deleted Service rejects the requests
-   that it covers. The user must delete these objects, or run the controller
-   image with `--mode=cleanup`. An Argo CD `PostDelete` hook does not help:
-   Argo CD deletes the RBAC rules of the Job before it runs the hook.
+1. **An uninstall with Argo CD before 3.3 leaves objects behind.** Argo CD
+   before 3.3 does not run the pre-delete hook of the chart. After the
+   deletion of the Application, the webhook configurations of the controller
+   and of the policies, and the certificate Secrets, stay. A webhook
+   configuration with `failurePolicy: Fail` that points at a deleted Service
+   rejects the requests that it covers. The user must delete these objects, or
+   run the controller image with `--mode=cleanup`. Argo CD 3.3 and later run a
+   Helm pre-delete hook as a `PreDelete` hook, before they delete the other
+   objects. So the cleanup can run there, but no test confirms it. A
+   `PostDelete` hook with its own ServiceAccount and rules is another option,
+   which nobody has evaluated.
 2. **A deleted webhook configuration of the controller comes back at the next
    start of a pod.** The cert controller creates the certificate Secrets again,
    but not the webhook configurations. Until a controller pod restarts, the API
