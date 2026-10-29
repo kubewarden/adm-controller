@@ -140,3 +140,25 @@ tests:
           path: metadata.labels["app.kubernetes.io/name"]
       - isNotNullOrEmpty:
           path: metadata.labels["app.kubernetes.io/instance"]
+
+  - it: "ClusterRole should let the controller update the webhook configurations, with a check of the object version"
+    documentSelector:
+      path: kind
+      value: ClusterRole
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - admissionregistration.k8s.io
+            resources:
+              - mutatingwebhookconfigurations
+              - validatingwebhookconfigurations
+            verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch

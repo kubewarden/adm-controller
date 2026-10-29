@@ -130,7 +130,12 @@ leader election. It does these steps, in this order:
    `make manifests` generates from the `+kubebuilder:webhook` markers. Each
    webhook points at the webhook Service. A webhook that exists keeps its
    `caBundle`. A new webhook gets the CA bundle of `kubewarden-ca`. The labels
-   and the annotations that other tools set stay.
+   and the annotations that other tools set stay. The update carries the
+   version of the object that the init mode read. If the cert controller
+   writes the object in between, the API server rejects the update, and the
+   init mode stops with an error. The kubelet starts the init container
+   again, and the next run reads the object again and keeps the new
+   `caBundle`.
 3. **Wait for the certificate files.** Wait until `tls.crt` and `tls.key` are
    in `/tmp/k8s-webhook-server/serving-certs` and form a valid key pair. The
    volume belongs to the pod, so the controller container finds the files when
@@ -195,6 +200,14 @@ bundle of `kubewarden-ca` into `caBundle`. The API server calls the policy
 server at once, so the first value must be correct. When the webhook
 configuration exists, they keep its live `caBundle` and change only the other
 fields.
+
+A write replaces the list of webhooks as a whole, `caBundle` included. So the
+policy reconcilers write the object with an update, which carries the version
+of the object that they read. If the cert controller writes a new `caBundle`
+between the read and the update, the API server rejects the update. The
+reconcile fails, and the work queue runs it again. The next reconcile reads
+the object again, and keeps the new `caBundle`. Without this check, a change
+of a rule during a rotation of the CA root can undo the new `caBundle`.
 
 ### The PolicyServer reconciler
 

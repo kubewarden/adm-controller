@@ -19,6 +19,7 @@ rules:
   - get
   - list
   - patch
+  - update
   - watch
 - apiGroups:
   - authentication.k8s.io

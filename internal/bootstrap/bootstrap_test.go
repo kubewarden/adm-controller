@@ -253,6 +253,71 @@ func TestEnsureControllerWebhookConfigurationsUpdatesThem(t *testing.T) {
 	require.Equal(t, "platform", validating.Annotations["team"], "the annotations of other tools stay")
 }
 
+// TestEnsureControllerWebhookConfigurationsKeepsAConcurrentCABundle shows the race of an upgrade during a rotation of
+// the CA root: the cert controller writes the caBundle between the read and the update of the init mode. The init mode
+// must not undo that write.
+func TestEnsureControllerWebhookConfigurationsKeepsAConcurrentCABundle(t *testing.T) {
+	validatingTemplate, _, err := controllerWebhookConfigurations()
+	require.NoError(t, err)
+	// The live object comes from an older version, which points at another Service, so the init mode updates it.
+	live := validatingTemplate.DeepCopy()
+	live.Name = constants.ControllerValidatingWebhookConfigurationName
+	for i := range live.Webhooks {
+		live.Webhooks[i].ClientConfig.Service = &admissionregistrationv1.ServiceReference{Namespace: "old", Name: "old"}
+		live.Webhooks[i].ClientConfig.CABundle = []byte("old-ca")
+	}
+	rotatedCABundle := []byte("rotated-ca")
+
+	concurrentWriteDone := false
+	// writeOnce writes the rotated caBundle once, as the cert controller does between the read and the write of the
+	// init mode.
+	writeOnce := func(ctx context.Context, c client.WithWatch, obj client.Object) error {
+		if _, ok := obj.(*admissionregistrationv1.ValidatingWebhookConfiguration); !ok || concurrentWriteDone {
+			return nil
+		}
+		concurrentWriteDone = true
+		current := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+		if err := c.Get(ctx, client.ObjectKeyFromObject(obj), current); err != nil {
+			return err
+		}
+		for i := range current.Webhooks {
+			current.Webhooks[i].ClientConfig.CABundle = rotatedCABundle
+		}
+		return c.Update(ctx, current)
+	}
+	k8sClient := fake.NewClientBuilder().
+		WithObjects(live).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if err := writeOnce(ctx, c, obj); err != nil {
+					return err
+				}
+				return c.Update(ctx, obj, opts...)
+			},
+			Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+				if err := writeOnce(ctx, c, obj); err != nil {
+					return err
+				}
+				return c.Patch(ctx, obj, patch, opts...)
+			},
+		}).
+		Build()
+	caRootSecret := &corev1.Secret{Data: map[string][]byte{constants.CARootCert: []byte("ca")}}
+
+	err = ensureControllerWebhookConfigurations(t.Context(), k8sClient, logr.Discard(), testNamespace, testWebhookServiceName, caRootSecret)
+	require.True(t, apierrors.IsConflict(err), "the API server rejects the update with the old caBundle, got: %v", err)
+	require.True(t, concurrentWriteDone)
+
+	// The kubelet starts the init container again, and the init mode reads the object again.
+	require.NoError(t, ensureControllerWebhookConfigurations(t.Context(), k8sClient, logr.Discard(), testNamespace, testWebhookServiceName, caRootSecret))
+	validating := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+	require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKey{Name: constants.ControllerValidatingWebhookConfigurationName}, validating))
+	for _, webhook := range validating.Webhooks {
+		require.Equal(t, rotatedCABundle, webhook.ClientConfig.CABundle, "the caBundle of the cert controller survives")
+		require.Equal(t, testWebhookServiceName, webhook.ClientConfig.Service.Name, "the change of the init mode lands")
+	}
+}
+
 // writeCertificateFiles writes a valid certificate and key of the webhook server into directory, as the kubelet does.
 func writeCertificateFiles(directory string) error {
 	caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))

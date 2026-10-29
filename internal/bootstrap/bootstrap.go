@@ -217,7 +217,7 @@ func ensureControllerWebhookConfigurations(ctx context.Context, c client.Client,
 	validating := &admissionregistrationv1.ValidatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: constants.ControllerValidatingWebhookConfigurationName},
 	}
-	result, err := controllerutil.CreateOrPatch(ctx, c, validating, func() error {
+	result, err := controllerutil.CreateOrUpdate(ctx, c, validating, func() error {
 		liveCABundles := map[string][]byte{}
 		for _, webhook := range validating.Webhooks {
 			liveCABundles[webhook.Name] = webhook.ClientConfig.CABundle
@@ -237,7 +237,7 @@ func ensureControllerWebhookConfigurations(ctx context.Context, c client.Client,
 	mutating := &admissionregistrationv1.MutatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: constants.ControllerMutatingWebhookConfigurationName},
 	}
-	result, err = controllerutil.CreateOrPatch(ctx, c, mutating, func() error {
+	result, err = controllerutil.CreateOrUpdate(ctx, c, mutating, func() error {
 		liveCABundles := map[string][]byte{}
 		for _, webhook := range mutating.Webhooks {
 			liveCABundles[webhook.Name] = webhook.ClientConfig.CABundle

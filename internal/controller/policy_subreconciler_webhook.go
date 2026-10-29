@@ -18,7 +18,7 @@ import (
 	"github.com/kubewarden/adm-controller/internal/constants"
 )
 
-//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=create;delete;get;list;patch;watch
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=create;delete;get;list;patch;update;watch
 
 //nolint:dupl // This function is similar to the other reconcileMutatingWebhookConfiguration
 func (r *policySubReconciler) reconcileValidatingWebhookConfiguration(
@@ -32,7 +32,7 @@ func (r *policySubReconciler) reconcileValidatingWebhookConfiguration(
 			Name: policy.GetUniqueName(),
 		},
 	}
-	_, err := controllerutil.CreateOrPatch(ctx, r.Client, webhook, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, webhook, func() error {
 		admissionPath := filepath.Join("/validate", policy.GetUniqueName())
 		admissionPort := int32(constants.PolicyServerServicePort)
 
@@ -112,7 +112,7 @@ func (r *policySubReconciler) reconcileValidatingWebhookConfigurationDeletion(ct
 	return nil
 }
 
-//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create;delete;get;list;patch;watch
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create;delete;get;list;patch;update;watch
 
 //nolint:dupl // This function is similar to the other reconcileValidatingWebhookConfiguration
 func (r *policySubReconciler) reconcileMutatingWebhookConfiguration(
@@ -126,7 +126,7 @@ func (r *policySubReconciler) reconcileMutatingWebhookConfiguration(
 			Name: policy.GetUniqueName(),
 		},
 	}
-	_, err := controllerutil.CreateOrPatch(ctx, r.Client, webhook, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, webhook, func() error {
 		admissionPath := filepath.Join("/validate", policy.GetUniqueName())
 		admissionPort := int32(constants.PolicyServerServicePort)
 

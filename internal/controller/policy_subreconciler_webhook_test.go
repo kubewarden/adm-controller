@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,10 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	policiesv1 "github.com/kubewarden/adm-controller/api/policies/v1"
 	"github.com/kubewarden/adm-controller/internal/certs"
@@ -307,5 +311,111 @@ func TestPolicyWebhookConfigurationCABundle(t *testing.T) {
 			require.Len(t, clientConfigs, 1)
 			require.Equal(t, tc.expectedCABundle, clientConfigs[0].CABundle)
 		})
+	}
+}
+
+// TestPolicyWebhookConfigurationKeepsAConcurrentCABundle shows the race of a rotation of the CA root: the cert
+// controller writes the caBundle between the read and the update of the policy reconciler. The policy reconciler must
+// not undo that write.
+func TestPolicyWebhookConfigurationKeepsAConcurrentCABundle(t *testing.T) {
+	caRootSecret := &corev1.Secret{Data: map[string][]byte{constants.CARootCert: []byte("ca")}}
+	rotatedCABundle := []byte("rotated-ca")
+
+	for _, mutating := range []bool{false, true} {
+		t.Run(fmt.Sprintf("mutating=%t", mutating), func(t *testing.T) {
+			concurrentWrite := &concurrentCABundleWrite{caBundle: rotatedCABundle}
+			k8sClient := fake.NewClientBuilder().WithInterceptorFuncs(concurrentWrite.interceptor()).Build()
+			r := &policySubReconciler{Client: k8sClient, Log: logr.Discard(), deploymentsNamespace: testDeploymentsNamespace}
+			reconcileWebhookConfiguration := r.reconcileValidatingWebhookConfiguration
+			var webhookConfiguration client.Object = &admissionregistrationv1.ValidatingWebhookConfiguration{}
+			if mutating {
+				reconcileWebhookConfiguration = r.reconcileMutatingWebhookConfiguration
+				webhookConfiguration = &admissionregistrationv1.MutatingWebhookConfiguration{}
+			}
+
+			policy := policiesv1.NewClusterAdmissionPolicyFactory().WithMutating(mutating).Build()
+			require.NoError(t, reconcileWebhookConfiguration(t.Context(), policy, caRootSecret, "policy-server-default"))
+
+			// Change a rule of the policy while the cert controller writes the caBundle.
+			newRules := []admissionregistrationv1.RuleWithOperations{newRule([]string{""}, []string{"configmaps"})}
+			changedPolicy := policiesv1.NewClusterAdmissionPolicyFactory().
+				WithName(policy.GetName()).
+				WithMutating(mutating).
+				WithRules(newRules).
+				Build()
+			concurrentWrite.armed = true
+			err := reconcileWebhookConfiguration(t.Context(), changedPolicy, caRootSecret, "policy-server-default")
+			require.True(t, apierrors.IsConflict(err), "the API server rejects the update with the old caBundle, got: %v", err)
+			require.True(t, concurrentWrite.done)
+
+			// The work queue runs the reconcile again, and the reconcile reads the object again.
+			require.NoError(t, reconcileWebhookConfiguration(t.Context(), changedPolicy, caRootSecret, "policy-server-default"))
+			require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKey{Name: policy.GetUniqueName()}, webhookConfiguration))
+			_, clientConfigs, err := webhookClientConfigs(webhookConfiguration)
+			require.NoError(t, err)
+			require.Len(t, clientConfigs, 1)
+			require.Equal(t, rotatedCABundle, clientConfigs[0].CABundle, "the caBundle of the cert controller survives")
+			require.Equal(t, newRules, webhookRules(webhookConfiguration))
+		})
+	}
+}
+
+// concurrentCABundleWrite writes caBundle into every webhook of a webhook configuration, right before the first update
+// or patch after armed becomes true, as a write of the cert controller between the read and the write of another
+// writer.
+type concurrentCABundleWrite struct {
+	caBundle []byte
+	armed    bool
+	done     bool
+}
+
+func (w *concurrentCABundleWrite) interceptor() interceptor.Funcs {
+	return interceptor.Funcs{
+		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			if err := w.writeOnce(ctx, c, obj); err != nil {
+				return err
+			}
+			return c.Update(ctx, obj, opts...)
+		},
+		Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+			if err := w.writeOnce(ctx, c, obj); err != nil {
+				return err
+			}
+			return c.Patch(ctx, obj, patch, opts...)
+		},
+	}
+}
+
+func (w *concurrentCABundleWrite) writeOnce(ctx context.Context, c client.WithWatch, obj client.Object) error {
+	if !w.armed || w.done {
+		return nil
+	}
+	w.done = true
+	live, ok := obj.DeepCopyObject().(client.Object)
+	if !ok {
+		return errors.New("cannot copy the webhook configuration")
+	}
+	if err := c.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {
+		return err
+	}
+	_, clientConfigs, err := webhookClientConfigs(live)
+	if err != nil {
+		return err
+	}
+	for _, clientConfig := range clientConfigs {
+		clientConfig.CABundle = w.caBundle
+	}
+	return c.Update(ctx, live)
+}
+
+// webhookRules returns the rules of the first webhook of a validating or a mutating webhook configuration.
+func webhookRules(webhookConfiguration client.Object) []admissionregistrationv1.RuleWithOperations {
+	switch typed := webhookConfiguration.(type) {
+	case *admissionregistrationv1.ValidatingWebhookConfiguration:
+		return typed.Webhooks[0].Rules
+	case *admissionregistrationv1.MutatingWebhookConfiguration:
+		return typed.Webhooks[0].Rules
+	default:
+		return nil
 	}
 }
