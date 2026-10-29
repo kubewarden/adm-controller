@@ -14,7 +14,12 @@ Argo CD runs this hook on every sync, also on the first one, before the
 ServiceAccount of the controller exists. So the Job has its own ServiceAccount,
 with rules for these objects only.
 */}}
-{{- $name := printf "%s-pre-upgrade" (include "admission-controller.fullname" .) }}
+{{- /*
+The names have the suffix "-pre-upgrade", 12 characters. Kubernetes copies the
+name of the Job into a label of its pods, and a label value cannot be longer
+than 63 characters. So the full name is cut at 51 characters.
+*/}}
+{{- $name := printf "%s-pre-upgrade" (include "admission-controller.fullname" . | trunc 51 | trimSuffix "-") }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:

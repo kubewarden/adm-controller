@@ -154,3 +154,50 @@ tests:
           value:
             - name: HTTPS_PROXY
               value: "http://proxy.example.com:3128"
+
+  - it: "should keep every name within 63 characters when the controller name is 63 characters long"
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - matchRegex:
+          path: metadata.name
+          pattern: ^a{51}-pre-upgrade$
+
+  - it: "should use the shortened name in the Job, which Kubernetes copies into a label of its pods"
+    documentSelector:
+      path: kind
+      value: Job
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-pre-upgrade
+
+  - it: "should bind the shortened names of the ClusterRole and the ServiceAccount"
+    documentSelector:
+      path: kind
+      value: ClusterRoleBinding
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - equal:
+          path: roleRef.name
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-pre-upgrade
+      - equal:
+          path: subjects[0].name
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-pre-upgrade
+
+  - it: "should bind the shortened names of the Role and the ServiceAccount"
+    documentSelector:
+      path: kind
+      value: RoleBinding
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - equal:
+          path: roleRef.name
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-pre-upgrade
+      - equal:
+          path: subjects[0].name
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-pre-upgrade
