@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
 // The suite runs one cert controller for the shared certificate Secrets. The specs change these Secrets, and the
@@ -682,4 +684,153 @@ func TestReconcileCreatesAMissingCertificateOnlyAfterTheCABundle(t *testing.T) {
 			require.NoError(t, certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey], pool, certs.DNSName(serviceName, namespace), time.Now()))
 		})
 	}
+}
+
+func TestSecretDataChanged(t *testing.T) {
+	secret := func(data map[string][]byte) *corev1.Secret {
+		return &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "secret"}, Data: data}
+	}
+
+	tests := []struct {
+		name      string
+		oldObject client.Object
+		newObject client.Object
+		expected  bool
+	}{
+		{
+			name:      "the same data",
+			oldObject: secret(map[string][]byte{"tls.crt": []byte("cert")}),
+			newObject: secret(map[string][]byte{"tls.crt": []byte("cert")}),
+			expected:  false,
+		},
+		{
+			name:      "a changed value",
+			oldObject: secret(map[string][]byte{"tls.crt": []byte("cert")}),
+			newObject: secret(map[string][]byte{"tls.crt": []byte("new-cert")}),
+			expected:  true,
+		},
+		{
+			name:      "an added key",
+			oldObject: secret(map[string][]byte{"ca.crt": []byte("ca")}),
+			newObject: secret(map[string][]byte{"ca.crt": []byte("ca"), "old-ca.crt": []byte("old-ca")}),
+			expected:  true,
+		},
+		{
+			name:      "an object that is not a Secret",
+			oldObject: &corev1.ConfigMap{},
+			newObject: &corev1.ConfigMap{},
+			expected:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, secretDataChanged(tc.oldObject, tc.newObject))
+		})
+	}
+}
+
+func TestCABundleChanged(t *testing.T) {
+	webhookConfiguration := func(caBundles ...string) *admissionregistrationv1.ValidatingWebhookConfiguration {
+		configuration := &admissionregistrationv1.ValidatingWebhookConfiguration{ObjectMeta: metav1.ObjectMeta{Name: "webhooks"}}
+		for i, caBundle := range caBundles {
+			configuration.Webhooks = append(configuration.Webhooks, admissionregistrationv1.ValidatingWebhook{
+				Name:         fmt.Sprintf("webhook-%d.kubewarden.test", i),
+				ClientConfig: admissionregistrationv1.WebhookClientConfig{CABundle: []byte(caBundle)},
+			})
+		}
+		return configuration
+	}
+	withRules := webhookConfiguration("ca", "ca")
+	withRules.Webhooks[0].Rules = []admissionregistrationv1.RuleWithOperations{newRule([]string{""}, []string{"pods"})}
+
+	tests := []struct {
+		name      string
+		oldObject client.Object
+		newObject client.Object
+		expected  bool
+	}{
+		{
+			name:      "the same CA bundles",
+			oldObject: webhookConfiguration("ca", "ca"),
+			newObject: webhookConfiguration("ca", "ca"),
+			expected:  false,
+		},
+		{
+			name:      "a change of another field",
+			oldObject: webhookConfiguration("ca", "ca"),
+			newObject: withRules,
+			expected:  false,
+		},
+		{
+			name:      "one changed CA bundle",
+			oldObject: webhookConfiguration("ca", "ca"),
+			newObject: webhookConfiguration("ca", "other-ca"),
+			expected:  true,
+		},
+		{
+			name:      "a new webhook",
+			oldObject: webhookConfiguration("ca"),
+			newObject: webhookConfiguration("ca", "ca"),
+			expected:  true,
+		},
+		{
+			name:      "an object that is not a webhook configuration",
+			oldObject: &corev1.Secret{},
+			newObject: &corev1.Secret{},
+			expected:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, caBundleChanged(tc.oldObject, tc.newObject))
+		})
+	}
+}
+
+func TestKubewardenObjectPredicate(t *testing.T) {
+	const namespace = "kubewarden"
+	kubewardenLabels := map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue}
+	newSecret := func(namespace string, labels map[string]string) *corev1.Secret {
+		return &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "secret", Labels: labels}}
+	}
+	alwaysChanged := func(client.Object, client.Object) bool { return true }
+	neverChanged := func(client.Object, client.Object) bool { return false }
+
+	t.Run("a creation", func(t *testing.T) {
+		p := kubewardenObjectPredicate(namespace, neverChanged)
+		require.True(t, p.Create(event.CreateEvent{Object: newSecret(namespace, kubewardenLabels)}))
+		require.False(t, p.Create(event.CreateEvent{Object: newSecret(namespace, nil)}), "an object without the label")
+		require.False(t, p.Create(event.CreateEvent{Object: newSecret("other", kubewardenLabels)}), "an object in another namespace")
+	})
+
+	t.Run("a deletion", func(t *testing.T) {
+		p := kubewardenObjectPredicate(namespace, neverChanged)
+		require.True(t, p.Delete(event.DeleteEvent{Object: newSecret(namespace, kubewardenLabels)}))
+		require.False(t, p.Delete(event.DeleteEvent{Object: newSecret(namespace, nil)}))
+	})
+
+	t.Run("an update", func(t *testing.T) {
+		labelled := newSecret(namespace, kubewardenLabels)
+		unlabelled := newSecret(namespace, nil)
+		require.True(t, kubewardenObjectPredicate(namespace, alwaysChanged).Update(event.UpdateEvent{ObjectOld: labelled, ObjectNew: labelled}),
+			"a change that matters")
+		require.False(t, kubewardenObjectPredicate(namespace, neverChanged).Update(event.UpdateEvent{ObjectOld: labelled, ObjectNew: labelled}),
+			"a change that does not matter")
+		require.True(t, kubewardenObjectPredicate(namespace, neverChanged).Update(event.UpdateEvent{ObjectOld: unlabelled, ObjectNew: labelled}),
+			"an update that adds the label")
+		require.False(t, kubewardenObjectPredicate(namespace, alwaysChanged).Update(event.UpdateEvent{ObjectOld: labelled, ObjectNew: unlabelled}),
+			"an update that removes the label")
+	})
+
+	t.Run("no namespace accepts every namespace", func(t *testing.T) {
+		p := kubewardenObjectPredicate("", neverChanged)
+		require.True(t, p.Create(event.CreateEvent{Object: newSecret("other", kubewardenLabels)}))
+	})
+
+	t.Run("a generic event", func(t *testing.T) {
+		p := kubewardenObjectPredicate(namespace, alwaysChanged)
+		require.False(t, p.Generic(event.GenericEvent{Object: newSecret(namespace, kubewardenLabels)}))
+	})
 }

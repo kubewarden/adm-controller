@@ -463,6 +463,23 @@ func TestRunStopsAtTheFirstFailure(t *testing.T) {
 		require.Empty(t, validatingList.Items, "no webhook configuration without the certificate secrets")
 	})
 
+	t.Run("the webhook configurations cannot be created", func(t *testing.T) {
+		k8sClient := fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+			Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+				if _, ok := obj.(*admissionregistrationv1.ValidatingWebhookConfiguration); ok {
+					return apierrors.NewForbidden(schema.GroupResource{Resource: "validatingwebhookconfigurations"}, obj.GetName(), nil)
+				}
+				return c.Create(ctx, obj, opts...)
+			},
+		}).Build()
+
+		// The certificate directory is empty, so a wait would last the whole timeout and fail with another error.
+		err := Run(t.Context(), k8sClient, logr.Discard(), runOptions(t.TempDir(), time.Minute))
+
+		require.ErrorContains(t, err, "failed to prepare the webhook configurations of the controller")
+		getSecret(t, k8sClient, constants.CARootSecretName)
+	})
+
 	t.Run("the certificate files do not appear", func(t *testing.T) {
 		k8sClient := fake.NewClientBuilder().Build()
 
