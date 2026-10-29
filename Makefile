@@ -58,9 +58,11 @@ test-e2e: controller-image audit-scanner-image policy-server-image
 # packages that the test imports. It does not see the images, the chart or
 # the code of the controller, so without the flag a change to them can get a
 # cached PASS and no test runs.
+# Each e2e package creates its own kind cluster. -p 1 runs the packages one
+# after the other, so that only one cluster runs at a time.
 .PHONY: test-e2e-run
 test-e2e-run:
-	$(GO_BUILD_ENV) go test ./e2e/ -v -timeout 45m -count=1
+	$(GO_BUILD_ENV) go test ./e2e/... -v -timeout 45m -count=1 -p 1
 
 .PHONY: test-all
 test-all: test helm-unittest test-e2e
