@@ -53,6 +53,7 @@ import (
 	"github.com/kubewarden/adm-controller/internal/controller"
 	"github.com/kubewarden/adm-controller/internal/featuregates"
 	"github.com/kubewarden/adm-controller/internal/metrics"
+	"github.com/kubewarden/adm-controller/internal/probes"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -315,7 +316,7 @@ func main() {
 
 	//+kubebuilder:scaffold:builder
 
-	if err = setupProbes(mgr); err != nil {
+	if err = setupProbes(mgr, mgrOpts.WebhookServerPort); err != nil {
 		setupLog.Error(err, "unable to set up probes")
 		retcode = 1
 		return
@@ -424,11 +425,11 @@ func setupManager(mgrOpts ManagerOptions) (ctrl.Manager, error) {
 	return mgr, nil
 }
 
-func setupProbes(mgr ctrl.Manager) error {
+func setupProbes(mgr ctrl.Manager, webhookServerPort int) error {
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		return errors.Join(errors.New("unable to set up health check"), err)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err := mgr.AddReadyzCheck("readyz", probes.WebhookServerListening(webhookServerPort)); err != nil {
 		return errors.Join(errors.New("unable to set up ready check"), err)
 	}
 	return nil
@@ -521,10 +522,12 @@ func setupReconcilers(mgr ctrl.Manager,
 
 	if err := (&controller.DefaultsApplierReconciler{
 		Client:               mgr.GetClient(),
+		APIReader:            mgr.GetAPIReader(),
 		Scheme:               mgr.GetScheme(),
 		Log:                  ctrl.Log.WithName("defaults-applier"),
 		DeploymentsNamespace: deploymentsNamespace,
 		ConfigMapName:        config.DefaultsConfigMapName,
+		WebhookServiceName:   config.WebhookServiceName,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create DefaultsApplier controller"), err)
 	}

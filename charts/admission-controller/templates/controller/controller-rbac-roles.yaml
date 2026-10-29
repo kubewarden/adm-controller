@@ -143,6 +143,12 @@ rules:
   - update
   - watch
 - apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - list
+- apiGroups:
   - policy
   resources:
   - poddisruptionbudgets

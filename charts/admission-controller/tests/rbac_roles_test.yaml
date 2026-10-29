@@ -140,3 +140,33 @@ tests:
           path: metadata.labels["app.kubernetes.io/name"]
       - isNotNullOrEmpty:
           path: metadata.labels["app.kubernetes.io/instance"]
+
+  - it: "Role should let the controller list the endpoint slices of its namespace"
+    documentSelector:
+      path: kind
+      value: Role
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - discovery.k8s.io
+            resources:
+              - endpointslices
+            verbs:
+              - list
+
+  - it: "ClusterRole should not grant access to the endpoint slices of the cluster"
+    documentSelector:
+      path: kind
+      value: ClusterRole
+    asserts:
+      - notContains:
+          path: rules
+          content:
+            apiGroups:
+              - discovery.k8s.io
+            resources:
+              - endpointslices
+            verbs:
+              - list
