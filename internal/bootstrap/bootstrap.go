@@ -96,7 +96,20 @@ func Run(ctx context.Context, c client.Client, log logr.Logger, opts Options) er
 //
 // Many replicas can run it at the same time. If another replica creates a Secret first, this one reads it.
 func EnsureCertificateSecrets(ctx context.Context, c client.Client, log logr.Logger, namespace, webhookServiceName string) (*corev1.Secret, error) {
-	caRootSecret, err := ensureSecret(ctx, c, log, namespace, constants.CARootSecretName, func() (map[string][]byte, error) {
+	caRootSecret, err := EnsureCARootSecret(ctx, c, log, namespace)
+	if err != nil {
+		return nil, err
+	}
+	if err = EnsureSignedCertificateSecrets(ctx, c, log, namespace, webhookServiceName, caRootSecret); err != nil {
+		return nil, err
+	}
+	return caRootSecret, nil
+}
+
+// EnsureCARootSecret makes sure that the CA root Secret exists in namespace. If it is missing, it creates it with a
+// new CA root. It returns the CA root Secret.
+func EnsureCARootSecret(ctx context.Context, c client.Client, log logr.Logger, namespace string) (*corev1.Secret, error) {
+	return ensureSecret(ctx, c, log, namespace, constants.CARootSecretName, func() (map[string][]byte, error) {
 		caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate the CA root: %w", err)
@@ -106,13 +119,15 @@ func EnsureCertificateSecrets(ctx context.Context, c client.Client, log logr.Log
 			constants.CARootPrivateKey: caPrivateKey,
 		}, nil
 	})
-	if err != nil {
-		return nil, err
-	}
+}
 
+// EnsureSignedCertificateSecrets makes sure that the certificate Secret of the webhook server and the client
+// certificate Secret of the audit scanner exist in namespace. It signs a missing certificate with the CA root of
+// caRootSecret. The caller must make sure that the API server trusts that CA root before it calls this function.
+func EnsureSignedCertificateSecrets(ctx context.Context, c client.Client, log logr.Logger, namespace, webhookServiceName string, caRootSecret *corev1.Secret) error {
 	caCert, caPrivateKey, err := certs.ExtractCARootFromSecret(caRootSecret)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract the CA root from secret %q: %w", constants.CARootSecretName, err)
+		return fmt.Errorf("failed to extract the CA root from secret %q: %w", constants.CARootSecretName, err)
 	}
 	// The audit scanner certificate is a client certificate, so its name is not a DNS name. The cert controller signs
 	// it again with the same name.
@@ -131,14 +146,14 @@ func EnsureCertificateSecrets(ctx context.Context, c client.Client, log logr.Log
 
 	if _, err = ensureSecret(ctx, c, log, namespace, constants.WebhookServerCertSecretName,
 		newCertData(certs.DNSName(webhookServiceName, namespace))); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err = ensureSecret(ctx, c, log, namespace, constants.AuditScannerClientCertSecretName,
 		newCertData(constants.AuditScannerClientCertCommonName)); err != nil {
-		return nil, err
+		return err
 	}
 
-	return caRootSecret, nil
+	return nil
 }
 
 // ensureSecret returns the Secret name in namespace. If it does not exist, it creates it with the data that newData

@@ -15,6 +15,7 @@ import (
 
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -576,6 +577,109 @@ func TestReconcileWritesTheCABundleBeforeItSigns(t *testing.T) {
 			require.Equal(t, certs.CABundleFromSecret(caRootSecret), current.Webhooks[0].ClientConfig.CABundle)
 			webhookServerCertSecret := getSecret(constants.WebhookServerCertSecretName)
 			require.NoError(t, certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey], newCAPool, certs.DNSName(serviceName, namespace), time.Now()))
+		})
+	}
+}
+
+// TestReconcileCreatesAMissingCertificateOnlyAfterTheCABundle shows the case of an earlier pass that rotated the CA
+// root and failed to write the CA bundle. A certificate Secret that is deleted after that pass must not come back,
+// signed by the new CA root, before the webhook configurations trust that CA root.
+func TestReconcileCreatesAMissingCertificateOnlyAfterTheCABundle(t *testing.T) {
+	const (
+		namespace   = "kubewarden"
+		serviceName = "kubewarden-controller-webhook-service"
+	)
+
+	tests := []struct {
+		name       string
+		patchFails bool
+	}{
+		{name: "the pass does not create the certificate if the CA bundle cannot be written", patchFails: true},
+		{name: "the pass creates the certificate after the CA bundle is written", patchFails: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			previousCACert, _, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
+			require.NoError(t, err)
+			caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+			require.NoError(t, err)
+			auditScannerClientCert, auditScannerClientPrivateKey, err := certs.GenerateCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
+			require.NoError(t, err)
+
+			// The state after a pass that rotated the CA root and failed to write the CA bundle: the CA root Secret
+			// holds the new CA root, and the webhook configuration trusts the previous one alone. The Secret of the
+			// webhook server certificate is deleted.
+			caRootSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: constants.CARootSecretName},
+				Data: map[string][]byte{
+					constants.CARootCert:       caCert,
+					constants.CARootPrivateKey: caPrivateKey,
+					constants.OldCARootCert:    previousCACert,
+				},
+			}
+			webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "kubewarden-controller-validating-webhook-configuration",
+					Labels: map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue},
+				},
+				Webhooks: []admissionregistrationv1.ValidatingWebhook{
+					{
+						Name: "validate.kubewarden.test",
+						ClientConfig: admissionregistrationv1.WebhookClientConfig{
+							Service:  &admissionregistrationv1.ServiceReference{Namespace: namespace, Name: serviceName},
+							CABundle: previousCACert,
+						},
+					},
+				},
+			}
+			k8sClient := fake.NewClientBuilder().
+				WithObjects(
+					caRootSecret,
+					&corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: constants.AuditScannerClientCertSecretName},
+						Data: map[string][]byte{
+							constants.ServerCert:       auditScannerClientCert,
+							constants.ServerPrivateKey: auditScannerClientPrivateKey,
+						},
+					},
+					webhookConfiguration,
+				).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+						if _, ok := obj.(*admissionregistrationv1.ValidatingWebhookConfiguration); ok && tc.patchFails {
+							return errors.New("the API server refuses the patch")
+						}
+						return c.Patch(ctx, obj, patch, opts...)
+					},
+				}).
+				Build()
+
+			certController := CertReconciler{
+				Client:               k8sClient,
+				Log:                  logr.Discard(),
+				DeploymentsNamespace: namespace,
+				WebhookServiceName:   serviceName,
+			}
+
+			err = certController.reconcile(t.Context())
+
+			webhookServerCertSecret := &corev1.Secret{}
+			getErr := k8sClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: constants.WebhookServerCertSecretName}, webhookServerCertSecret)
+			if tc.patchFails {
+				require.Error(t, err)
+				require.True(t, apierrors.IsNotFound(getErr), "no certificate is created before the webhook configurations trust its CA root")
+				return
+			}
+
+			require.NoError(t, err)
+			current := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+			require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(webhookConfiguration), current))
+			require.Equal(t, certs.CABundleFromSecret(caRootSecret), current.Webhooks[0].ClientConfig.CABundle)
+			require.NoError(t, getErr, "the certificate Secret is created again")
+			pool, poolErr := certs.NewCertPool(caCert)
+			require.NoError(t, poolErr)
+			require.NoError(t, certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey], pool, certs.DNSName(serviceName, namespace), time.Now()))
 		})
 	}
 }

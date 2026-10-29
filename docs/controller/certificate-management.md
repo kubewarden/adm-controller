@@ -159,8 +159,8 @@ only. A pass runs:
 All events go to the same request, so at most one pass waits in the queue. One
 pass does these steps, in this order:
 
-1. **Make sure that the certificate Secrets exist.** Create the ones that are
-   missing, with the same code as the init mode.
+1. **Make sure that the CA root Secret exists.** If `kubewarden-ca` is
+   missing, create it with a new CA root.
 2. **Rotate the CA root.** If the CA root ends within 60 days, create a new CA
    root. Write `ca.crt` (new), `ca.key` (new), and `old-ca.crt` (the previous
    CA) into `kubewarden-ca`.
@@ -171,11 +171,17 @@ pass does these steps, in this order:
    controller, one per policy, and any other one with the label. Patch each
    `caBundle` that differs. If a patch fails, stop the pass and return the
    error. No certificate is signed in that pass.
-5. **Renew the serving certificates.** For the webhook server certificate and
+5. **Make sure that the other certificate Secrets exist.** If
+   `kubewarden-webhook-server-cert` or `kubewarden-audit-scanner-client-cert`
+   is missing, sign a new certificate with the CA root and create the Secret,
+   with the same code as the init mode. This step comes after step 4, because
+   an earlier pass can have rotated the CA root and failed to write the CA
+   bundle.
+6. **Renew the serving certificates.** For the webhook server certificate and
    each policy server certificate: if the certificate ends within 60 days, or
    the current CA root did not sign it, or the DNS name does not match, sign a
    new one with the CA root and write the Secret.
-6. **Renew the client certificate of the audit scanner,** by the same rule.
+7. **Renew the client certificate of the audit scanner,** by the same rule.
 
 ### The policy reconcilers
 
@@ -271,11 +277,15 @@ in this order:
    `old-ca.crt`.
 2. It writes `ca.crt + old-ca.crt` into every `caBundle`. A successful patch
    means that the API server stored it. The API server now accepts both CAs.
-3. It signs the serving certificates with the new CA.
+3. It signs the serving certificates with the new CA, and creates the
+   certificate Secrets that are missing.
 4. The kubelet updates the volumes. The servers reload. The API server accepts
    them, because the bundle holds the new CA.
 
-Steps 1 to 3 run in one function. If step 2 fails, step 3 does not run.
+Steps 1 to 3 run in one function. If step 2 fails, step 3 does not run. The
+next pass writes the bundle again before it signs or creates any certificate.
+So a certificate Secret that a user deletes after a failed step 2 does not
+come back with a certificate that the API server cannot accept.
 
 ## Scenarios
 
@@ -338,7 +348,7 @@ Result: no change, and no wait.
 Trigger: a pass of the cert controller finds a certificate that ends within 60
 days. The CA root is not affected.
 
-1. **Cert controller.** All the Secrets exist. The CA root ends in more than
+1. **Cert controller.** The CA root Secret exists. The CA root ends in more than
    60 days, so there is no rotation. There is no `old-ca.crt`, or it is still
    valid, so there is nothing to delete.
 2. **Cert controller.** It lists the webhook configurations with the
@@ -362,7 +372,7 @@ Result: a new certificate, no change of trust, no interruption.
 Trigger: a pass of the cert controller finds that the CA root ends within 60
 days. This happens about once in 10 years.
 
-1. **Cert controller.** All the Secrets exist. It reads `kubewarden-ca` and
+1. **Cert controller.** The CA root Secret exists. It reads `kubewarden-ca` and
    finds that the CA root ends within 60 days. It creates a new CA root. It
    writes `ca.crt` (new), `ca.key` (new), and `old-ca.crt` (the previous CA)
    into `kubewarden-ca`.
@@ -397,7 +407,7 @@ both CAs for 60 days. One actor did all the writes, in one function.
 Trigger: a pass of the cert controller, about 60 days after the rotation, finds
 that `old-ca.crt` is past its end.
 
-1. **Cert controller.** All the Secrets exist. The CA root is valid for almost
+1. **Cert controller.** The CA root Secret exists. The CA root is valid for almost
    10 years, so there is no rotation.
 2. **Cert controller.** It looks at `old-ca.crt` and finds it past its end. It
    deletes `old-ca.crt` from `kubewarden-ca`.
@@ -428,7 +438,7 @@ for one year and the CA root for ten.
 3. **Controller and policy server pods.** They are not blocked by that. A
    cluster-wide policy excludes the namespace of Kubewarden by default, and the
    controller webhooks intercept only Kubewarden CRDs.
-4. **Cert controller.** All the Secrets exist. The CA root ends in more than 60
+4. **Cert controller.** The CA root Secret exists. The CA root ends in more than 60
    days, so there is no rotation. There is no `old-ca.crt`.
 5. **Cert controller.** It lists the webhook configurations with the
    Kubewarden label. Every `caBundle` is equal to the CA bundle. It patches
@@ -449,7 +459,7 @@ crosses the end of the ten-year CA root.
 
 1. **Servers.** They start with the expired certificates.
 2. **API server.** It rejects every call, as in case 1.
-3. **Cert controller.** All the Secrets exist. It reads `kubewarden-ca` and
+3. **Cert controller.** The CA root Secret exists. It reads `kubewarden-ca` and
    finds the CA root past its end. It creates a new CA root. It writes `ca.crt`
    (new), `ca.key` (new), and `old-ca.crt` (the expired CA) into
    `kubewarden-ca`.
@@ -526,11 +536,11 @@ controller.
 **The Secret `kubewarden-webhook-server-cert`, or
 `kubewarden-audit-scanner-client-cert`.**
 
-1. **Cert controller.** The delete event starts a pass. It finds the Secret
-   missing. It signs a new certificate with the CA root and creates the Secret.
-2. **Cert controller.** It finds the CA root valid, no `old-ca.crt` to delete,
-   and every `caBundle` correct. The new certificate is valid, so it signs
-   nothing more.
+1. **Cert controller.** The delete event starts a pass. It finds the CA root
+   valid, no `old-ca.crt` to delete, and every `caBundle` correct.
+2. **Cert controller.** It finds the Secret missing. It signs a new
+   certificate with the CA root and creates the Secret. The new certificate is
+   valid, so it signs nothing more.
 3. **Kubelet.** It updates the volume, about one minute later. Until then, the
    server presents its previous certificate, which the API server still
    accepts.
@@ -563,7 +573,7 @@ Trigger: a write of `caBundle` into any webhook configuration with the
 Kubewarden label, of the controller or of a policy.
 
 1. **Cert controller.** The update event passes, because a `caBundle` changed.
-   A pass runs. All the Secrets exist, the CA root is valid, and there is
+   A pass runs. The CA root Secret exists and is valid, and there is
    nothing to delete. It lists every webhook configuration with the Kubewarden
    label. The `caBundle` of the changed object differs from the CA bundle. It
    patches the value back and logs `Injected the CA bundle`. Every certificate
@@ -678,6 +688,13 @@ test confirms it.
    Application, but they are not in the render anymore. Argo CD does not prune
    them, because of `Prune=false`, but it can list them as resources that need
    pruning. This is not tested.
+7. **The init container does not wait for the CA bundle.** The init mode
+   creates a missing certificate Secret with the current CA root, and does not
+   check the `caBundle` of the webhook configurations. If an earlier pass
+   rotated the CA root and failed to write the bundle, and a certificate Secret
+   is deleted before a controller pod starts, that pod can present a
+   certificate that the API server does not accept yet. The first pass of the
+   cert controller writes the bundle a few seconds later.
 
 ## Files
 

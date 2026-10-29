@@ -41,9 +41,9 @@ const reconcileInterval = 12 * time.Hour
 //   - the secret of every policy server, found by the label app.kubernetes.io/component: policy-server. The webhook
 //     configurations of the policies send the requests to the policy servers.
 //
-// It is a controller that runs on the leader. One pass creates the certificate Secrets of the controller that are
-// missing, rotates the CA root, and replaces each certificate that expires within constants.CertLookahead or that the
-// current CA root did not sign. A pass runs:
+// It is a controller that runs on the leader. One pass creates the CA root Secret if it is missing, rotates the CA
+// root, writes the CA bundle, creates the other certificate Secrets of the controller that are missing, and replaces
+// each certificate that expires within constants.CertLookahead or that the current CA root did not sign. A pass runs:
 //   - at startup
 //   - every reconcileInterval
 //   - when a Secret with the label app.kubernetes.io/part-of: kubewarden in DeploymentsNamespace changes or is deleted
@@ -174,10 +174,10 @@ func caBundleChanged(oldObject, newObject client.Object) bool {
 // reconcile reconciles the CA root and server certificates by rotating them if they are about to expire.
 func (r *CertReconciler) reconcile(ctx context.Context) error {
 	// The init container of the controller creates the certificate Secrets. A user or a tool can delete one of them
-	// later. Create it again, in the same way.
-	caCertSecret, err := bootstrap.EnsureCertificateSecrets(ctx, r.Client, r.Log, r.DeploymentsNamespace, r.WebhookServiceName)
+	// later. Create it again, in the same way. The CA root comes first, because the other certificates need it.
+	caCertSecret, err := bootstrap.EnsureCARootSecret(ctx, r.Client, r.Log, r.DeploymentsNamespace)
 	if err != nil {
-		return fmt.Errorf("failed to make sure that the certificate secrets exist: %w", err)
+		return fmt.Errorf("failed to make sure that the CA root secret exists: %w", err)
 	}
 
 	if err = r.reconcileCARoot(ctx, caCertSecret); err != nil {
@@ -186,9 +186,13 @@ func (r *CertReconciler) reconcile(ctx context.Context) error {
 	if err = r.reconcileOldCARoot(ctx, caCertSecret); err != nil {
 		return fmt.Errorf("failed to reconcile old CA root: %w", err)
 	}
-	// No certificate is signed before the API server trusts the CA root that signs it.
+	// No certificate is signed before the API server trusts the CA root that signs it. That includes a certificate
+	// Secret that is created again: an earlier pass can have rotated the CA root and failed to write the CA bundle.
 	if err = r.reconcileCABundles(ctx, caCertSecret); err != nil {
 		return fmt.Errorf("failed to reconcile the CA bundle of the webhook configurations: %w", err)
+	}
+	if err = bootstrap.EnsureSignedCertificateSecrets(ctx, r.Client, r.Log, r.DeploymentsNamespace, r.WebhookServiceName, caCertSecret); err != nil {
+		return fmt.Errorf("failed to make sure that the certificate secrets exist: %w", err)
 	}
 	// A server certificate that cannot rotate must not hold back the others.
 	var errs []error

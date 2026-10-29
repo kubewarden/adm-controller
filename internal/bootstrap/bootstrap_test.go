@@ -121,6 +121,44 @@ func TestEnsureCertificateSecretsReadsTheSecretOfAnotherReplica(t *testing.T) {
 		pool, certs.DNSName(testWebhookServiceName, testNamespace), time.Now()), "the certificates are signed by the CA root of the other replica")
 }
 
+func TestEnsureCARootSecretCreatesOnlyTheCARoot(t *testing.T) {
+	k8sClient := fake.NewClientBuilder().Build()
+
+	caRootSecret, err := EnsureCARootSecret(t.Context(), k8sClient, logr.Discard(), testNamespace)
+	require.NoError(t, err)
+
+	caCert, caPrivateKey, err := certs.ExtractCARootFromSecret(caRootSecret)
+	require.NoError(t, err)
+	require.NoError(t, certs.VerifyCA(caCert, caPrivateKey, time.Now().Add(constants.CertLookahead)))
+	secrets := &corev1.SecretList{}
+	require.NoError(t, k8sClient.List(t.Context(), secrets))
+	require.Len(t, secrets.Items, 1, "no other certificate is signed before the API server trusts the CA root")
+	require.Equal(t, constants.CARootSecretName, secrets.Items[0].Name)
+}
+
+func TestEnsureSignedCertificateSecretsSignsWithTheGivenCARoot(t *testing.T) {
+	k8sClient := fake.NewClientBuilder().Build()
+	caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+	require.NoError(t, err)
+	caRootSecret := &corev1.Secret{Data: map[string][]byte{
+		constants.CARootCert:       caCert,
+		constants.CARootPrivateKey: caPrivateKey,
+	}}
+
+	require.NoError(t, EnsureSignedCertificateSecrets(t.Context(), k8sClient, logr.Discard(), testNamespace, testWebhookServiceName, caRootSecret))
+
+	pool, err := certs.NewCertPool(caCert)
+	require.NoError(t, err)
+	webhookServerCertSecret := getSecret(t, k8sClient, constants.WebhookServerCertSecretName)
+	require.NoError(t, certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey],
+		pool, certs.DNSName(testWebhookServiceName, testNamespace), time.Now()))
+	auditScannerClientCertSecret := getSecret(t, k8sClient, constants.AuditScannerClientCertSecretName)
+	require.NoError(t, certs.VerifyCert(auditScannerClientCertSecret.Data[constants.ServerCert], auditScannerClientCertSecret.Data[constants.ServerPrivateKey],
+		pool, "", time.Now()))
+	err = k8sClient.Get(t.Context(), types.NamespacedName{Namespace: testNamespace, Name: constants.CARootSecretName}, &corev1.Secret{})
+	require.True(t, apierrors.IsNotFound(err), "the CA root Secret is not created")
+}
+
 func TestControllerWebhookConfigurationsManifest(t *testing.T) {
 	validating, mutating, err := controllerWebhookConfigurations()
 	require.NoError(t, err)
