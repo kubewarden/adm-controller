@@ -72,3 +72,7 @@ kubectl patch clusteradmissionpolicy psp-capabilities -p '{"metadata":{"finalize
 
 The [documentation](https://docs.kubewarden.io) provides more insights
 about how the project works and how to use it.
+
+[How Kubewarden manages its certificates](certificate-management.md) describes
+the certificates of the controller, the policy servers and the audit scanner:
+who creates them, who renews them, and how the API server comes to trust them.

@@ -13,10 +13,10 @@ cluster.
 The Job runs the controller image in cleanup mode, which:
   1. Deletes the controller Deployment and waits for its pods to be gone, so
      nothing recreates the resources removed by the following steps.
-  2. Deletes every Kubewarden webhook configuration, so no orphaned webhook
-     keeps intercepting admission requests and the following writes to the
-     Kubewarden custom resources are not rejected by webhooks pointing to the
-     deleted controller.
+  2. Deletes every Kubewarden webhook configuration, the ones of the policies
+     and the ones of the controller, so no orphaned webhook keeps intercepting
+     admission requests and the following writes to the Kubewarden custom
+     resources are not rejected by webhooks pointing to the deleted controller.
   3. Strips the Kubewarden finalizers from the Kubewarden CRs, so they can be
      deleted with plain kubectl commands without a running controller honoring
      their finalizers.
@@ -26,8 +26,11 @@ The Job runs the controller image in cleanup mode, which:
      their finalizers) on re-installation.
   5. Deletes the resources backing the remaining PolicyServers. Only the
      resources labeled as policy-server components are swept: the chart-managed
-     resources (e.g. the controller Secrets and Services) are left for Helm to
-     delete right after this hook.
+     resources (e.g. the controller Services) are left for Helm to delete right
+     after this hook.
+  6. Deletes the certificate Secrets of the controller. They hold the CA, and
+     a new installation must not reuse it. Helm does not delete them: the
+     controller creates them, and the chart does not render them.
 */}}
 apiVersion: batch/v1
 kind: Job
@@ -67,10 +70,14 @@ spec:
           command:
             - /controller
           args:
-            - --cleanup
+            - --mode=cleanup
             - --deployments-namespace={{ .Release.Namespace }}
             - --controller-deployment-name={{ include "admission-controller.fullname" . }}
             - --zap-log-level={{ .Values.logLevel }}
+          {{- with .Values.additionalEnvironmentVariables }}
+          env:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .Values.preDeleteHook.containerSecurityContext }}
           securityContext:
 {{ toYaml .Values.preDeleteHook.containerSecurityContext | indent 12 }}

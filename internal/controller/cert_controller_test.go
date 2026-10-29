@@ -2,726 +2,835 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/kubewarden/adm-controller/internal/certs"
 	"github.com/kubewarden/adm-controller/internal/constants"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
-var _ = Describe("Cert controller", func() {
+// The suite runs one cert controller for the shared certificate Secrets. The specs change these Secrets, and the
+// cert controller of the suite reacts to the change. The specs must not run in parallel with other specs.
+var _ = Describe("Cert controller", Serial, func() {
 	ctx := context.Background()
+	caRootSecretKey := types.NamespacedName{Namespace: deploymentsNamespace, Name: constants.CARootSecretName}
+	webhookServerDNSName := certs.DNSName(webhookServiceName, deploymentsNamespace)
+	sharedSecretNames := []string{
+		constants.CARootSecretName,
+		constants.WebhookServerCertSecretName,
+		constants.AuditScannerClientCertSecretName,
+	}
 
-	Context("Server certificates rotation", Ordered, func() {
-		const (
-			webhookServerServiceName    = "server-cert-rotation-test-webhook-service"
-			caRootSecretName            = "server-cert-rotation-test-ca-root"
-			webhookServerCertSecretName = "server-cert-rotation-test-webhook-server-cert"
-			policyServerName            = "server-cert-rotation-test-policy-server"
-		)
+	getSecret := func(name string) *corev1.Secret {
+		secret := &corev1.Secret{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: deploymentsNamespace, Name: name}, secret)).To(Succeed())
+		return secret
+	}
 
-		BeforeAll(func() {
-			certController := CertReconciler{
-				Client:                           k8sClient,
-				DeploymentsNamespace:             deploymentsNamespace,
-				WebhookServiceName:               webhookServerServiceName,
-				CARootSecretName:                 caRootSecretName,
-				WebhookServerCertSecretName:      webhookServerCertSecretName,
-				AuditScannerClientCertSecretName: "server-cert-rotation-test-audit-scanner-client-cert",
+	updateSecretData := func(name string, mutate func(data map[string][]byte)) {
+		Eventually(func() error {
+			secret := &corev1.Secret{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: deploymentsNamespace, Name: name}, secret); err != nil {
+				return err
 			}
-
-			By("generating the CA cert")
-			caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
-			Expect(err).ToNot(HaveOccurred())
-			By("creating the CA cert secret")
-			caRootSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      caRootSecretName,
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.CARootCert:       caCert,
-					constants.CARootPrivateKey: caPrivateKey,
-				},
+			if secret.Data == nil {
+				secret.Data = map[string][]byte{}
 			}
-			Expect(k8sClient.Create(ctx, caRootSecret)).To(Succeed())
+			mutate(secret.Data)
+			return k8sClient.Update(ctx, secret)
+		}, timeout, pollInterval).Should(Succeed())
+	}
 
-			By("generating webhook server cert that is about to expire")
-			webhookServiceDNSName := certs.DNSName(webhookServerServiceName, deploymentsNamespace)
-			webhookServerCert, webhookServerPrivateKey, err := certs.GenerateCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(constants.CertLookahead), webhookServiceDNSName)
-			Expect(err).ToNot(HaveOccurred())
-			By("creating the webhook server cert secret")
-			webhookServerCertSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      webhookServerCertSecretName,
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.ServerCert:       webhookServerCert,
-					constants.ServerPrivateKey: webhookServerPrivateKey,
-				},
-			}
-			Expect(k8sClient.Create(ctx, webhookServerCertSecret)).To(Succeed())
+	currentCARoot := func() ([]byte, []byte) {
+		caRootSecret := getSecret(constants.CARootSecretName)
+		return caRootSecret.Data[constants.CARootCert], caRootSecret.Data[constants.CARootPrivateKey]
+	}
 
-			By("generating a policy server cert that is about to expire")
-			policyServerDNSName := certs.DNSName(policyServerName, deploymentsNamespace)
-			policyServerCert, policyServerPrivateKey, err := certs.GenerateCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(constants.CertLookahead), policyServerDNSName)
-			Expect(err).ToNot(HaveOccurred())
-			policyServerCertSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      policyServerName,
-					Labels: map[string]string{
-						constants.PartOfLabelKey:    constants.PartOfLabelValue,
-						constants.ComponentLabelKey: constants.ComponentPolicyServerLabelValue,
-					},
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.ServerCert:       policyServerCert,
-					constants.ServerPrivateKey: policyServerPrivateKey,
-				},
-			}
-			Expect(k8sClient.Create(ctx, policyServerCertSecret)).To(Succeed())
+	currentCABundle := func() []byte {
+		return certs.CABundleFromSecret(getSecret(constants.CARootSecretName))
+	}
 
-			By("reconciling")
-			Expect(certController.reconcile(ctx)).To(Succeed())
-		})
+	newCA := func(notBefore, notAfter time.Time) ([]byte, []byte) {
+		caCert, caPrivateKey, err := certs.GenerateCA(notBefore, notAfter)
+		Expect(err).ToNot(HaveOccurred())
+		return caCert, caPrivateKey
+	}
 
-		It("should rotate the webhook server certificate", func() {
-			By("fetching the CA cert secret")
+	newCert := func(caCert, caPrivateKey []byte, notBefore, notAfter time.Time, dnsName string) ([]byte, []byte) {
+		cert, privateKey, err := certs.GenerateCert(caCert, caPrivateKey, notBefore, notAfter, dnsName)
+		Expect(err).ToNot(HaveOccurred())
+		return cert, privateKey
+	}
+
+	// signedByCurrentCARoot returns a function that fails if the current CA root did not sign the certificate of the
+	// Secret, or if the certificate ends within constants.CertLookahead.
+	signedByCurrentCARoot := func(secretName, dnsName string) func() error {
+		return func() error {
 			caRootSecret := &corev1.Secret{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: caRootSecretName, Namespace: deploymentsNamespace}, caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-
-			caCert, _, err := certs.ExtractCARootFromSecret(caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-			By("fetching the webhook server cert secret")
-			webhookServerCertSecret := &corev1.Secret{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: webhookServerCertSecretName, Namespace: deploymentsNamespace}, webhookServerCertSecret)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("checking whether the webhook server cert secret has been rotated")
-			pool, err := certs.NewCertPool(caCert)
-			Expect(err).ToNot(HaveOccurred())
-			dnsName := certs.DNSName(webhookServerServiceName, deploymentsNamespace)
-			err = certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey], pool, dnsName, time.Now())
-			Expect(err).ToNot(HaveOccurred())
-		})
-
-		It("should rotate the policy server certificates", func() {
-			By("fetching the CA cert secret")
-			caRootSecret := &corev1.Secret{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: caRootSecretName, Namespace: deploymentsNamespace}, caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-			caCert, _, err := certs.ExtractCARootFromSecret(caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("fetching the policy server cert secrets")
-			policyServerSecret := &corev1.Secret{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: "server-cert-rotation-test-policy-server", Namespace: deploymentsNamespace}, policyServerSecret)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("checking whether the policy server cert secret has been rotated")
-			pool, err := certs.NewCertPool(caCert)
-			Expect(err).ToNot(HaveOccurred())
-			dnsName := certs.DNSName(policyServerSecret.GetName(), deploymentsNamespace)
-			err = certs.VerifyCert(policyServerSecret.Data[constants.ServerCert], policyServerSecret.Data[constants.ServerPrivateKey], pool, dnsName, time.Now())
-			Expect(err).ToNot(HaveOccurred())
-		})
-	})
-
-	Context("CA root rotation", Ordered, func() {
-		const (
-			webhookServerServiceName    = "ca-root-rotation-test-webhook-service"
-			caRootSecretName            = "ca-root-rotation-test-ca-root"
-			webhookServerCertSecretName = "ca-root-rotation-test-webhook-server-cert"
-			policyServerName            = "ca-root-rotation-test-policy-server"
-		)
-
-		var webhookServerCert, webhookServerPrivateKey []byte
-
-		BeforeAll(func() {
-			certController := CertReconciler{
-				Client:                           k8sClient,
-				DeploymentsNamespace:             deploymentsNamespace,
-				WebhookServiceName:               webhookServerServiceName,
-				CARootSecretName:                 caRootSecretName,
-				WebhookServerCertSecretName:      webhookServerCertSecretName,
-				AuditScannerClientCertSecretName: "ca-root-rotation-test-audit-scanner-client-cert",
+			if err := k8sClient.Get(ctx, caRootSecretKey, caRootSecret); err != nil {
+				return err
 			}
-
-			By("generating a CA cert that is about to expire")
-			caCert, caPrivateKey, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
-			Expect(err).ToNot(HaveOccurred())
-			By("creating the CA cert secret")
-			caRootSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      caRootSecretName,
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.CARootCert:       caCert,
-					constants.CARootPrivateKey: caPrivateKey,
-				},
+			pool, err := certs.NewCertPool(caRootSecret.Data[constants.CARootCert])
+			if err != nil {
+				return err
 			}
-			Expect(k8sClient.Create(ctx, caRootSecret)).To(Succeed())
-
-			By("generating a webhook server cert")
-			webhookServiceDNSName := certs.DNSName(webhookServerServiceName, deploymentsNamespace)
-			webhookServerCert, webhookServerPrivateKey, err = certs.GenerateCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), webhookServiceDNSName)
-			Expect(err).ToNot(HaveOccurred())
-			By("creating the webhook server cert secret")
-			webhookServerCertSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      webhookServerCertSecretName,
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.ServerCert:       webhookServerCert,
-					constants.ServerPrivateKey: webhookServerPrivateKey,
-				},
+			secret := &corev1.Secret{}
+			if err = k8sClient.Get(ctx, types.NamespacedName{Namespace: deploymentsNamespace, Name: secretName}, secret); err != nil {
+				return err
 			}
-			Expect(k8sClient.Create(ctx, webhookServerCertSecret)).To(Succeed())
+			return certs.VerifyCert(secret.Data[constants.ServerCert], secret.Data[constants.ServerPrivateKey], pool, dnsName, time.Now().Add(constants.CertLookahead))
+		}
+	}
 
-			By("creating a policy server cert secret")
-			policyServerDNSName := certs.DNSName(policyServerName, deploymentsNamespace)
-			policyServerCert, policyServerPrivateKey, err := certs.GenerateCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), policyServerDNSName)
-			Expect(err).ToNot(HaveOccurred())
-			policyServerCertSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      policyServerName,
-					Labels: map[string]string{
-						constants.PartOfLabelKey:    constants.PartOfLabelValue,
-						constants.ComponentLabelKey: constants.ComponentPolicyServerLabelValue,
-					},
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.ServerCert:       policyServerCert,
-					constants.ServerPrivateKey: policyServerPrivateKey,
-				},
+	// caBundles returns a function that reads the caBundle of every webhook of the webhook configuration.
+	caBundles := func(webhookConfiguration client.Object) func() ([][]byte, error) {
+		return func() ([][]byte, error) {
+			current, ok := webhookConfiguration.DeepCopyObject().(client.Object)
+			if !ok {
+				return nil, errors.New("cannot copy the webhook configuration")
 			}
-			Expect(k8sClient.Create(ctx, policyServerCertSecret)).To(Succeed())
-
-			By("reconciling")
-			Expect(certController.reconcile(ctx)).To(Succeed())
-		})
-
-		It("should rotate the CA cert", func() {
-			By("fetching the CA cert secret")
-			caRootSecret := &corev1.Secret{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: caRootSecretName, Namespace: deploymentsNamespace}, caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("checking whether the CA cert has been rotated")
-			caCert, caPrivateKey, err := certs.ExtractCARootFromSecret(caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-			err = certs.VerifyCA(caCert, caPrivateKey, time.Now())
-			Expect(err).ToNot(HaveOccurred())
-
-			By("checking whether the old CA cert has been added to the secret")
-			_, found := caRootSecret.Data[constants.OldCARootCert]
-			Expect(found).To(BeTrue())
-		})
-
-		It("should keep the old CA in the CA bundle of the secret and rotate the webhook server cert", func() {
-			By("fetching the CA cert secret")
-			caRootSecret := &corev1.Secret{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: caRootSecretName, Namespace: deploymentsNamespace}, caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-			caBundle := certs.CABundleFromSecret(caRootSecret)
-
-			By("checking whether the old webhook server cert is still valid against the combined CA bundle")
-			pool, err := certs.NewCertPool(caBundle)
-			Expect(err).ToNot(HaveOccurred())
-			dnsName := certs.DNSName(webhookServerServiceName, deploymentsNamespace)
-			err = certs.VerifyCert(webhookServerCert, webhookServerPrivateKey, pool, dnsName, time.Now())
-			Expect(err).ToNot(HaveOccurred())
-
-			By("fetching the webhook server cert secret")
-			webhookServerCertSecret := &corev1.Secret{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: webhookServerCertSecretName, Namespace: deploymentsNamespace}, webhookServerCertSecret)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("checking whether the webhook server cert secret has been rotated")
-			err = certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey], pool, dnsName, time.Now())
-			Expect(err).ToNot(HaveOccurred())
-		})
-
-		It("should rotate the policy server certificates", func() {
-			By("fetching the CA cert secret")
-			caRootSecret := &corev1.Secret{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: caRootSecretName, Namespace: deploymentsNamespace}, caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-			caCert, _, err := certs.ExtractCARootFromSecret(caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("fetching the policy server cert secrets")
-			policyServerSecret := &corev1.Secret{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: policyServerName, Namespace: deploymentsNamespace}, policyServerSecret)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("checking whether policy server cert secret has been rotated")
-			pool, err := certs.NewCertPool(caCert)
-			Expect(err).ToNot(HaveOccurred())
-			dnsName := certs.DNSName(policyServerSecret.GetName(), deploymentsNamespace)
-			err = certs.VerifyCert(policyServerSecret.Data[constants.ServerCert], policyServerSecret.Data[constants.ServerPrivateKey], pool, dnsName, time.Now())
-			Expect(err).ToNot(HaveOccurred())
-		})
-	})
-
-	Context("Certificate already expired when the controller starts", Ordered, func() {
-		const (
-			webhookServerServiceName    = "startup-test-webhook-service"
-			caRootSecretName            = "startup-test-ca-root"
-			webhookServerCertSecretName = "startup-test-webhook-server-cert"
-		)
-
-		BeforeAll(func() {
-			By("generating the CA cert")
-			caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
-			Expect(err).ToNot(HaveOccurred())
-			By("creating the CA cert secret")
-			caRootSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      caRootSecretName,
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.CARootCert:       caCert,
-					constants.CARootPrivateKey: caPrivateKey,
-				},
+			if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(webhookConfiguration), current); err != nil {
+				return nil, err
 			}
-			Expect(k8sClient.Create(ctx, caRootSecret)).To(Succeed())
-
-			By("generating an expired webhook server cert")
-			webhookServiceDNSName := certs.DNSName(webhookServerServiceName, deploymentsNamespace)
-			webhookServerCert, webhookServerPrivateKey, err := certs.GenerateCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(-24*time.Hour), webhookServiceDNSName)
-			Expect(err).ToNot(HaveOccurred())
-			By("creating the webhook server cert secret")
-			webhookServerCertSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      webhookServerCertSecretName,
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.ServerCert:       webhookServerCert,
-					constants.ServerPrivateKey: webhookServerPrivateKey,
-				},
+			_, clientConfigs, err := webhookClientConfigs(current)
+			if err != nil {
+				return nil, err
 			}
-			Expect(k8sClient.Create(ctx, webhookServerCertSecret)).To(Succeed())
-
-			By("starting the cert controller")
-			certController := CertReconciler{
-				Client:                           k8sClient,
-				DeploymentsNamespace:             deploymentsNamespace,
-				WebhookServiceName:               webhookServerServiceName,
-				CARootSecretName:                 caRootSecretName,
-				WebhookServerCertSecretName:      webhookServerCertSecretName,
-				AuditScannerClientCertSecretName: "startup-test-audit-scanner-client-cert",
+			caBundles := [][]byte{}
+			for _, clientConfig := range clientConfigs {
+				caBundles = append(caBundles, clientConfig.CABundle)
 			}
-			startCtx, cancel := context.WithCancel(ctx)
-			done := make(chan error)
-			go func() {
-				done <- certController.Start(startCtx)
-			}()
-			DeferCleanup(func() {
-				cancel()
-				Eventually(done).WithTimeout(timeout).WithPolling(pollInterval).Should(Receive(Succeed()))
-			})
-		})
+			return caBundles, nil
+		}
+	}
 
-		It("should rotate the webhook server certificate without waiting for the ticker", func() {
-			Expect(tickerDuration).To(BeNumerically(">", timeout),
-				"the ticker must not fire during the test, or the test cannot show the reconcile at startup")
-
-			caRootSecret := &corev1.Secret{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: caRootSecretName, Namespace: deploymentsNamespace}, caRootSecret)).To(Succeed())
-			caCert, _, err := certs.ExtractCARootFromSecret(caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
-			pool, err := certs.NewCertPool(caCert)
-			Expect(err).ToNot(HaveOccurred())
-			dnsName := certs.DNSName(webhookServerServiceName, deploymentsNamespace)
-
-			Eventually(func() error {
-				webhookServerCertSecret := &corev1.Secret{}
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: webhookServerCertSecretName, Namespace: deploymentsNamespace}, webhookServerCertSecret); err != nil {
-					return err
-				}
-				return certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey], pool, dnsName, time.Now())
-			}).WithTimeout(timeout).WithPolling(pollInterval).Should(Succeed())
-		})
-	})
-
-	Context("Server certificate rotation waits until the webhook configurations trust the CA root", func() {
-		type rotationFixture struct {
-			certController          CertReconciler
-			oldCACert               []byte
-			webhookServerCert       []byte
-			auditScannerClientCert  []byte
-			webhookConfigurationKey client.ObjectKey
+	// createWebhookConfigurations creates a validating and a mutating webhook configuration that send requests to the
+	// webhook service. The webhooks have no rules, so they intercept no request of the other specs.
+	createWebhookConfigurations := func(prefix string, withKubewardenLabel bool, caBundle []byte) (*admissionregistrationv1.ValidatingWebhookConfiguration, *admissionregistrationv1.MutatingWebhookConfiguration) {
+		var labels map[string]string
+		if withKubewardenLabel {
+			labels = map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue}
+		}
+		clientConfig := admissionregistrationv1.WebhookClientConfig{
+			Service:  &admissionregistrationv1.ServiceReference{Namespace: deploymentsNamespace, Name: webhookServiceName},
+			CABundle: caBundle,
 		}
 
-		// newRotationFixture creates a CA root that is about to expire, a valid webhook server certificate and audit
-		// scanner client certificate from it, and a webhook configuration that sends requests to the webhook service
-		// and trusts only that CA root. The webhook configuration has no owner in the test, so the test publishes the
-		// CA bundle. It has no rules, so it intercepts no request of the other specs.
-		newRotationFixture := func(prefix string) rotationFixture {
-			webhookServerServiceName := prefix + "-webhook-service"
-			caRootSecretName := prefix + "-ca-root"
-			webhookServerCertSecretName := prefix + "-webhook-server-cert"
-			auditScannerClientCertSecretName := prefix + "-audit-scanner-client-cert"
-
-			oldCACert, oldCAPrivateKey, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
-			Expect(err).ToNot(HaveOccurred())
-			Expect(k8sClient.Create(ctx, &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Namespace: deploymentsNamespace, Name: caRootSecretName},
-				Type:       corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.CARootCert:       oldCACert,
-					constants.CARootPrivateKey: oldCAPrivateKey,
+		validating := &admissionregistrationv1.ValidatingWebhookConfiguration{
+			ObjectMeta: metav1.ObjectMeta{Name: newName(prefix + "-validating"), Labels: labels},
+			Webhooks: []admissionregistrationv1.ValidatingWebhook{
+				{
+					Name:                    "first.cert-controller.kubewarden.test",
+					ClientConfig:            clientConfig,
+					AdmissionReviewVersions: []string{"v1"},
+					SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
 				},
-			})).To(Succeed())
-
-			webhookServerCert, webhookServerPrivateKey, err := certs.GenerateCert(oldCACert, oldCAPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), certs.DNSName(webhookServerServiceName, deploymentsNamespace))
-			Expect(err).ToNot(HaveOccurred())
-			Expect(k8sClient.Create(ctx, &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Namespace: deploymentsNamespace, Name: webhookServerCertSecretName},
-				Type:       corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.ServerCert:       webhookServerCert,
-					constants.ServerPrivateKey: webhookServerPrivateKey,
+				{
+					Name:                    "second.cert-controller.kubewarden.test",
+					ClientConfig:            clientConfig,
+					AdmissionReviewVersions: []string{"v1"},
+					SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
 				},
-			})).To(Succeed())
-
-			auditScannerClientCert, auditScannerClientPrivateKey, err := certs.GenerateCert(oldCACert, oldCAPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(k8sClient.Create(ctx, &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Namespace: deploymentsNamespace, Name: auditScannerClientCertSecretName},
-				Type:       corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.ServerCert:       auditScannerClientCert,
-					constants.ServerPrivateKey: auditScannerClientPrivateKey,
+			},
+		}
+		mutating := &admissionregistrationv1.MutatingWebhookConfiguration{
+			ObjectMeta: metav1.ObjectMeta{Name: newName(prefix + "-mutating"), Labels: labels},
+			Webhooks: []admissionregistrationv1.MutatingWebhook{
+				{
+					Name:                    "first.cert-controller.kubewarden.test",
+					ClientConfig:            clientConfig,
+					AdmissionReviewVersions: []string{"v1"},
+					SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
 				},
-			})).To(Succeed())
-
-			webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{
-				ObjectMeta: metav1.ObjectMeta{Name: prefix + "-validating-webhook-configuration"},
-				Webhooks: []admissionregistrationv1.ValidatingWebhook{
-					{
-						Name: "trust.cert-controller.kubewarden.test",
-						ClientConfig: admissionregistrationv1.WebhookClientConfig{
-							Service:  &admissionregistrationv1.ServiceReference{Namespace: deploymentsNamespace, Name: webhookServerServiceName},
-							CABundle: oldCACert,
-						},
-						AdmissionReviewVersions: []string{"v1"},
-						SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
-					},
-				},
-			}
+			},
+		}
+		for _, webhookConfiguration := range []client.Object{validating, mutating} {
 			Expect(k8sClient.Create(ctx, webhookConfiguration)).To(Succeed())
 			DeferCleanup(func() {
 				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, webhookConfiguration))).To(Succeed())
 			})
+		}
 
-			return rotationFixture{
-				certController: CertReconciler{
-					Client:                           k8sClient,
-					DeploymentsNamespace:             deploymentsNamespace,
-					WebhookServiceName:               webhookServerServiceName,
-					CARootSecretName:                 caRootSecretName,
-					WebhookServerCertSecretName:      webhookServerCertSecretName,
-					AuditScannerClientCertSecretName: auditScannerClientCertSecretName,
+		return validating, mutating
+	}
+
+	// createPolicyServerSecret creates the certificate Secret of a policy server, with the labels that the
+	// PolicyServer reconciler sets.
+	createPolicyServerSecret := func(name string, cert, privateKey []byte) {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: deploymentsNamespace,
+				Name:      name,
+				Labels: map[string]string{
+					constants.PartOfLabelKey:    constants.PartOfLabelValue,
+					constants.ComponentLabelKey: constants.ComponentPolicyServerLabelValue,
 				},
-				oldCACert:               oldCACert,
-				webhookServerCert:       webhookServerCert,
-				auditScannerClientCert:  auditScannerClientCert,
-				webhookConfigurationKey: client.ObjectKeyFromObject(webhookConfiguration),
-			}
+			},
+			Type: corev1.SecretTypeOpaque,
+			Data: map[string][]byte{
+				constants.ServerCert:       cert,
+				constants.ServerPrivateKey: privateKey,
+			},
 		}
-
-		getSecret := func(name string) *corev1.Secret {
-			secret := &corev1.Secret{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: deploymentsNamespace, Name: name}, secret)).To(Succeed())
-			return secret
-		}
-
-		// publishCABundle does what an owner of the webhook configuration does after a change of the CA root secret.
-		publishCABundle := func(f rotationFixture) {
-			caBundle := certs.CABundleFromSecret(getSecret(f.certController.CARootSecretName))
-			Eventually(func() error {
-				webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{}
-				if err := k8sClient.Get(ctx, f.webhookConfigurationKey, webhookConfiguration); err != nil {
-					return err
-				}
-				webhookConfiguration.Webhooks[0].ClientConfig.CABundle = caBundle
-				return k8sClient.Update(ctx, webhookConfiguration)
-			}, timeout, pollInterval).Should(Succeed())
-		}
-
-		expectSignedByCurrentCARoot := func(f rotationFixture, secretName, dnsName string) {
-			caCert, _, err := certs.ExtractCARootFromSecret(getSecret(f.certController.CARootSecretName))
-			Expect(err).ToNot(HaveOccurred())
-			pool, err := certs.NewCertPool(caCert)
-			Expect(err).ToNot(HaveOccurred())
-			secret := getSecret(secretName)
-			Expect(certs.VerifyCert(secret.Data[constants.ServerCert], secret.Data[constants.ServerPrivateKey], pool, dnsName, time.Now())).To(Succeed())
-		}
-
-		It("should keep the server certificate until the webhook configurations trust the rotated CA root", func() {
-			f := newRotationFixture("trust-gate")
-			f.certController.caBundlePublicationTimeout = 3 * time.Second
-			webhookServerDNSName := certs.DNSName(f.certController.WebhookServiceName, deploymentsNamespace)
-
-			By("creating a webhook configuration of another service that does not trust the CA root")
-			otherWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
-				ObjectMeta: metav1.ObjectMeta{Name: "trust-gate-other-service-mutating-webhook-configuration"},
-				Webhooks: []admissionregistrationv1.MutatingWebhook{
-					{
-						Name: "other.cert-controller.kubewarden.test",
-						ClientConfig: admissionregistrationv1.WebhookClientConfig{
-							Service:  &admissionregistrationv1.ServiceReference{Namespace: deploymentsNamespace, Name: "trust-gate-other-service"},
-							CABundle: f.oldCACert,
-						},
-						AdmissionReviewVersions: []string{"v1"},
-						SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, otherWebhookConfiguration)).To(Succeed())
-			DeferCleanup(func() {
-				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, otherWebhookConfiguration))).To(Succeed())
-			})
-
-			By("reconciling while the webhook configuration trusts only the old CA root")
-			err := f.certController.reconcile(ctx)
-			Expect(err).To(MatchError(ContainSubstring("ValidatingWebhookConfiguration/" + f.webhookConfigurationKey.Name)))
-			Expect(err).ToNot(MatchError(ContainSubstring(otherWebhookConfiguration.Name)))
-
-			caRootSecret := getSecret(f.certController.CARootSecretName)
-			Expect(caRootSecret.Data[constants.CARootCert]).ToNot(Equal(f.oldCACert), "the CA root rotates")
-			Expect(caRootSecret.Data[constants.OldCARootCert]).To(Equal(f.oldCACert))
-			Expect(getSecret(f.certController.WebhookServerCertSecretName).Data[constants.ServerCert]).To(Equal(f.webhookServerCert),
-				"the server certificate must not change while its webhook configuration does not trust the new CA root")
-			Expect(getSecret(f.certController.AuditScannerClientCertSecretName).Data[constants.ServerCert]).ToNot(Equal(f.auditScannerClientCert),
-				"the audit scanner client certificate does not wait for the webhook configurations")
-
-			By("publishing the CA bundle, then reconciling again")
-			publishCABundle(f)
-			Expect(f.certController.reconcile(ctx)).To(Succeed())
-			expectSignedByCurrentCARoot(f, f.certController.WebhookServerCertSecretName, webhookServerDNSName)
+		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, secret))).To(Succeed())
 		})
+	}
 
-		It("should rotate the server certificate in the same pass when the CA bundle is published during the wait", func() {
-			f := newRotationFixture("trust-wait")
-			f.certController.caBundlePublicationTimeout = timeout
-			webhookServerDNSName := certs.DNSName(f.certController.WebhookServiceName, deploymentsNamespace)
+	// Every spec changes the shared certificate Secrets. Restore them after the spec, so that the next spec starts
+	// from the state that the suite created. The CA root goes first: a pass can then sign the other certificates
+	// with it, and the restored certificates are signed by it too.
+	BeforeEach(func() {
+		saved := map[string]map[string][]byte{}
+		for _, name := range sharedSecretNames {
+			saved[name] = getSecret(name).Data
+		}
 
-			done := make(chan error)
-			go func() {
-				done <- f.certController.reconcile(ctx)
-			}()
-
-			By("publishing the CA bundle after the CA root rotates")
-			Eventually(func() []byte {
-				return getSecret(f.certController.CARootSecretName).Data[constants.CARootCert]
-			}, timeout, pollInterval).ShouldNot(Equal(f.oldCACert))
-			Consistently(done, caBundlePublicationPollInterval, pollInterval).ShouldNot(Receive(), "the pass waits for the CA bundle")
-			publishCABundle(f)
-
-			Eventually(done, timeout, pollInterval).Should(Receive(Succeed()))
-			expectSignedByCurrentCARoot(f, f.certController.WebhookServerCertSecretName, webhookServerDNSName)
+		DeferCleanup(func() {
+			for _, name := range sharedSecretNames {
+				updateSecretData(name, func(data map[string][]byte) {
+					for key := range data {
+						delete(data, key)
+					}
+					for key, value := range saved[name] {
+						data[key] = value
+					}
+				})
+			}
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+			Eventually(signedByCurrentCARoot(constants.AuditScannerClientCertSecretName, ""), timeout, pollInterval).Should(Succeed())
 		})
 	})
 
-	Context("Audit scanner client certificate rotation", func() {
+	Context("Renewal of a certificate", func() {
+		It("should renew the webhook server certificate when it ends within 60 days", func() {
+			caCert, caPrivateKey := currentCARoot()
+			cert, privateKey := newCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(constants.CertLookahead), webhookServerDNSName)
+			updateSecretData(constants.WebhookServerCertSecretName, func(data map[string][]byte) {
+				data[constants.ServerCert] = cert
+				data[constants.ServerPrivateKey] = privateKey
+			})
+
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+		})
+
+		It("should renew an expired webhook server certificate", func() {
+			caCert, caPrivateKey := currentCARoot()
+			cert, privateKey := newCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(-24*time.Hour), webhookServerDNSName)
+			updateSecretData(constants.WebhookServerCertSecretName, func(data map[string][]byte) {
+				data[constants.ServerCert] = cert
+				data[constants.ServerPrivateKey] = privateKey
+			})
+
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+		})
+
+		It("should sign the webhook server certificate again when another CA signed it", func() {
+			otherCACert, otherCAPrivateKey := newCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+			cert, privateKey := newCert(otherCACert, otherCAPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), webhookServerDNSName)
+			updateSecretData(constants.WebhookServerCertSecretName, func(data map[string][]byte) {
+				data[constants.ServerCert] = cert
+				data[constants.ServerPrivateKey] = privateKey
+			})
+
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+		})
+
+		It("should renew a policy server certificate when it ends within 60 days", func() {
+			policyServerSecretName := newName("cert-controller-policy-server")
+			policyServerDNSName := certs.DNSName(policyServerSecretName, deploymentsNamespace)
+			caCert, caPrivateKey := currentCARoot()
+			cert, privateKey := newCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(constants.CertLookahead), policyServerDNSName)
+			createPolicyServerSecret(policyServerSecretName, cert, privateKey)
+
+			Eventually(signedByCurrentCARoot(policyServerSecretName, policyServerDNSName), timeout, pollInterval).Should(Succeed())
+		})
+	})
+
+	Context("Audit scanner client certificate", func() {
 		type clientCertFactory func(caCert, caPrivateKey []byte) ([]byte, []byte)
 
-		DescribeTable("rotating the audit scanner client certificate",
-			func(prefix string, generateClientCert clientCertFactory, expectRotated bool) {
-				webhookServerServiceName := prefix + "-webhook-service"
-				caRootSecretName := prefix + "-ca-root"
-				webhookServerCertSecretName := prefix + "-webhook-server-cert"
-				clientCertSecretName := prefix + "-audit-scanner-client-cert"
-
-				By("creating the CA cert secret")
-				caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
-				Expect(err).ToNot(HaveOccurred())
-				Expect(k8sClient.Create(ctx, &corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{Namespace: deploymentsNamespace, Name: caRootSecretName},
-					Type:       corev1.SecretTypeOpaque,
-					Data: map[string][]byte{
-						constants.CARootCert:       caCert,
-						constants.CARootPrivateKey: caPrivateKey,
-					},
-				})).To(Succeed())
-
-				By("creating a valid webhook server cert secret")
-				webhookServerCert, webhookServerPrivateKey, err := certs.GenerateCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), certs.DNSName(webhookServerServiceName, deploymentsNamespace))
-				Expect(err).ToNot(HaveOccurred())
-				Expect(k8sClient.Create(ctx, &corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{Namespace: deploymentsNamespace, Name: webhookServerCertSecretName},
-					Type:       corev1.SecretTypeOpaque,
-					Data: map[string][]byte{
-						constants.ServerCert:       webhookServerCert,
-						constants.ServerPrivateKey: webhookServerPrivateKey,
-					},
-				})).To(Succeed())
-
-				By("creating the audit scanner client cert secret with the labels of the Helm chart")
+		DescribeTable("renewing the audit scanner client certificate",
+			func(generateClientCert clientCertFactory, expectRenewed bool) {
+				caCert, caPrivateKey := currentCARoot()
 				clientCert, clientPrivateKey := generateClientCert(caCert, caPrivateKey)
-				Expect(k8sClient.Create(ctx, &corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: deploymentsNamespace,
-						Name:      clientCertSecretName,
-						Labels: map[string]string{
-							constants.PartOfLabelKey:    constants.PartOfLabelValue,
-							constants.ComponentLabelKey: "controller",
-						},
-					},
-					Type: corev1.SecretTypeOpaque,
-					Data: map[string][]byte{
-						constants.ServerCert:       clientCert,
-						constants.ServerPrivateKey: clientPrivateKey,
-					},
-				})).To(Succeed())
+				updateSecretData(constants.AuditScannerClientCertSecretName, func(data map[string][]byte) {
+					data[constants.ServerCert] = clientCert
+					data[constants.ServerPrivateKey] = clientPrivateKey
+				})
 
-				By("reconciling")
-				certController := CertReconciler{
-					Client:                           k8sClient,
-					DeploymentsNamespace:             deploymentsNamespace,
-					WebhookServiceName:               webhookServerServiceName,
-					CARootSecretName:                 caRootSecretName,
-					WebhookServerCertSecretName:      webhookServerCertSecretName,
-					AuditScannerClientCertSecretName: clientCertSecretName,
+				currentClientCert := func() []byte {
+					return getSecret(constants.AuditScannerClientCertSecretName).Data[constants.ServerCert]
 				}
-				Expect(certController.reconcile(ctx)).To(Succeed())
-
-				By("checking the audit scanner client cert secret")
-				clientCertSecret := &corev1.Secret{}
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: clientCertSecretName, Namespace: deploymentsNamespace}, clientCertSecret)).To(Succeed())
-				pool, err := certs.NewCertPool(caCert)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(certs.VerifyCert(clientCertSecret.Data[constants.ServerCert], clientCertSecret.Data[constants.ServerPrivateKey], pool, "", time.Now().Add(constants.CertLookahead))).To(Succeed())
-				if expectRotated {
-					Expect(clientCertSecret.Data[constants.ServerCert]).ToNot(Equal(clientCert))
+				if expectRenewed {
+					Eventually(currentClientCert, timeout, pollInterval).ShouldNot(Equal(clientCert))
+					Eventually(signedByCurrentCARoot(constants.AuditScannerClientCertSecretName, ""), timeout, pollInterval).Should(Succeed())
 				} else {
-					Expect(clientCertSecret.Data[constants.ServerCert]).To(Equal(clientCert))
+					Consistently(currentClientCert, consistencyTimeout, pollInterval).Should(Equal(clientCert))
 				}
 			},
-			Entry("a certificate that is about to expire is rotated", "audit-scanner-about-to-expire",
+			Entry("a certificate that ends within 60 days is renewed",
 				clientCertFactory(func(caCert, caPrivateKey []byte) ([]byte, []byte) {
-					cert, key, err := certs.GenerateCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(constants.CertLookahead), constants.AuditScannerClientCertCommonName)
-					Expect(err).ToNot(HaveOccurred())
-					return cert, key
+					return newCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(constants.CertLookahead), constants.AuditScannerClientCertCommonName)
 				}), true),
-			Entry("an expired certificate is rotated", "audit-scanner-expired",
+			Entry("an expired certificate is renewed",
 				clientCertFactory(func(caCert, caPrivateKey []byte) ([]byte, []byte) {
-					cert, key, err := certs.GenerateCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(-24*time.Hour), constants.AuditScannerClientCertCommonName)
-					Expect(err).ToNot(HaveOccurred())
-					return cert, key
+					return newCert(caCert, caPrivateKey, time.Now().Add(-constants.ServerCertExpiration), time.Now().Add(-24*time.Hour), constants.AuditScannerClientCertCommonName)
 				}), true),
-			Entry("a certificate signed by another CA is rotated", "audit-scanner-other-ca",
+			Entry("a certificate signed by another CA is renewed",
 				clientCertFactory(func(_, _ []byte) ([]byte, []byte) {
-					otherCACert, otherCAPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
-					Expect(err).ToNot(HaveOccurred())
-					cert, key, err := certs.GenerateCert(otherCACert, otherCAPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
-					Expect(err).ToNot(HaveOccurred())
-					return cert, key
+					otherCACert, otherCAPrivateKey := newCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+					return newCert(otherCACert, otherCAPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
 				}), true),
-			Entry("a valid certificate is not rotated", "audit-scanner-valid",
+			Entry("a valid certificate is not renewed",
 				clientCertFactory(func(caCert, caPrivateKey []byte) ([]byte, []byte) {
-					cert, key, err := certs.GenerateCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
-					Expect(err).ToNot(HaveOccurred())
-					return cert, key
+					return newCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
 				}), false),
 		)
 	})
 
-	Context("Old CA root cleanup", Ordered, func() {
-		const (
-			webhookServerServiceName    = "old-ca-root-cleanup-test-webhook-service"
-			caRootSecretName            = "old-ca-root-cleanup-test-ca-root"
-			webhookServerCertSecretName = "old-ca-root-cleanup-test-webhook-server-cert"
-			policyServerName            = "old-ca-root-cleanup-test-policy-server"
-		)
+	Context("CA root", func() {
+		It("should rotate a CA root that ends within 60 days, write the CA bundle, and sign every certificate again", func() {
+			validating, mutating := createWebhookConfigurations("cert-controller-rotation", true, currentCABundle())
+			unlabelled, _ := createWebhookConfigurations("cert-controller-rotation-unlabelled", false, currentCABundle())
+			unlabelledCABundle := currentCABundle()
 
-		BeforeAll(func() {
-			certController := CertReconciler{
-				Client:                           k8sClient,
-				DeploymentsNamespace:             deploymentsNamespace,
-				WebhookServiceName:               webhookServerServiceName,
-				CARootSecretName:                 caRootSecretName,
-				WebhookServerCertSecretName:      webhookServerCertSecretName,
-				AuditScannerClientCertSecretName: "old-ca-root-cleanup-test-audit-scanner-client-cert",
-			}
+			policyServerSecretName := newName("cert-controller-policy-server")
+			policyServerDNSName := certs.DNSName(policyServerSecretName, deploymentsNamespace)
+			caCert, caPrivateKey := currentCARoot()
+			policyServerCert, policyServerPrivateKey := newCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), policyServerDNSName)
+			createPolicyServerSecret(policyServerSecretName, policyServerCert, policyServerPrivateKey)
 
-			By("generating the CA cert")
-			caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
-			Expect(err).ToNot(HaveOccurred())
-			By("generating an expired old CA cert")
-			oldCACert, _, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(-24*time.Hour))
-			Expect(err).ToNot(HaveOccurred())
-			By("creating the CA cert secret")
-			caRootSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      "old-ca-root-cleanup-test-ca-root",
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.CARootCert:       caCert,
-					constants.CARootPrivateKey: caPrivateKey,
-					constants.OldCARootCert:    oldCACert,
-				},
-			}
-			Expect(k8sClient.Create(ctx, caRootSecret)).To(Succeed())
+			By("writing a CA root that ends within 60 days")
+			expiringCACert, expiringCAPrivateKey := newCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
+			updateSecretData(constants.CARootSecretName, func(data map[string][]byte) {
+				data[constants.CARootCert] = expiringCACert
+				data[constants.CARootPrivateKey] = expiringCAPrivateKey
+				delete(data, constants.OldCARootCert)
+			})
 
-			By("generating a webhook server cert")
-			webhookServiceDNSName := certs.DNSName(webhookServerServiceName, deploymentsNamespace)
-			webhookServerCert, webhookServerPrivateKey, err := certs.GenerateCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), webhookServiceDNSName)
-			Expect(err).ToNot(HaveOccurred())
-			By("creating the webhook server cert secret")
-			webhookServerCertSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: deploymentsNamespace,
-					Name:      webhookServerCertSecretName,
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					constants.ServerCert:       webhookServerCert,
-					constants.ServerPrivateKey: webhookServerPrivateKey,
-				},
-			}
-			Expect(k8sClient.Create(ctx, webhookServerCertSecret)).To(Succeed())
+			By("checking that the CA root rotates, and that the previous CA root becomes the old CA root")
+			Eventually(func() []byte {
+				return getSecret(constants.CARootSecretName).Data[constants.OldCARootCert]
+			}, timeout, pollInterval).Should(Equal(expiringCACert))
+			Expect(getSecret(constants.CARootSecretName).Data[constants.CARootCert]).ToNot(Equal(expiringCACert))
+			rotatedCABundle := currentCABundle()
 
-			By("reconciling")
-			Expect(certController.reconcile(ctx)).To(Succeed())
+			By("checking that the webhook configurations with the Kubewarden label trust both CA roots")
+			Eventually(caBundles(validating), timeout, pollInterval).Should(HaveEach(Equal(rotatedCABundle)))
+			Eventually(caBundles(mutating), timeout, pollInterval).Should(HaveEach(Equal(rotatedCABundle)))
+
+			By("checking that every certificate comes from the new CA root")
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+			Eventually(signedByCurrentCARoot(policyServerSecretName, policyServerDNSName), timeout, pollInterval).Should(Succeed())
+			Eventually(signedByCurrentCARoot(constants.AuditScannerClientCertSecretName, ""), timeout, pollInterval).Should(Succeed())
+
+			By("checking that a webhook configuration without the Kubewarden label is not touched")
+			Expect(caBundles(unlabelled)()).To(HaveEach(Equal(unlabelledCABundle)))
 		})
 
-		It("should remove the old CA root from the secret", func() {
-			caRootSecret := &corev1.Secret{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: caRootSecretName, Namespace: deploymentsNamespace}, caRootSecret)
-			Expect(err).ToNot(HaveOccurred())
+		It("should remove an expired old CA root, and write the CA bundle without it", func() {
+			validating, _ := createWebhookConfigurations("cert-controller-old-ca-removal", true, currentCABundle())
 
-			_, found := caRootSecret.Data[constants.OldCARootCert]
-			Expect(found).To(BeFalse())
+			By("adding an expired old CA root")
+			expiredCACert, _ := newCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(-24*time.Hour))
+			updateSecretData(constants.CARootSecretName, func(data map[string][]byte) {
+				data[constants.OldCARootCert] = expiredCACert
+			})
+
+			Eventually(func() map[string][]byte {
+				return getSecret(constants.CARootSecretName).Data
+			}, timeout, pollInterval).ShouldNot(HaveKey(constants.OldCARootCert))
+			caCert, _ := currentCARoot()
+			Eventually(caBundles(validating), timeout, pollInterval).Should(HaveEach(Equal(caCert)))
+		})
+
+		It("should rotate an expired CA root and sign every certificate again, as after a long shutdown", func() {
+			validating, _ := createWebhookConfigurations("cert-controller-expired-ca", true, currentCABundle())
+
+			By("writing an expired CA root")
+			expiredCACert, expiredCAPrivateKey := newCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(-24*time.Hour))
+			updateSecretData(constants.CARootSecretName, func(data map[string][]byte) {
+				data[constants.CARootCert] = expiredCACert
+				data[constants.CARootPrivateKey] = expiredCAPrivateKey
+				delete(data, constants.OldCARootCert)
+			})
+
+			By("checking that the CA root rotates, and that the expired CA root is not kept")
+			Eventually(func(g Gomega) {
+				data := getSecret(constants.CARootSecretName).Data
+				g.Expect(data[constants.CARootCert]).ToNot(Equal(expiredCACert))
+				g.Expect(data).ToNot(HaveKey(constants.OldCARootCert))
+			}, timeout, pollInterval).Should(Succeed())
+
+			By("checking that the webhook configurations trust the new CA root alone, and that it signs every certificate")
+			caCert, _ := currentCARoot()
+			Eventually(caBundles(validating), timeout, pollInterval).Should(HaveEach(Equal(caCert)))
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+			Eventually(signedByCurrentCARoot(constants.AuditScannerClientCertSecretName, ""), timeout, pollInterval).Should(Succeed())
+		})
+	})
+
+	Context("A deleted certificate Secret", func() {
+		deleteSecret := func(name string) {
+			Expect(k8sClient.Delete(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Namespace: deploymentsNamespace, Name: name},
+			})).To(Succeed())
+		}
+
+		It("should create the webhook server certificate Secret again", func() {
+			deleteSecret(constants.WebhookServerCertSecretName)
+
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+			Expect(getSecret(constants.WebhookServerCertSecretName).Labels).To(HaveKeyWithValue(constants.PartOfLabelKey, constants.PartOfLabelValue))
+		})
+
+		It("should create the CA root Secret again, write the CA bundle, and sign every certificate again", func() {
+			validating, _ := createWebhookConfigurations("cert-controller-deleted-ca", true, currentCABundle())
+			deletedCACert, _ := currentCARoot()
+
+			deleteSecret(constants.CARootSecretName)
+
+			By("checking that a new CA root exists")
+			Eventually(func(g Gomega) {
+				caRootSecret := &corev1.Secret{}
+				g.Expect(k8sClient.Get(ctx, caRootSecretKey, caRootSecret)).To(Succeed())
+				g.Expect(caRootSecret.Data[constants.CARootCert]).ToNot(Equal(deletedCACert))
+			}, timeout, pollInterval).Should(Succeed())
+
+			By("checking that the webhook configurations trust the new CA root, and that it signs every certificate")
+			caCert, _ := currentCARoot()
+			Eventually(caBundles(validating), timeout, pollInterval).Should(HaveEach(Equal(caCert)))
+			Eventually(signedByCurrentCARoot(constants.WebhookServerCertSecretName, webhookServerDNSName), timeout, pollInterval).Should(Succeed())
+			Eventually(signedByCurrentCARoot(constants.AuditScannerClientCertSecretName, ""), timeout, pollInterval).Should(Succeed())
+		})
+	})
+
+	Context("CA bundle of the webhook configurations", func() {
+		It("should repair a webhook configuration with the Kubewarden label that is created with the CA bundle of another CA", func() {
+			otherCACert, _ := newCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+			validating, mutating := createWebhookConfigurations("cert-controller-repair-create", true, otherCACert)
+
+			Eventually(caBundles(validating), timeout, pollInterval).Should(HaveEach(Equal(currentCABundle())))
+			Eventually(caBundles(mutating), timeout, pollInterval).Should(HaveEach(Equal(currentCABundle())))
+		})
+
+		It("should repair a webhook configuration with the Kubewarden label whose CA bundle changes", func() {
+			validating, _ := createWebhookConfigurations("cert-controller-repair-update", true, currentCABundle())
+
+			By("writing the CA bundle of another CA")
+			otherCACert, _ := newCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+			Eventually(func() error {
+				webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(validating), webhookConfiguration); err != nil {
+					return err
+				}
+				webhookConfiguration.Webhooks[0].ClientConfig.CABundle = otherCACert
+				return k8sClient.Update(ctx, webhookConfiguration)
+			}, timeout, pollInterval).Should(Succeed())
+
+			Eventually(caBundles(validating), timeout, pollInterval).Should(HaveEach(Equal(currentCABundle())))
+		})
+
+		It("should not touch a webhook configuration without the Kubewarden label", func() {
+			otherCACert, _ := newCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+			validating, _ := createWebhookConfigurations("cert-controller-unlabelled", false, otherCACert)
+
+			Consistently(caBundles(validating), consistencyTimeout, pollInterval).Should(HaveEach(Equal(otherCACert)))
+		})
+
+		It("should not write a webhook configuration with the Kubewarden label that already has the CA bundle", func() {
+			validating, _ := createWebhookConfigurations("cert-controller-no-change", true, currentCABundle())
+
+			Consistently(func() (string, error) {
+				webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(validating), webhookConfiguration); err != nil {
+					return "", err
+				}
+				return webhookConfiguration.ResourceVersion, nil
+			}, consistencyTimeout, pollInterval).Should(Equal(validating.ResourceVersion))
 		})
 	})
 })
+
+// TestReconcileWritesTheCABundleBeforeItSigns shows the order of one pass after a rotation of the CA root: the pass
+// writes the CA bundle into the webhook configurations first, and signs certificates with the new CA root only if
+// that write succeeds.
+func TestReconcileWritesTheCABundleBeforeItSigns(t *testing.T) {
+	const (
+		namespace   = "kubewarden"
+		serviceName = "kubewarden-controller-webhook-service"
+	)
+
+	tests := []struct {
+		name       string
+		patchFails bool
+	}{
+		{name: "the pass signs no certificate if the CA bundle cannot be written", patchFails: true},
+		{name: "the pass signs the certificates after the CA bundle is written", patchFails: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			oldCACert, oldCAPrivateKey, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
+			require.NoError(t, err)
+			webhookServerCert, webhookServerPrivateKey, err := certs.GenerateCert(oldCACert, oldCAPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), certs.DNSName(serviceName, namespace))
+			require.NoError(t, err)
+			auditScannerClientCert, auditScannerClientPrivateKey, err := certs.GenerateCert(oldCACert, oldCAPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
+			require.NoError(t, err)
+
+			webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "kubewarden-controller-validating-webhook-configuration",
+					Labels: map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue},
+				},
+				Webhooks: []admissionregistrationv1.ValidatingWebhook{
+					{
+						Name: "validate.kubewarden.test",
+						ClientConfig: admissionregistrationv1.WebhookClientConfig{
+							Service:  &admissionregistrationv1.ServiceReference{Namespace: namespace, Name: serviceName},
+							CABundle: oldCACert,
+						},
+					},
+				},
+			}
+			k8sClient := fake.NewClientBuilder().
+				WithObjects(
+					&corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: constants.CARootSecretName},
+						Data: map[string][]byte{
+							constants.CARootCert:       oldCACert,
+							constants.CARootPrivateKey: oldCAPrivateKey,
+						},
+					},
+					&corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: constants.WebhookServerCertSecretName},
+						Data: map[string][]byte{
+							constants.ServerCert:       webhookServerCert,
+							constants.ServerPrivateKey: webhookServerPrivateKey,
+						},
+					},
+					&corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: constants.AuditScannerClientCertSecretName},
+						Data: map[string][]byte{
+							constants.ServerCert:       auditScannerClientCert,
+							constants.ServerPrivateKey: auditScannerClientPrivateKey,
+						},
+					},
+					webhookConfiguration,
+				).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+						if _, ok := obj.(*admissionregistrationv1.ValidatingWebhookConfiguration); ok && tc.patchFails {
+							return errors.New("the API server refuses the patch")
+						}
+						return c.Patch(ctx, obj, patch, opts...)
+					},
+				}).
+				Build()
+
+			certController := CertReconciler{
+				Client:               k8sClient,
+				Log:                  logr.Discard(),
+				DeploymentsNamespace: namespace,
+				WebhookServiceName:   serviceName,
+			}
+
+			err = certController.reconcile(t.Context())
+
+			getSecret := func(name string) *corev1.Secret {
+				secret := &corev1.Secret{}
+				require.NoError(t, k8sClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: name}, secret))
+				return secret
+			}
+			caRootSecret := getSecret(constants.CARootSecretName)
+			require.NotEqual(t, oldCACert, caRootSecret.Data[constants.CARootCert], "the CA root rotates before the CA bundle is written")
+			newCAPool, poolErr := certs.NewCertPool(caRootSecret.Data[constants.CARootCert])
+			require.NoError(t, poolErr)
+
+			if tc.patchFails {
+				require.Error(t, err)
+				require.Equal(t, webhookServerCert, getSecret(constants.WebhookServerCertSecretName).Data[constants.ServerCert])
+				require.Equal(t, auditScannerClientCert, getSecret(constants.AuditScannerClientCertSecretName).Data[constants.ServerCert])
+				return
+			}
+
+			require.NoError(t, err)
+			current := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+			require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(webhookConfiguration), current))
+			require.Equal(t, certs.CABundleFromSecret(caRootSecret), current.Webhooks[0].ClientConfig.CABundle)
+			webhookServerCertSecret := getSecret(constants.WebhookServerCertSecretName)
+			require.NoError(t, certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey], newCAPool, certs.DNSName(serviceName, namespace), time.Now()))
+		})
+	}
+}
+
+// TestReconcileCreatesAMissingCertificateOnlyAfterTheCABundle shows the case of an earlier pass that rotated the CA
+// root and failed to write the CA bundle. A certificate Secret that is deleted after that pass must not come back,
+// signed by the new CA root, before the webhook configurations trust that CA root.
+func TestReconcileCreatesAMissingCertificateOnlyAfterTheCABundle(t *testing.T) {
+	const (
+		namespace   = "kubewarden"
+		serviceName = "kubewarden-controller-webhook-service"
+	)
+
+	tests := []struct {
+		name       string
+		patchFails bool
+	}{
+		{name: "the pass does not create the certificate if the CA bundle cannot be written", patchFails: true},
+		{name: "the pass creates the certificate after the CA bundle is written", patchFails: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			previousCACert, _, err := certs.GenerateCA(time.Now().Add(-constants.CACertExpiration), time.Now().Add(constants.CertLookahead))
+			require.NoError(t, err)
+			caCert, caPrivateKey, err := certs.GenerateCA(time.Now(), time.Now().Add(constants.CACertExpiration))
+			require.NoError(t, err)
+			auditScannerClientCert, auditScannerClientPrivateKey, err := certs.GenerateCert(caCert, caPrivateKey, time.Now(), time.Now().Add(constants.ServerCertExpiration), constants.AuditScannerClientCertCommonName)
+			require.NoError(t, err)
+
+			// The state after a pass that rotated the CA root and failed to write the CA bundle: the CA root Secret
+			// holds the new CA root, and the webhook configuration trusts the previous one alone. The Secret of the
+			// webhook server certificate is deleted.
+			caRootSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: constants.CARootSecretName},
+				Data: map[string][]byte{
+					constants.CARootCert:       caCert,
+					constants.CARootPrivateKey: caPrivateKey,
+					constants.OldCARootCert:    previousCACert,
+				},
+			}
+			webhookConfiguration := &admissionregistrationv1.ValidatingWebhookConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "kubewarden-controller-validating-webhook-configuration",
+					Labels: map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue},
+				},
+				Webhooks: []admissionregistrationv1.ValidatingWebhook{
+					{
+						Name: "validate.kubewarden.test",
+						ClientConfig: admissionregistrationv1.WebhookClientConfig{
+							Service:  &admissionregistrationv1.ServiceReference{Namespace: namespace, Name: serviceName},
+							CABundle: previousCACert,
+						},
+					},
+				},
+			}
+			k8sClient := fake.NewClientBuilder().
+				WithObjects(
+					caRootSecret,
+					&corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: constants.AuditScannerClientCertSecretName},
+						Data: map[string][]byte{
+							constants.ServerCert:       auditScannerClientCert,
+							constants.ServerPrivateKey: auditScannerClientPrivateKey,
+						},
+					},
+					webhookConfiguration,
+				).
+				WithInterceptorFuncs(interceptor.Funcs{
+					Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+						if _, ok := obj.(*admissionregistrationv1.ValidatingWebhookConfiguration); ok && tc.patchFails {
+							return errors.New("the API server refuses the patch")
+						}
+						return c.Patch(ctx, obj, patch, opts...)
+					},
+				}).
+				Build()
+
+			certController := CertReconciler{
+				Client:               k8sClient,
+				Log:                  logr.Discard(),
+				DeploymentsNamespace: namespace,
+				WebhookServiceName:   serviceName,
+			}
+
+			err = certController.reconcile(t.Context())
+
+			webhookServerCertSecret := &corev1.Secret{}
+			getErr := k8sClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: constants.WebhookServerCertSecretName}, webhookServerCertSecret)
+			if tc.patchFails {
+				require.Error(t, err)
+				require.True(t, apierrors.IsNotFound(getErr), "no certificate is created before the webhook configurations trust its CA root")
+				return
+			}
+
+			require.NoError(t, err)
+			current := &admissionregistrationv1.ValidatingWebhookConfiguration{}
+			require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(webhookConfiguration), current))
+			require.Equal(t, certs.CABundleFromSecret(caRootSecret), current.Webhooks[0].ClientConfig.CABundle)
+			require.NoError(t, getErr, "the certificate Secret is created again")
+			pool, poolErr := certs.NewCertPool(caCert)
+			require.NoError(t, poolErr)
+			require.NoError(t, certs.VerifyCert(webhookServerCertSecret.Data[constants.ServerCert], webhookServerCertSecret.Data[constants.ServerPrivateKey], pool, certs.DNSName(serviceName, namespace), time.Now()))
+		})
+	}
+}
+
+func TestSecretDataChanged(t *testing.T) {
+	secret := func(data map[string][]byte) *corev1.Secret {
+		return &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "secret"}, Data: data}
+	}
+
+	tests := []struct {
+		name      string
+		oldObject client.Object
+		newObject client.Object
+		expected  bool
+	}{
+		{
+			name:      "the same data",
+			oldObject: secret(map[string][]byte{"tls.crt": []byte("cert")}),
+			newObject: secret(map[string][]byte{"tls.crt": []byte("cert")}),
+			expected:  false,
+		},
+		{
+			name:      "a changed value",
+			oldObject: secret(map[string][]byte{"tls.crt": []byte("cert")}),
+			newObject: secret(map[string][]byte{"tls.crt": []byte("new-cert")}),
+			expected:  true,
+		},
+		{
+			name:      "an added key",
+			oldObject: secret(map[string][]byte{"ca.crt": []byte("ca")}),
+			newObject: secret(map[string][]byte{"ca.crt": []byte("ca"), "old-ca.crt": []byte("old-ca")}),
+			expected:  true,
+		},
+		{
+			name:      "an object that is not a Secret",
+			oldObject: &corev1.ConfigMap{},
+			newObject: &corev1.ConfigMap{},
+			expected:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, secretDataChanged(tc.oldObject, tc.newObject))
+		})
+	}
+}
+
+func TestCABundleChanged(t *testing.T) {
+	webhookConfiguration := func(caBundles ...string) *admissionregistrationv1.ValidatingWebhookConfiguration {
+		configuration := &admissionregistrationv1.ValidatingWebhookConfiguration{ObjectMeta: metav1.ObjectMeta{Name: "webhooks"}}
+		for i, caBundle := range caBundles {
+			configuration.Webhooks = append(configuration.Webhooks, admissionregistrationv1.ValidatingWebhook{
+				Name:         fmt.Sprintf("webhook-%d.kubewarden.test", i),
+				ClientConfig: admissionregistrationv1.WebhookClientConfig{CABundle: []byte(caBundle)},
+			})
+		}
+		return configuration
+	}
+	withRules := webhookConfiguration("ca", "ca")
+	withRules.Webhooks[0].Rules = []admissionregistrationv1.RuleWithOperations{newRule([]string{""}, []string{"pods"})}
+
+	tests := []struct {
+		name      string
+		oldObject client.Object
+		newObject client.Object
+		expected  bool
+	}{
+		{
+			name:      "the same CA bundles",
+			oldObject: webhookConfiguration("ca", "ca"),
+			newObject: webhookConfiguration("ca", "ca"),
+			expected:  false,
+		},
+		{
+			name:      "a change of another field",
+			oldObject: webhookConfiguration("ca", "ca"),
+			newObject: withRules,
+			expected:  false,
+		},
+		{
+			name:      "one changed CA bundle",
+			oldObject: webhookConfiguration("ca", "ca"),
+			newObject: webhookConfiguration("ca", "other-ca"),
+			expected:  true,
+		},
+		{
+			name:      "a new webhook",
+			oldObject: webhookConfiguration("ca"),
+			newObject: webhookConfiguration("ca", "ca"),
+			expected:  true,
+		},
+		{
+			name:      "an object that is not a webhook configuration",
+			oldObject: &corev1.Secret{},
+			newObject: &corev1.Secret{},
+			expected:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, caBundleChanged(tc.oldObject, tc.newObject))
+		})
+	}
+}
+
+func TestKubewardenObjectPredicate(t *testing.T) {
+	const namespace = "kubewarden"
+	kubewardenLabels := map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue}
+	newSecret := func(namespace string, labels map[string]string) *corev1.Secret {
+		return &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "secret", Labels: labels}}
+	}
+	alwaysChanged := func(client.Object, client.Object) bool { return true }
+	neverChanged := func(client.Object, client.Object) bool { return false }
+
+	t.Run("a creation", func(t *testing.T) {
+		p := kubewardenObjectPredicate(namespace, neverChanged)
+		require.True(t, p.Create(event.CreateEvent{Object: newSecret(namespace, kubewardenLabels)}))
+		require.False(t, p.Create(event.CreateEvent{Object: newSecret(namespace, nil)}), "an object without the label")
+		require.False(t, p.Create(event.CreateEvent{Object: newSecret("other", kubewardenLabels)}), "an object in another namespace")
+	})
+
+	t.Run("a deletion", func(t *testing.T) {
+		p := kubewardenObjectPredicate(namespace, neverChanged)
+		require.True(t, p.Delete(event.DeleteEvent{Object: newSecret(namespace, kubewardenLabels)}))
+		require.False(t, p.Delete(event.DeleteEvent{Object: newSecret(namespace, nil)}))
+	})
+
+	t.Run("an update", func(t *testing.T) {
+		labelled := newSecret(namespace, kubewardenLabels)
+		unlabelled := newSecret(namespace, nil)
+		require.True(t, kubewardenObjectPredicate(namespace, alwaysChanged).Update(event.UpdateEvent{ObjectOld: labelled, ObjectNew: labelled}),
+			"a change that matters")
+		require.False(t, kubewardenObjectPredicate(namespace, neverChanged).Update(event.UpdateEvent{ObjectOld: labelled, ObjectNew: labelled}),
+			"a change that does not matter")
+		require.True(t, kubewardenObjectPredicate(namespace, neverChanged).Update(event.UpdateEvent{ObjectOld: unlabelled, ObjectNew: labelled}),
+			"an update that adds the label")
+		require.False(t, kubewardenObjectPredicate(namespace, alwaysChanged).Update(event.UpdateEvent{ObjectOld: labelled, ObjectNew: unlabelled}),
+			"an update that removes the label")
+	})
+
+	t.Run("no namespace accepts every namespace", func(t *testing.T) {
+		p := kubewardenObjectPredicate("", neverChanged)
+		require.True(t, p.Create(event.CreateEvent{Object: newSecret("other", kubewardenLabels)}))
+	})
+
+	t.Run("a generic event", func(t *testing.T) {
+		p := kubewardenObjectPredicate(namespace, alwaysChanged)
+		require.False(t, p.Generic(event.GenericEvent{Object: newSecret(namespace, kubewardenLabels)}))
+	})
+}

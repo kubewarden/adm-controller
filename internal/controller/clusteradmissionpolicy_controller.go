@@ -27,7 +27,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -99,13 +98,6 @@ func (r *ClusterAdmissionPolicyReconciler) SetupWithManager(mgr ctrl.Manager) er
 			&admissionregistrationv1.MutatingWebhookConfiguration{},
 			handler.EnqueueRequestsFromMapFunc(r.findClusterAdmissionPolicyForWebhookConfiguration),
 		).
-		// The CA root secret is the source of the CA bundle of the webhook
-		// configuration. A rotation of the CA root changes the bundle.
-		Watches(
-			&corev1.Secret{},
-			handler.EnqueueRequestsFromMapFunc(r.findAllPolicies),
-			builder.WithPredicates(caRootSecretPredicate(r.DeploymentsNamespace, constants.CARootSecretName)),
-		).
 		Complete(r)
 	if err != nil {
 		return errors.Join(errors.New("failed enrolling controller with manager"), err)
@@ -138,8 +130,4 @@ func (r *ClusterAdmissionPolicyReconciler) findClusterAdmissionPolicyForWebhookC
 			},
 		},
 	}
-}
-
-func (r *ClusterAdmissionPolicyReconciler) findAllPolicies(ctx context.Context, _ client.Object) []reconcile.Request {
-	return findAllClusterAdmissionPolicies(ctx, r.Client, r.Log)
 }

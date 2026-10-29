@@ -54,9 +54,11 @@ test-e2e: controller-image audit-scanner-image policy-server-image
 
 # Run the e2e tests against images that already exist in the local
 # docker daemon (for example, images that CI built and loaded).
+# Each e2e package creates its own kind cluster. -p 1 runs the packages one
+# after the other, so that only one cluster runs at a time.
 .PHONY: test-e2e-run
 test-e2e-run:
-	$(GO_BUILD_ENV) go test ./e2e/ -v -timeout 45m
+	$(GO_BUILD_ENV) go test ./e2e/... -v -timeout 45m -p 1
 
 .PHONY: test-all
 test-all: test helm-unittest test-e2e
@@ -172,9 +174,7 @@ manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefin
 			paths="./internal/controller" paths="./cmd/controller" \
 			output:crd:artifacts:config=charts/admission-controller/templates/crds \
 			output:rbac:artifacts:config=charts/admission-controller/templates/controller \
-			output:webhook:artifacts:config=charts
-	echo "# to be merged manually into admission-controller/templates/webhooks.yaml" | cat - charts/manifests.yaml > temp && mv temp charts/manifests.yaml
-	mv charts/manifests.yaml charts/generated-webhooks-manifests.yaml
+			output:webhook:artifacts:config=internal/bootstrap
 	sed -i '/^metadata:/a\  labels:\n    {{- include "admission-controller.labels" . | nindent 4 }}\n  annotations:\n    {{- include "admission-controller.annotations" . | nindent 4 }}' charts/admission-controller/templates/controller/controller-rbac-roles.yaml
 	sed -i 's/  namespace: kubewarden/  namespace: {{ .Release.Namespace }}/' charts/admission-controller/templates/controller/controller-rbac-roles.yaml
 

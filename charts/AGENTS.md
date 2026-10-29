@@ -7,8 +7,8 @@
 
 ## Structure
 
-- `templates/controller/` — the deployment, the service, the RBAC rules, the
-  webhooks and the hooks of the controller and the audit scanner
+- `templates/controller/` — the deployment, the service, the RBAC rules and
+  the hooks of the controller and the audit scanner
 - `templates/crds/` — the CRDs of Kubewarden and the imported report CRDs
 - `templates/defaults/` — the default policy server and its RBAC rules
 - `tests/` — the unit tests of the chart
@@ -49,14 +49,14 @@
   third-party CRDs inside Helm conditionals. controller-gen does not produce
   them.
 
-## The webhook manifests need a manual merge
+## The chart does not hold the certificates or the controller webhooks
 
-- `make manifests` writes the webhook configuration to
-  `charts/generated-webhooks-manifests.yaml`.
-- That file is outside this directory, and the chart does not use it.
-- Read it and merge the changes by hand into
-  `templates/controller/webhooks.yaml`.
-- That file is a template. A command cannot overwrite it.
+- The init container of the controller pod creates the certificate Secrets
+  and the two webhook configurations of the controller. The cert controller
+  renews the certificates and writes the CA bundles.
+- The webhook configurations come from `internal/bootstrap/manifests.yaml`,
+  which `make manifests` generates from the `+kubebuilder:webhook` markers. To
+  change a webhook of the controller, edit the marker in the Go code.
 
 ## Conditions that need your attention
 

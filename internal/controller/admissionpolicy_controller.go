@@ -109,13 +109,6 @@ func (r *AdmissionPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&admissionregistrationv1.MutatingWebhookConfiguration{},
 			handler.EnqueueRequestsFromMapFunc(r.findAdmissionPolicyForWebhookConfiguration),
 		).
-		// The CA root secret is the source of the CA bundle of the webhook
-		// configuration. A rotation of the CA root changes the bundle.
-		Watches(
-			&corev1.Secret{},
-			handler.EnqueueRequestsFromMapFunc(r.findAllPolicies),
-			builder.WithPredicates(caRootSecretPredicate(r.DeploymentsNamespace, constants.CARootSecretName)),
-		).
 		Complete(r)
 	if err != nil {
 		return errors.Join(errors.New("failed enrolling controller with manager"), err)

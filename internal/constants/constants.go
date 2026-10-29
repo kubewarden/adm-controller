@@ -56,6 +56,12 @@ const (
 	HelmResourcePolicy       = "helm.sh/resource-policy"
 	HelmMetaReleaseName      = "meta.helm.sh/release-name"
 	HelmMetaReleaseNamespace = "meta.helm.sh/release-namespace"
+	// HelmResourcePolicyKeep is the value of HelmResourcePolicy that makes Helm keep an object that leaves the chart.
+	HelmResourcePolicyKeep = "keep"
+	// ArgoCDSyncOptions is the annotation that holds the Argo CD sync options of an object, separated by commas.
+	ArgoCDSyncOptions = "argocd.argoproj.io/sync-options"
+	// ArgoCDSyncOptionNoPrune is the Argo CD sync option that makes Argo CD keep an object that leaves the chart.
+	ArgoCDSyncOptionNoPrune = "Prune=false"
 
 	// DefaultsManagedByLabelKey is the label key for resources managed by DefaultsApplier.
 	DefaultsManagedByLabelKey = "kubewarden.io/managed-by"
@@ -105,11 +111,6 @@ const (
 	WebhookConfigurationPolicyNameAnnotationKey      = "kubewardenPolicyName"
 	WebhookConfigurationPolicyNamespaceAnnotationKey = "kubewardenPolicyNamespace"
 
-	// InjectCAFromAnnotationKey marks a webhook configuration whose caBundle the controller keeps equal to the CA
-	// bundle of a secret. The value is "<namespace>/<secret>". The Helm chart sets it on the webhook configurations of
-	// the controller. The controller accepts only its own CA root secret as the value.
-	InjectCAFromAnnotationKey = "kubewarden.io/inject-ca-from"
-
 	// WebhookNameSuffix is appended to a policy's unique name to build the
 	// name of the individual webhook entry inside a Mutating/Validating
 	// WebhookConfiguration. The resulting string cannot exceed the
@@ -141,6 +142,18 @@ const (
 	OldCARootCert    = "old-ca.crt"
 
 	ClientCACert = "client-ca.crt"
+
+	// WebhookServerCertDir is the directory where the webhook server of the controller reads its certificate. The
+	// Helm chart mounts the Secret WebhookServerCertSecretName there, in the init container and in the controller
+	// container.
+	WebhookServerCertDir = "/tmp/k8s-webhook-server/serving-certs"
+
+	// ControllerValidatingWebhookConfigurationName is the name of the validating webhook configuration of the
+	// controller. The controller creates it at startup.
+	ControllerValidatingWebhookConfigurationName = "kubewarden-controller-validating-webhook-configuration"
+	// ControllerMutatingWebhookConfigurationName is the name of the mutating webhook configuration of the controller.
+	// The controller creates it at startup.
+	ControllerMutatingWebhookConfigurationName = "kubewarden-controller-mutating-webhook-configuration"
 
 	CertExpirationYears  = 10
 	CACertExpiration     = 10 * 365 * 24 * time.Hour
