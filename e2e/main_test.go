@@ -71,16 +71,24 @@ func TestMain(m *testing.M) {
 				return ctx, fmt.Errorf("failed to wait for kubewarden-controller deployment: %w", err)
 			}
 
-			return ctx, nil
+			return context.WithValue(ctx, kubewardenInstalledKey{}, true), nil
 		},
 	)
 
 	testenv.Finish(
+		// The uninstall runs after all the tests, and before the export of the
+		// logs, so that the logs hold the pre-delete hook Job.
+		uninstallAndCheck(releaseName),
 		envfuncs.ExportClusterLogs(kindClusterName, "./logs"),
 		envfuncs.DestroyCluster(kindClusterName),
 	)
 
-	os.Exit(testenv.Run(m))
+	exitCode := testenv.Run(m)
+	if errUninstallCheck != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: uninstall check: %v\n", errUninstallCheck)
+		exitCode = 1
+	}
+	os.Exit(exitCode)
 }
 
 // waitForKubewardenControllerDeployment waits for the kubewarden deployment to be ready.
