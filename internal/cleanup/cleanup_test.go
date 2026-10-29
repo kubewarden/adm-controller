@@ -422,8 +422,6 @@ func TestDeletePolicyServerResources(t *testing.T) {
 	require.NoError(t, deletePolicyServerResources(ctx, k8sClient, namespace))
 }
 
-// TestRun verifies the composition of the cleanup steps, with one resource
-// per category. The behavior of every step is covered by the per-step tests.
 func TestDeleteControllerCertificateSecrets(t *testing.T) {
 	ctx := t.Context()
 	namespace := "cleanup-test-certificate-secrets"
@@ -454,6 +452,8 @@ func TestDeleteControllerCertificateSecrets(t *testing.T) {
 	require.NoError(t, deleteControllerCertificateSecrets(ctx, k8sClient, namespace))
 }
 
+// TestRun verifies the composition of the cleanup steps, with one resource
+// per category. The behavior of every step is covered by the per-step tests.
 func TestRun(t *testing.T) {
 	ctx := t.Context()
 	namespace := "cleanup-test-run"

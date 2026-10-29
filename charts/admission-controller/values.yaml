@@ -134,9 +134,10 @@ podSecurityContext:
   runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
-# SecurityContext to be used in the pre-delete-hook and post-install-hook job
-# containers and pods. The content of the next fields will be set directly as
-# the securityContext of the container and pod used in those jobs.
+# SecurityContext to be used in the pre-delete-hook, pre-upgrade-hook and
+# post-install-hook job containers and pods. The content of the next fields will
+# be set directly as the securityContext of the container and pod used in those
+# jobs.
 preDeleteHook:
   containerSecurityContext:
     allowPrivilegeEscalation: false
@@ -342,6 +343,7 @@ resources:
     requests:
       cpu: 250m
       memory: 300Mi
+  # Resources of the pre-delete-hook and pre-upgrade-hook jobs.
   preDeleteJob:
     limits:
       cpu: 100m
