@@ -75,13 +75,17 @@ func TestMain(m *testing.M) {
 		},
 	)
 
-	testenv.Finish(
-		// The uninstall runs after all the tests, and before the export of the
-		// logs, so that the logs hold the pre-delete hook Job.
-		uninstallAndCheck(releaseName),
-		envfuncs.ExportClusterLogs(kindClusterName, "./logs"),
-		envfuncs.DestroyCluster(kindClusterName),
-	)
+	// Each step is its own Finish action. The framework stops the functions of
+	// one action at the first error, and a failed step must not skip the next
+	// ones, above all the deletion of the cluster.
+	//
+	// The first export runs before the uninstall, which deletes the pods of the
+	// controller and of the policy servers, and their logs. The second export
+	// holds what the uninstall left, for example a failed pre-delete hook Job.
+	testenv.Finish(envfuncs.ExportClusterLogs(kindClusterName, "./logs"))
+	testenv.Finish(uninstallAndCheck(releaseName))
+	testenv.Finish(envfuncs.ExportClusterLogs(kindClusterName, "./logs/after-uninstall"))
+	testenv.Finish(envfuncs.DestroyCluster(kindClusterName))
 
 	exitCode := testenv.Run(m)
 	if errUninstallCheck != nil {

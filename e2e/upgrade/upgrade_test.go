@@ -80,10 +80,10 @@ func TestMain(m *testing.M) {
 		},
 	)
 
-	testenv.Finish(
-		envfuncs.ExportClusterLogs(kindClusterName, "./logs"),
-		envfuncs.DestroyCluster(kindClusterName),
-	)
+	// Each step is its own Finish action, so that a failed export of the logs
+	// does not skip the deletion of the cluster.
+	testenv.Finish(envfuncs.ExportClusterLogs(kindClusterName, "./logs"))
+	testenv.Finish(envfuncs.DestroyCluster(kindClusterName))
 
 	os.Exit(testenv.Run(m))
 }

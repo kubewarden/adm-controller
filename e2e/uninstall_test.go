@@ -24,8 +24,8 @@ import (
 )
 
 // errUninstallCheck is the result of the uninstall check. The test environment
-// ignores the errors of its Finish steps, so TestMain reads this variable
-// and fails the run when it is set.
+// logs the errors of its Finish steps, but they do not change the result of the
+// run. So TestMain reads this variable and fails the run when it is set.
 var errUninstallCheck error
 
 // kubewardenInstalledKey is the key of a context value that the setup sets
@@ -47,9 +47,7 @@ func uninstallAndCheck(releaseName string) env.Func {
 		if errUninstallCheck == nil {
 			fmt.Fprintln(os.Stderr, "The uninstall check passed")
 		}
-		// An error would stop the Finish steps that follow: the export of the
-		// logs and the deletion of the cluster.
-		return ctx, nil
+		return ctx, errUninstallCheck
 	}
 }
 
