@@ -315,7 +315,10 @@ preDeleteJob:
 podAnnotations: {}
 nodeSelector: {}
 # additionalEnvironmentVariables is a list of additional environment variables
-# to inject into the controller container.
+# to inject into every container that runs the controller binary: the
+# controller container, its init container, and the pre-upgrade and pre-delete
+# hook Jobs. All of them connect to the Kubernetes API server, so a variable
+# that the controller needs to reach it, for example a proxy, applies to all.
 # Each entry is a standard Kubernetes EnvVar object (name, value, valueFrom, …).
 # Example:
 #   additionalEnvironmentVariables:

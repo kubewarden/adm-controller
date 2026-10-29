@@ -82,3 +82,20 @@ tests:
           path: spec.template.spec.containers[0].securityContext.runAsUser
       - isNotNullOrEmpty:
           path: spec.template.spec.containers[0].resources
+
+  - it: "should not add env vars to the Job by default"
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env
+
+  - it: "should give the Job the additional env vars of the controller, which it needs to reach the API server"
+    set:
+      additionalEnvironmentVariables:
+        - name: HTTPS_PROXY
+          value: "http://proxy.example.com:3128"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: HTTPS_PROXY
+              value: "http://proxy.example.com:3128"

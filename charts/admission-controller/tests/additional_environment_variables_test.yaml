@@ -40,3 +40,26 @@ tests:
           content:
             name: SECOND_VAR
             value: "second"
+
+  - it: "should not add extra env vars to the init container by default"
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers[0].env
+
+  - it: "should inject the env vars into the init container too, which connects to the API server first"
+    set:
+      additionalEnvironmentVariables:
+        - name: HTTPS_PROXY
+          value: "http://proxy.example.com:3128"
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: HTTPS_PROXY
+            value: "http://proxy.example.com:3128"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: HTTPS_PROXY
+            value: "http://proxy.example.com:3128"

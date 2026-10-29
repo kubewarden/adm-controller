@@ -67,6 +67,10 @@ spec:
         - --deployments-namespace={{ .Release.Namespace }}
         - --webhook-service-name={{ include "admission-controller.webhookServiceName" . }}
         - --zap-log-level={{ .Values.logLevel }}
+        {{- with .Values.additionalEnvironmentVariables }}
+        env:
+        {{- toYaml . | nindent 10 }}
+        {{- end }}
         {{- if and .Values.resources .Values.resources.controller }}
         resources:
 {{ toYaml .Values.resources.controller | indent 10 }}

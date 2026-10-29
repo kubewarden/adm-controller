@@ -131,3 +131,26 @@ tests:
             - kind: ServiceAccount
               name: kubewarden-admission-controller-pre-upgrade
               namespace: kubewarden
+
+  - it: "should not add env vars to the Job by default"
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].env
+
+  - it: "should give the Job the additional env vars of the controller, which it needs to reach the API server"
+    documentSelector:
+      path: kind
+      value: Job
+    set:
+      additionalEnvironmentVariables:
+        - name: HTTPS_PROXY
+          value: "http://proxy.example.com:3128"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: HTTPS_PROXY
+              value: "http://proxy.example.com:3128"

@@ -110,6 +110,11 @@ The init container gets the same two values as the controller container: the
 namespace and the name of the webhook Service. The names of the Secrets and of
 the webhook configurations are constants in the code.
 
+The init container and the containers of the hook Jobs also get the variables
+of `additionalEnvironmentVariables`, as the controller container does. All of
+them connect to the API server, so a variable that the controller needs to
+reach it, for example a proxy, applies to all of them.
+
 ### The init mode
 
 Files: `cmd/controller/init.go`, `internal/bootstrap/bootstrap.go`.

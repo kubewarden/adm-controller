@@ -166,6 +166,10 @@ spec:
             - --mode=pre-upgrade
             - --deployments-namespace={{ .Release.Namespace }}
             - --zap-log-level={{ .Values.logLevel }}
+          {{- with .Values.additionalEnvironmentVariables }}
+          env:
+          {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .Values.preDeleteHook.containerSecurityContext }}
           securityContext:
 {{ toYaml .Values.preDeleteHook.containerSecurityContext | indent 12 }}
