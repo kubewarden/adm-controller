@@ -43,7 +43,7 @@ security-contacts:
     value: https://docs.kubewarden.io/disclosure
 vulnerability-reporting:
   accepts-vulnerability-reports: true
-  security-policy: https://github.com/kubewarden/community/blob/main/SECURITY.md
+  security-policy: https://github.com/kubewarden/.github/blob/main/SECURITY.md
   email-contact: cncf-kubewarden-maintainers@lists.cncf.io
   comment: |
     The first and best way to report a vulnerability is by using private security issues in GitHub or opening an issue on Github. We are also available on the Kubernetes Slack in the #kubewaden-dev channel.
@@ -56,6 +56,6 @@ dependencies:
       sbom-format: SPDX
       sbom-url: https://github.com/docker/buildx
   dependencies-lifecycle:
-    policy-url: https://github.com/kubewarden/community/blob/main/SECURITY.md#security-patch-policy
+    policy-url: https://github.com/kubewarden/.github/blob/main/SECURITY.md#security-patch-policy
   env-dependencies-policy:
-    policy-url: https://github.com/kubewarden/community/blob/main/SECURITY.md#dependency-policy
+    policy-url: https://github.com/kubewarden/.github/blob/main/SECURITY.md#dependency-policy

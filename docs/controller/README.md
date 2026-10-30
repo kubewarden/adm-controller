@@ -15,7 +15,7 @@ Once the adm-controller is up and running, you can define Kubewarden policies
 using the `ClusterAdmissionPolicy` resource.
 
 The documentation of this Custom Resource can be found
-[here](https://github.com/kubewarden/adm-controller/blob/main/docs/crds/README.asciidoc)
+[here](https://github.com/kubewarden/adm-controller/blob/main/docs/crds/CRD-docs-for-docs-repo.md)
 or on [docs.crds.dev](https://doc.crds.dev/github.com/kubewarden/adm-controller).
 
 > [!NOTE]
