@@ -33,7 +33,7 @@ kube = { version = "4", default-features = false, features = [
 ] }
 kubewarden-policy-sdk = { workspace = true, features = ["crd"] }
 lazy_static = { workspace = true }
-mail-parser = { version = "0.11", features = ["serde"] }
+mail-parser = { version = "1.0", features = ["serde"] }
 moka = { version = "0.12", features = ["future"] }
 pki-types = { package = "rustls-pki-types", version = "1.14", default-features = false, features = [
   "std",
