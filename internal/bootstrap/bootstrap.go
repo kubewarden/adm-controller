@@ -58,9 +58,11 @@ type Options struct {
 }
 
 // Run prepares what the webhook server needs before the controller starts:
-//  1. It creates the certificate Secrets that are missing.
+//  1. It creates the certificate Secrets that are missing. A certificate that it signs is not presented by any server
+//     until step 3 ends, so the API server does not need to trust the CA root yet.
 //  2. It creates the webhook configurations of the controller, or updates them to this version. A new webhook trusts
-//     the CA root Secret of step 1.
+//     the CA root Secret of step 1. A webhook that exists keeps its caBundle; the cert controller corrects it at its
+//     first pass if it is stale.
 //  3. It waits until the kubelet copies the certificate of the webhook server into opts.CertificateDirectory.
 //
 // It stops at the first step that fails. Every replica runs it, and it is safe to run it many times.
@@ -123,7 +125,13 @@ func EnsureCARootSecret(ctx context.Context, c client.Client, log logr.Logger, n
 
 // EnsureSignedCertificateSecrets makes sure that the certificate Secret of the webhook server and the client
 // certificate Secret of the audit scanner exist in namespace. It signs a missing certificate with the CA root of
-// caRootSecret. The caller must make sure that the API server trusts that CA root before it calls this function.
+// caRootSecret. It does not change a Secret that exists.
+//
+// A server must not present a certificate before the API server trusts the CA root that signed it. The cert
+// controller writes the CA bundle into the webhook configurations before it calls this function. The init mode calls
+// it before it reconciles the webhook configurations, and that is safe: it only signs a missing certificate, and no
+// server presents that certificate before the controller container starts, after the webhook configurations hold the
+// CA bundle.
 func EnsureSignedCertificateSecrets(ctx context.Context, c client.Client, log logr.Logger, namespace, webhookServiceName string, caRootSecret *corev1.Secret) error {
 	caCert, caPrivateKey, err := certs.ExtractCARootFromSecret(caRootSecret)
 	if err != nil {

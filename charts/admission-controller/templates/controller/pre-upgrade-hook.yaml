@@ -13,6 +13,10 @@ looks at them. An object that does not exist is skipped.
 Argo CD runs this hook on every sync, also on the first one, before the
 ServiceAccount of the controller exists. So the Job has its own ServiceAccount,
 with rules for these objects only.
+
+The hook is a no-op after the first upgrade from a chart that rendered these
+objects. It can be removed once the chart no longer supports an upgrade from
+such a chart, some releases after it shipped.
 */}}
 {{- /*
 The names have the suffix "-pre-upgrade", 12 characters. Kubernetes copies the
