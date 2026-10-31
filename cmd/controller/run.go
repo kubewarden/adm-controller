@@ -48,12 +48,12 @@ import (
 //nolint:funlen,gocognit,nonamedreturns // The deferred shutdown of the metrics provider sets the exit code.
 func runManager(opts Options) (retcode int) {
 	// Validate --webhook-server-port range.
-	if int64(opts.Manager.WebhookServerPort) < minAllowedPort || int64(opts.Manager.WebhookServerPort) > maxAllowedPort {
+	if int64(opts.WebhookServerPort) < minAllowedPort || int64(opts.WebhookServerPort) > maxAllowedPort {
 		setupLog.Error(
 			fmt.Errorf("port must be between %d and %d", minAllowedPort, maxAllowedPort),
 			"invalid webhook server port",
 			"flag", "--webhook-server-port",
-			"value", opts.Manager.WebhookServerPort,
+			"value", opts.WebhookServerPort,
 			"min", minAllowedPort,
 			"max", maxAllowedPort,
 		)
@@ -62,7 +62,7 @@ func runManager(opts Options) (retcode int) {
 
 	// HostNetwork mode is incompatible with OTel sidecar injection because
 	// multiple sidecars on the same node would cause port conflicts.
-	if opts.Configuration.HostNetwork && opts.EnableOtelSidecar {
+	if opts.HostNetwork && opts.EnableOtelSidecar {
 		setupLog.Error(
 			errors.New("--host-network and --enable-otel-sidecar are mutually exclusive"),
 			"incompatible flags: OpenTelemetry sidecar injection is not supported in host-network mode due to port conflicts; use a remote collector instead",
@@ -71,7 +71,7 @@ func runManager(opts Options) (retcode int) {
 	}
 
 	// Warn when hostNetwork is enabled
-	if opts.Configuration.HostNetwork {
+	if opts.HostNetwork {
 		setupLog.Info("WARNING: enabling host-network increases the attack surface by exposing webhook endpoints " +
 			"on the host network and giving pods visibility of all node network interfaces. " +
 			"Use only when the Kubernetes API server cannot reach pod-network webhook endpoints.")
@@ -123,13 +123,13 @@ func runManager(opts Options) (retcode int) {
 		}()
 	}
 
-	mgr, err := setupManager(opts.Manager)
+	mgr, err := setupManager(opts)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		return 1
 	}
 
-	opts.Configuration.FeatureGateAdmissionWebhookMatchConditions, err = featuregates.CheckAdmissionWebhookMatchConditions(ctrl.GetConfigOrDie())
+	opts.FeatureGateAdmissionWebhookMatchConditions, err = featuregates.CheckAdmissionWebhookMatchConditions(ctrl.GetConfigOrDie())
 	if err != nil {
 		setupLog.Error(err, "unable to check for feature gate AdmissionWebhookMatchConditions")
 	}
@@ -141,17 +141,12 @@ func runManager(opts Options) (retcode int) {
 		OtelCertificateSecret:       opts.OpenTelemetryCertificateSecret,
 		OtelClientCertificateSecret: opts.OpenTelemetryClientCertificateSecret,
 	}
-	if err = setupReconcilers(mgr,
-		opts.Manager.DeploymentsNamespace,
-		opts.Configuration,
-		otelConfiguration,
-		policyServerMetricsPort,
-	); err != nil {
+	if err = setupReconcilers(mgr, opts, otelConfiguration, policyServerMetricsPort); err != nil {
 		setupLog.Error(err, "unable to create controllers")
 		return 1
 	}
 
-	if err = setupWebhooks(mgr, opts.Manager.DeploymentsNamespace); err != nil {
+	if err = setupWebhooks(mgr, opts.DeploymentsNamespace); err != nil {
 		setupLog.Error(err, "unable to create webhooks")
 		return 1
 	}
@@ -172,13 +167,13 @@ func runManager(opts Options) (retcode int) {
 	return 0
 }
 
-func setupManager(mgrOpts ManagerOptions) (ctrl.Manager, error) {
+func setupManager(opts Options) (ctrl.Manager, error) {
 	namespaceSelector := cache.ByObject{
-		Field: fields.ParseSelectorOrDie("metadata.namespace=" + mgrOpts.DeploymentsNamespace),
+		Field: fields.ParseSelectorOrDie("metadata.namespace=" + opts.DeploymentsNamespace),
 	}
 
 	clientCAName := ""
-	if mgrOpts.EnableMutualTLS {
+	if opts.EnableMutualTLS {
 		// The WebhookServer shares the same CertDir for both the server
 		// certificate and the client CA certificate. We expect the ClientCACert
 		// in the "client-ca"  sub-folder from the ConfigMap, since one cannot
@@ -189,10 +184,10 @@ func setupManager(mgrOpts ManagerOptions) (ctrl.Manager, error) {
 	mgrOptions := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: mgrOpts.MetricsAddr,
+			BindAddress: opts.MetricsAddr,
 		},
-		HealthProbeBindAddress: mgrOpts.ProbeAddr,
-		LeaderElection:         mgrOpts.EnableLeaderElection,
+		HealthProbeBindAddress: opts.ProbeAddr,
+		LeaderElection:         opts.EnableLeaderElection,
 		LeaderElectionID:       "a4ddbf36.kubewarden.io",
 		// Warning: the manager creates a client, which then uses Watches to monitor
 		// certain resources. By default, the client is not going to be namespaced,
@@ -231,7 +226,7 @@ func setupManager(mgrOpts ManagerOptions) (ctrl.Manager, error) {
 		WebhookServer: webhook.NewServer(webhook.Options{
 			CertDir:      constants.WebhookServerCertDir,
 			ClientCAName: clientCAName,
-			Port:         mgrOpts.WebhookServerPort,
+			Port:         opts.WebhookServerPort,
 		}),
 	}
 
@@ -253,8 +248,7 @@ func setupProbes(mgr ctrl.Manager) error {
 }
 
 func setupReconcilers(mgr ctrl.Manager,
-	deploymentsNamespace string,
-	config Configuration,
+	opts Options,
 	otelConfiguration controller.TelemetryConfiguration,
 	policyServerMetricsPort int32,
 ) error {
@@ -262,13 +256,13 @@ func setupReconcilers(mgr ctrl.Manager,
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		Log:                  ctrl.Log.WithName("policy-server-reconciler"),
-		DeploymentsNamespace: deploymentsNamespace,
-		AlwaysAcceptAdmissionReviewsInDeploymentsNamespace: config.AlwaysAcceptAdmissionReviewsOnDeploymentsNamespace,
+		DeploymentsNamespace: opts.DeploymentsNamespace,
+		AlwaysAcceptAdmissionReviewsInDeploymentsNamespace: opts.AlwaysAcceptAdmissionReviewsOnDeploymentsNamespace,
 		TelemetryConfiguration:                             otelConfiguration,
-		ClientCAConfigMapName:                              config.ClientCAConfigMapName,
-		ControllerConfigMapName:                            config.ControllerConfigMapName,
-		ImagePullSecrets:                                   config.ImagePullSecrets,
-		HostNetwork:                                        config.HostNetwork,
+		ClientCAConfigMapName:                              opts.ClientCAConfigMapName,
+		ControllerConfigMapName:                            opts.ControllerConfigMapName,
+		ImagePullSecrets:                                   opts.ImagePullSecrets,
+		HostNetwork:                                        opts.HostNetwork,
 		PolicyServerMetricsPort:                            policyServerMetricsPort,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create PolicyServer controller"), err)
@@ -278,9 +272,9 @@ func setupReconcilers(mgr ctrl.Manager,
 		Client:                  mgr.GetClient(),
 		Scheme:                  mgr.GetScheme(),
 		Log:                     ctrl.Log.WithName("admission-policy-reconciler"),
-		DeploymentsNamespace:    deploymentsNamespace,
-		ControllerConfigMapName: config.ControllerConfigMapName,
-		FeatureGateAdmissionWebhookMatchConditions: config.FeatureGateAdmissionWebhookMatchConditions,
+		DeploymentsNamespace:    opts.DeploymentsNamespace,
+		ControllerConfigMapName: opts.ControllerConfigMapName,
+		FeatureGateAdmissionWebhookMatchConditions: opts.FeatureGateAdmissionWebhookMatchConditions,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create AdmissionPolicy controller"), err)
 	}
@@ -289,8 +283,8 @@ func setupReconcilers(mgr ctrl.Manager,
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		Log:                  ctrl.Log.WithName("cluster-admission-policy-reconciler"),
-		DeploymentsNamespace: deploymentsNamespace,
-		FeatureGateAdmissionWebhookMatchConditions: config.FeatureGateAdmissionWebhookMatchConditions,
+		DeploymentsNamespace: opts.DeploymentsNamespace,
+		FeatureGateAdmissionWebhookMatchConditions: opts.FeatureGateAdmissionWebhookMatchConditions,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create ClusterAdmissionPolicy controller"), err)
 	}
@@ -298,8 +292,8 @@ func setupReconcilers(mgr ctrl.Manager,
 	if err := (&controller.CertReconciler{
 		Client:               mgr.GetClient(),
 		Log:                  ctrl.Log.WithName("cert-recociler"),
-		DeploymentsNamespace: deploymentsNamespace,
-		WebhookServiceName:   config.WebhookServiceName,
+		DeploymentsNamespace: opts.DeploymentsNamespace,
+		WebhookServiceName:   opts.WebhookServiceName,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create Cert controller"), err)
 	}
@@ -308,9 +302,9 @@ func setupReconcilers(mgr ctrl.Manager,
 		Client:                  mgr.GetClient(),
 		Scheme:                  mgr.GetScheme(),
 		Log:                     ctrl.Log.WithName("admission-policy-group-reconciler"),
-		DeploymentsNamespace:    deploymentsNamespace,
-		ControllerConfigMapName: config.ControllerConfigMapName,
-		FeatureGateAdmissionWebhookMatchConditions: config.FeatureGateAdmissionWebhookMatchConditions,
+		DeploymentsNamespace:    opts.DeploymentsNamespace,
+		ControllerConfigMapName: opts.ControllerConfigMapName,
+		FeatureGateAdmissionWebhookMatchConditions: opts.FeatureGateAdmissionWebhookMatchConditions,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create AdmissionPolicyGroup controller"), err)
 	}
@@ -319,8 +313,8 @@ func setupReconcilers(mgr ctrl.Manager,
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		Log:                  ctrl.Log.WithName("cluster-admission-policy-group-reconciler"),
-		DeploymentsNamespace: deploymentsNamespace,
-		FeatureGateAdmissionWebhookMatchConditions: config.FeatureGateAdmissionWebhookMatchConditions,
+		DeploymentsNamespace: opts.DeploymentsNamespace,
+		FeatureGateAdmissionWebhookMatchConditions: opts.FeatureGateAdmissionWebhookMatchConditions,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create ClusterAdmissionPolicyGroup controller"), err)
 	}
@@ -329,8 +323,8 @@ func setupReconcilers(mgr ctrl.Manager,
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		Log:                  ctrl.Log.WithName("defaults-applier"),
-		DeploymentsNamespace: deploymentsNamespace,
-		ConfigMapName:        config.DefaultsConfigMapName,
+		DeploymentsNamespace: opts.DeploymentsNamespace,
+		ConfigMapName:        opts.DefaultsConfigMapName,
 	}).SetupWithManager(mgr); err != nil {
 		return errors.Join(errors.New("unable to create DefaultsApplier controller"), err)
 	}

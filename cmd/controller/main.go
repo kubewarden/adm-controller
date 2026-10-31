@@ -72,16 +72,23 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
-type ManagerOptions struct {
-	DeploymentsNamespace string
-	EnableLeaderElection bool
-	EnableMutualTLS      bool
-	MetricsAddr          string
-	ProbeAddr            string
-	WebhookServerPort    int
-}
+// Options holds the values of the command line flags, and the values that
+// derive from them.
+type Options struct {
+	Mode string
 
-type Configuration struct {
+	// The namespace of the controller and of its objects. Every mode needs it.
+	DeploymentsNamespace string
+
+	// The manager.
+	EnableLeaderElection bool
+	// EnableMutualTLS is true when ClientCAConfigMapName is set.
+	EnableMutualTLS   bool
+	MetricsAddr       string
+	ProbeAddr         string
+	WebhookServerPort int
+
+	// The reconcilers.
 	AlwaysAcceptAdmissionReviewsOnDeploymentsNamespace bool
 	ClientCAConfigMapName                              string
 	DefaultsConfigMapName                              string
@@ -94,19 +101,16 @@ type Configuration struct {
 	// the Kubernetes API server cannot reach pod-network webhook endpoints
 	// (e.g. clusters using a non-VPC CNI with NAT).
 	HostNetwork bool
-}
 
-// Options holds the values of the command line flags.
-type Options struct {
-	Mode                                 string
-	Manager                              ManagerOptions
-	Configuration                        Configuration
+	// Telemetry.
 	EnableMetrics                        bool
 	EnableTracing                        bool
 	EnableOtelSidecar                    bool
 	OpenTelemetryClientCertificateSecret string
 	OpenTelemetryCertificateSecret       string
-	ControllerDeploymentName             string
+
+	// The cleanup mode.
+	ControllerDeploymentName string
 }
 
 func init() {
@@ -123,17 +127,17 @@ func main() {
 	case modeRun:
 		os.Exit(runManager(opts))
 	case modeInit:
-		if err := runInit(opts.Manager.DeploymentsNamespace, opts.Configuration.WebhookServiceName); err != nil {
+		if err := runInit(opts.DeploymentsNamespace, opts.WebhookServiceName); err != nil {
 			setupLog.Error(err, "init failed")
 			os.Exit(1)
 		}
 	case modeCleanup:
-		if err := runCleanup(opts.Manager.DeploymentsNamespace, opts.ControllerDeploymentName); err != nil {
+		if err := runCleanup(opts.DeploymentsNamespace, opts.ControllerDeploymentName); err != nil {
 			setupLog.Error(err, "cleanup failed")
 			os.Exit(1)
 		}
 	case modePreUpgrade:
-		if err := runPreUpgrade(opts.Manager.DeploymentsNamespace); err != nil {
+		if err := runPreUpgrade(opts.DeploymentsNamespace); err != nil {
 			setupLog.Error(err, "pre-upgrade failed")
 			os.Exit(1)
 		}
@@ -155,10 +159,10 @@ func parseFlags() Options {
 			"\""+modeInit+"\" prepares the certificates and the webhook configurations of the controller, "+
 			"\""+modeCleanup+"\" runs the uninstall cleanup of the Helm chart pre-delete hook, "+
 			"\""+modePreUpgrade+"\" marks the objects of the controller, so that a Helm chart upgrade keeps them.")
-	flag.StringVar(&opts.Manager.MetricsAddr, "metrics-bind-address", ":8088", "The address the controller-runtime metric endpoint binds to.")
-	flag.StringVar(&opts.Manager.ProbeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.IntVar(&opts.Manager.WebhookServerPort, "webhook-server-port", 9443, "The port the webhook server listens on.")
-	flag.BoolVar(&opts.Manager.EnableLeaderElection, "leader-elect", false,
+	flag.StringVar(&opts.MetricsAddr, "metrics-bind-address", ":8088", "The address the controller-runtime metric endpoint binds to.")
+	flag.StringVar(&opts.ProbeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.IntVar(&opts.WebhookServerPort, "webhook-server-port", 9443, "The port the webhook server listens on.")
+	flag.BoolVar(&opts.EnableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&opts.EnableMetrics, "enable-metrics", false,
@@ -169,24 +173,24 @@ func parseFlags() Options {
 		"Enable OpenTelemetry sidecar in Policy Servers")
 	flag.StringVar(&opts.OpenTelemetryClientCertificateSecret, "opentelemetry-client-certificate-secret", "", "")
 	flag.StringVar(&opts.OpenTelemetryCertificateSecret, "opentelemetry-certificate-secret", "", "")
-	flag.StringVar(&opts.Manager.DeploymentsNamespace,
+	flag.StringVar(&opts.DeploymentsNamespace,
 		"deployments-namespace",
 		"",
 		"The namespace where the kubewarden resources will be created.")
-	flag.StringVar(&opts.Configuration.WebhookServiceName,
+	flag.StringVar(&opts.WebhookServiceName,
 		"webhook-service-name",
 		"kubewarden-controller-webhook-service",
 		"The name of the service that will be used to expose controller webhooks.")
-	flag.BoolVar(&opts.Configuration.AlwaysAcceptAdmissionReviewsOnDeploymentsNamespace,
+	flag.BoolVar(&opts.AlwaysAcceptAdmissionReviewsOnDeploymentsNamespace,
 		"always-accept-admission-reviews-on-deployments-namespace",
 		false,
 		"Always accept admission reviews targeting the deployments-namespace.")
-	flag.StringVar(&opts.Configuration.ClientCAConfigMapName, "client-ca-configmap-name", "", "The name of the ConfigMap containing the client CA certificate. If provided, mTLS will be enabled.")
-	flag.StringVar(&opts.Configuration.DefaultsConfigMapName,
+	flag.StringVar(&opts.ClientCAConfigMapName, "client-ca-configmap-name", "", "The name of the ConfigMap containing the client CA certificate. If provided, mTLS will be enabled.")
+	flag.StringVar(&opts.DefaultsConfigMapName,
 		"defaults-configmap-name",
 		constants.DefaultDefaultsConfigMapName,
 		"Name of the ConfigMap that holds the rendered default Kubewarden resources.")
-	flag.StringVar(&opts.Configuration.ControllerConfigMapName,
+	flag.StringVar(&opts.ControllerConfigMapName,
 		"controller-configmap-name",
 		constants.DefaultControllerConfigMapName,
 		"Name of the ConfigMap that holds the controller configuration, for example the resources that namespaced policies can target. The ConfigMap must be in the deployments namespace.")
@@ -194,7 +198,7 @@ func parseFlags() Options {
 		"image-pull-secrets",
 		"",
 		"Comma-separated list of Secret names to use as imagePullSecrets on every policy-server Deployment. The secrets must exist in the deployments namespace.")
-	flag.BoolVar(&opts.Configuration.HostNetwork,
+	flag.BoolVar(&opts.HostNetwork,
 		"host-network",
 		false,
 		"Enable host network mode for all PolicyServer deployments. "+
@@ -209,8 +213,8 @@ func parseFlags() Options {
 	zapOpts := zap.Options{}
 	zapOpts.BindFlags(flag.CommandLine)
 	flag.Parse()
-	opts.Manager.EnableMutualTLS = opts.Configuration.ClientCAConfigMapName != ""
-	opts.Configuration.ImagePullSecrets = parseImagePullSecrets(imagePullSecretsFlag)
+	opts.EnableMutualTLS = opts.ClientCAConfigMapName != ""
+	opts.ImagePullSecrets = parseImagePullSecrets(imagePullSecretsFlag)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
 
 	return opts
