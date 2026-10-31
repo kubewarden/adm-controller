@@ -129,10 +129,11 @@ func findUninstallLeftovers(ctx context.Context, r *resources.Resources) ([]stri
 		constants.WebhookServerCertSecretName,
 		constants.AuditScannerClientCertSecretName,
 	} {
-		err := r.Get(ctx, name, namespace, &corev1.Secret{})
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, name, namespace, secret)
 		switch {
 		case err == nil:
-			leftovers = append(leftovers, "Secret "+namespace+"/"+name)
+			leftovers = append(leftovers, describe(secret))
 		case !apierrors.IsNotFound(err):
 			return nil, fmt.Errorf("failed to get the secret %q: %w", name, err)
 		}
