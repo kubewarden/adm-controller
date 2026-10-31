@@ -50,7 +50,7 @@ func runManager(opts Options) (retcode int) {
 	// Validate --webhook-server-port range.
 	if int64(opts.Manager.WebhookServerPort) < minAllowedPort || int64(opts.Manager.WebhookServerPort) > maxAllowedPort {
 		setupLog.Error(
-			errors.New("port must be between 1 and 65535"),
+			fmt.Errorf("port must be between %d and %d", minAllowedPort, maxAllowedPort),
 			"invalid webhook server port",
 			"flag", "--webhook-server-port",
 			"value", opts.Manager.WebhookServerPort,
@@ -89,7 +89,7 @@ func runManager(opts Options) (retcode int) {
 		}
 		if parsed < minAllowedPort || parsed > maxAllowedPort {
 			setupLog.Error(
-				errors.New("port must be between 1 and 65535"),
+				fmt.Errorf("port must be between %d and %d", minAllowedPort, maxAllowedPort),
 				"invalid env var port value",
 				"envVar", constants.PolicyServerMetricsPortEnvVar,
 				"value", envPort,
