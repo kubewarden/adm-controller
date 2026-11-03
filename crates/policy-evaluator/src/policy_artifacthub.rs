@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, convert::TryInto, str::FromStr};
+use std::{collections::BTreeMap, str::FromStr};
 
 use email_address::*;
 use policy_fetcher::oci_client::{ParseError, Reference};
@@ -407,26 +407,28 @@ fn parse_maintainers(
             // name-addr https://www.rfc-editor.org/rfc/rfc5322#section-3.4
             let mut maintainers: Vec<Maintainer> = vec![];
             let to = format!("To: {s}");
-            let msg: mail_parser::Message = to.as_bytes().try_into().map_err(|_| {
-                ArtifactHubError::MalformedCSVEmail(String::from(
+            let msg = mail_parser::MessageParser::new()
+                .parse(to.as_bytes())
+                .ok_or(ArtifactHubError::MalformedCSVEmail(String::from(
                     KUBEWARDEN_ANNOTATION_POLICY_AUTHOR,
-                ))
-            })?;
+                )))?;
 
-            let addr = msg
+            let addresses = msg
                 .to()
                 .ok_or(ArtifactHubError::MalformedCSVEmail(String::from(
                     KUBEWARDEN_ANNOTATION_POLICY_AUTHOR,
                 )))?;
 
-            for addr in addr.iter() {
-                let email = EmailAddress::from_str(&addr.address.clone().unwrap_or_default())
-                    .map_err(|e| ArtifactHubError::MalformedEmail {
-                        annot: String::from(KUBEWARDEN_ANNOTATION_POLICY_AUTHOR),
-                        error: e.to_string(),
+            for mailbox in addresses.mailboxes() {
+                let email =
+                    EmailAddress::from_str(mailbox.address().unwrap_or_default()).map_err(|e| {
+                        ArtifactHubError::MalformedEmail {
+                            annot: String::from(KUBEWARDEN_ANNOTATION_POLICY_AUTHOR),
+                            error: e.to_string(),
+                        }
                     })?;
                 maintainers.push(Maintainer {
-                    name: addr.name.clone().unwrap_or_default().to_string(),
+                    name: mailbox.name().unwrap_or_default().to_owned(),
                     email: email.to_string(),
                 });
             }
