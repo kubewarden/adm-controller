@@ -100,9 +100,9 @@ Two conditions need your attention:
 
 - `make manifests` writes the CRDs and the RBAC rules directly into the Helm
   chart. It does not write them into a `config/` directory. The webhook output
-  goes to `charts/generated-webhooks-manifests.yaml`. You must merge that file
-  by hand into
-  `charts/admission-controller/templates/controller/webhooks.yaml`.
+  goes to `internal/bootstrap/manifests.yaml`. The controller embeds that file,
+  and creates its webhook configurations from it at startup. The chart does
+  not hold them.
 - The envtest suite loads the CRDs from the chart. Thus a chart that is not
   current breaks the tests in `internal/controller`. Generate the chart again
   before you run `make test-go`.

@@ -140,18 +140,6 @@ Annotations
 {{- end }}
 
 {{/*
-Annotations for the webhook configurations of the controller. The controller
-keeps the caBundle of each webhook configuration with
-kubewarden.io/inject-ca-from equal to the CA bundle of the kubewarden-ca
-secret. additionalAnnotations cannot override this annotation.
-*/}}
-{{- define "admission-controller.webhookConfigurationAnnotations" -}}
-{{- $annotations := deepCopy (.Values.additionalAnnotations | default dict) }}
-{{- $_ := set $annotations "kubewarden.io/inject-ca-from" (printf "%s/kubewarden-ca" .Release.Namespace) }}
-{{ toYaml $annotations }}
-{{- end }}
-
-{{/*
 Create the name of the service account to use for kubewarden-controller
 */}}
 {{- define "admission-controller.serviceAccountName" -}}

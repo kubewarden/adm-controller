@@ -1,0 +1,82 @@
+suite: controller certificates
+templates:
+  - controller/deployment.yaml
+release:
+  name: kubewarden
+  namespace: kubewarden
+tests:
+  - it: "should run the init mode of the controller in an init container"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: init
+      - equal:
+          path: spec.template.spec.initContainers[0].command
+          value:
+            - /controller
+      - equal:
+          path: spec.template.spec.initContainers[0].args
+          value:
+            - --mode=init
+            - --deployments-namespace=kubewarden
+            - --webhook-service-name=kubewarden-admission-controller-webhook-service
+            - --zap-log-level=info
+
+  - it: "should pass the same webhook service name to the init container and to the controller container"
+    set:
+      fullnameOverride: custom-controller
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].args
+          content: --webhook-service-name=custom-controller-webhook-service
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --webhook-service-name=custom-controller-webhook-service
+
+  - it: "should run the init container with the image of the controller"
+    set:
+      image:
+        repository: kubewarden/custom-controller
+        tag: v9.9.9
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: ghcr.io/kubewarden/custom-controller:v9.9.9
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/custom-controller:v9.9.9
+
+  - it: "should run the init container with the security context of the controller container"
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.allowPrivilegeEscalation
+          value: false
+
+  - it: "should mount the certificate at the same path in the init container and in the controller container"
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            mountPath: /tmp/k8s-webhook-server/serving-certs
+            name: cert
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /tmp/k8s-webhook-server/serving-certs
+            name: cert
+            readOnly: true
+
+  - it: "should not block the start of the pod when the certificate Secret does not exist yet"
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: cert
+            secret:
+              defaultMode: 420
+              secretName: kubewarden-webhook-server-cert
+              optional: true

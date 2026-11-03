@@ -18,7 +18,7 @@ import (
 	"github.com/kubewarden/adm-controller/internal/constants"
 )
 
-//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=create;delete;get;list;patch;watch
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=create;delete;get;list;patch;update;watch
 
 //nolint:dupl // This function is similar to the other reconcileMutatingWebhookConfiguration
 func (r *policySubReconciler) reconcileValidatingWebhookConfiguration(
@@ -32,7 +32,7 @@ func (r *policySubReconciler) reconcileValidatingWebhookConfiguration(
 			Name: policy.GetUniqueName(),
 		},
 	}
-	_, err := controllerutil.CreateOrPatch(ctx, r.Client, webhook, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, webhook, func() error {
 		admissionPath := filepath.Join("/validate", policy.GetUniqueName())
 		admissionPort := int32(constants.PolicyServerServicePort)
 
@@ -49,6 +49,11 @@ func (r *policySubReconciler) reconcileValidatingWebhookConfiguration(
 			sideEffects = &noneSideEffects
 		}
 
+		var liveCABundle []byte
+		if len(webhook.Webhooks) > 0 {
+			liveCABundle = webhook.Webhooks[0].ClientConfig.CABundle
+		}
+
 		webhook.Name = policy.GetUniqueName()
 		webhook.Labels = map[string]string{
 			constants.PartOfLabelKey: constants.PartOfLabelValue,
@@ -63,7 +68,7 @@ func (r *policySubReconciler) reconcileValidatingWebhookConfiguration(
 				Name: policy.GetUniqueName() + constants.WebhookNameSuffix,
 				ClientConfig: admissionregistrationv1.WebhookClientConfig{
 					Service:  &service,
-					CABundle: certs.CABundleFromSecret(admissionSecret),
+					CABundle: caBundleForWebhook(liveCABundle, admissionSecret),
 				},
 				Rules:                   policy.GetRules(),
 				FailurePolicy:           policy.GetFailurePolicy(),
@@ -107,7 +112,7 @@ func (r *policySubReconciler) reconcileValidatingWebhookConfigurationDeletion(ct
 	return nil
 }
 
-//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create;delete;get;list;patch;watch
+//+kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=create;delete;get;list;patch;update;watch
 
 //nolint:dupl // This function is similar to the other reconcileValidatingWebhookConfiguration
 func (r *policySubReconciler) reconcileMutatingWebhookConfiguration(
@@ -121,7 +126,7 @@ func (r *policySubReconciler) reconcileMutatingWebhookConfiguration(
 			Name: policy.GetUniqueName(),
 		},
 	}
-	_, err := controllerutil.CreateOrPatch(ctx, r.Client, webhook, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, webhook, func() error {
 		admissionPath := filepath.Join("/validate", policy.GetUniqueName())
 		admissionPort := int32(constants.PolicyServerServicePort)
 
@@ -137,6 +142,12 @@ func (r *policySubReconciler) reconcileMutatingWebhookConfiguration(
 			noneSideEffects := admissionregistrationv1.SideEffectClassNone
 			sideEffects = &noneSideEffects
 		}
+
+		var liveCABundle []byte
+		if len(webhook.Webhooks) > 0 {
+			liveCABundle = webhook.Webhooks[0].ClientConfig.CABundle
+		}
+
 		webhook.Name = policy.GetUniqueName()
 		webhook.Labels = map[string]string{
 			constants.PartOfLabelKey: constants.PartOfLabelValue,
@@ -150,7 +161,7 @@ func (r *policySubReconciler) reconcileMutatingWebhookConfiguration(
 				Name: policy.GetUniqueName() + constants.WebhookNameSuffix,
 				ClientConfig: admissionregistrationv1.WebhookClientConfig{
 					Service:  &service,
-					CABundle: certs.CABundleFromSecret(admissionSecret),
+					CABundle: caBundleForWebhook(liveCABundle, admissionSecret),
 				},
 				Rules:                   policy.GetRules(),
 				FailurePolicy:           policy.GetFailurePolicy(),
@@ -194,23 +205,15 @@ func (r *policySubReconciler) reconcileMutatingWebhookConfigurationDeletion(ctx 
 	return nil
 }
 
-// reconcileWebhookConfigurationCABundle writes the CA bundle of the CA root secret into the existing webhook
-// configuration of the policy, if its caBundle differs. It does not create the webhook configuration, and it does not
-// change its other fields. Unlike reconcileWebhookConfiguration, it does not wait until the policy server is uniquely
-// reachable. During a stalled rollout, the pods that still serve load the certificates that a new CA root signs, and
-// the webhook configuration must trust that CA root.
-func (r *policySubReconciler) reconcileWebhookConfigurationCABundle(ctx context.Context, policy policiesv1.Policy, caRootSecret *corev1.Secret) error {
-	var webhook client.Object = &admissionregistrationv1.ValidatingWebhookConfiguration{}
-	if policy.IsMutating() {
-		webhook = &admissionregistrationv1.MutatingWebhookConfiguration{}
+// caBundleForWebhook returns the caBundle to write into the webhook configuration of a policy. A new webhook
+// configuration gets the CA bundle of the CA root secret, so that the API server trusts the policy server from the
+// first call. An existing webhook configuration keeps its live caBundle: after the creation, the cert controller is
+// the only writer of that field. An empty live value is never kept.
+func caBundleForWebhook(liveCABundle []byte, caRootSecret *corev1.Secret) []byte {
+	if len(liveCABundle) > 0 {
+		return liveCABundle
 	}
-	if err := r.Get(ctx, types.NamespacedName{Name: policy.GetUniqueName()}, webhook); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return fmt.Errorf("cannot retrieve webhook configuration: %w", err)
-	}
-	return injectCABundle(ctx, r.Client, r.Log, webhook, certs.CABundleFromSecret(caRootSecret))
+	return certs.CABundleFromSecret(caRootSecret)
 }
 
 func (r *policySubReconciler) namespaceSelector(policy policiesv1.Policy) *metav1.LabelSelector {
