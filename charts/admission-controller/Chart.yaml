@@ -56,7 +56,7 @@ annotations:
     - name: policy-server
       image: ghcr.io/kubewarden/adm-controller/policy-server:v1.39.0-rc.2
     - name: kuberlr-kubectl
-      image: ghcr.io/rancher/kuberlr-kubectl:v8.1.2
+      image: ghcr.io/rancher/kuberlr-kubectl:v9.0.1
     - name: policy-reporter
       image: ghcr.io/kyverno/policy-reporter:3.11.2
     - name: policy-reporter-ui
