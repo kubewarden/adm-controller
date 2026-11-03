@@ -243,7 +243,7 @@ kwctl rm <name of the policy>
 ### Scaffold Kubernetes Custom Resources
 
 Kubewarden policies are enforced on Kubernetes clusters by using
-special Custom Resources provided by our [Kubernetes integration](https://docs.kubewarden.io/quick-start.html#kubewarden-policies).
+special Custom Resources provided by our [Kubernetes integration](https://docs.kubewarden.io/admission-controller/latest/en/reference/CRDs.html).
 
 The `manifest` sub-command can be used to quickly scaffold the definition of
 Kubewarden Custom Resources.

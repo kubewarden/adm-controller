@@ -208,7 +208,7 @@ Current limitations:
   has to be done on the collector process that runs as a sidecar.
 
 More details about OpenTelemetry and tracing can be found inside of
-our [official docs](https://docs.kubewarden.io/operator-manual/tracing/01-quickstart.html).
+our [official docs](https://docs.kubewarden.io/admission-controller/latest/en/howtos/telemetry/20-tracing-qs.html).
 
 # Building
 

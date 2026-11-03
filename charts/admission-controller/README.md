@@ -38,7 +38,7 @@ The [`docs/`](./docs) folder contains README files for each component:
 The adm-controller can be deployed using a Helm chart. For instructions, see
 https://charts.kubewarden.io.
 
-Please refer to our [quickstart](https://docs.kubewarden.io/quick-start) for
+Please refer to our [quickstart](https://docs.kubewarden.io/admission-controller/latest/en/quick-start.html) for
 more details.
 
 > **Note:** This chart replaces the three separate charts that were used
@@ -48,7 +48,7 @@ more details.
 ## Migration from three-chart setup
 
 Please refer to the [migration
-guide](https://docs.kubewarden.io/admission-controller/howtos/chart-migration)
+guide](https://docs.kubewarden.io/admission-controller/latest/en/community-specific/howtos/migration/app136-to-app137-migration.html)
 in the documentation for instructions on migrating from the legacy
 `kubewarden-crds`, `kubewarden-controller`, and `kubewarden-defaults` charts to
 the unified `admission-controller` chart.
@@ -272,7 +272,7 @@ crane blob ghcr.io/kubewarden/adm-controller/controller@sha256:<LAYER DIGEST>
 
 ## Security disclosure
 
-See [SECURITY.md](https://github.com/kubewarden/community/blob/main/SECURITY.md) on the kubewarden/community repo.
+See [SECURITY.md](https://github.com/kubewarden/.github/blob/main/SECURITY.md) in the kubewarden/.github repo.
 
 # Changelog
 

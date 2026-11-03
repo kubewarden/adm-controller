@@ -22,7 +22,7 @@ pub(crate) fn verification_config() -> Result<String> {
         r#"
 #
 # Providing a config in the default location enables Sigstore verification.
-# See https://docs.kubewarden.io/next/howtos/security-hardening/secure-supply-chain
+# See https://docs.kubewarden.io/admission-controller/latest/en/howtos/security-hardening/secure-supply-chain.html
 # for more Sigstore verification options."#,
     );
 

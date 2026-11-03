@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > Don't forget to checkout [Kubewarden's Audit Scanner
-> documentation](https://docs.kubewarden.io/explanations/audit-scanner) for
+> documentation](https://docs.kubewarden.io/admission-controller/latest/en/explanations/audit-scanner/audit-scanner.html) for
 > more information
 
 The Audit scanner inspects the resources defined in the cluster and
