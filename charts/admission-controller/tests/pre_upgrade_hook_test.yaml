@@ -201,3 +201,41 @@ tests:
       - equal:
           path: subjects[0].name
           value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-pre-upgrade
+
+  - it: "should schedule the Job with the global tolerations and the node selector"
+    documentSelector:
+      path: kind
+      value: Job
+      matchMany: false
+    set:
+      global:
+        tolerations:
+          - key: dedicated
+            operator: Equal
+            value: kubewarden
+            effect: NoSchedule
+      nodeSelector:
+        disktype: ssd
+    asserts:
+      - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: dedicated
+              operator: Equal
+              value: kubewarden
+              effect: NoSchedule
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value:
+            disktype: ssd
+
+  - it: "should not set tolerations or a node selector on the Job by default"
+    documentSelector:
+      path: kind
+      value: Job
+      matchMany: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.tolerations
+      - notExists:
+          path: spec.template.spec.nodeSelector

@@ -157,6 +157,13 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ $name }}
+      {{- if .Values.global.tolerations }}
+      tolerations: {{ .Values.global.tolerations | toYaml | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.preDeleteHook.podSecurityContext }}
       securityContext:
 {{ toYaml .Values.preDeleteHook.podSecurityContext | indent 8 }}
