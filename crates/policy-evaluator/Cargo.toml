@@ -26,7 +26,7 @@ hex = { workspace = true }
 itertools = { workspace = true }
 json-patch = "4.1"
 k8s-openapi = { workspace = true }
-kube = { version = "4", default-features = false, features = [
+kube = { version = "5.0", default-features = false, features = [
   "client",
   "runtime",
   "rustls-tls",
@@ -57,8 +57,8 @@ tracing = { workspace = true }
 url = { workspace = true }
 validator = { version = "0.21", features = ["derive"] }
 wapc = "2.1"
-wasmparser = "0.262"
-wasmtime-provider = { version = "2.26.0", features = ["cache"] }
+wasmparser = "0.263"
+wasmtime-provider = { version = "2.27", features = ["cache"] }
 wasmtime-wasi = { workspace = true }
 webpki-roots = "1"
 
@@ -113,7 +113,7 @@ testcontainers = { version = "0.28", default-features = false, features = [
 tokio = { workspace = true, features = ["io-util", "macros"] }
 tower-test = "0.4"
 # Used by the ferricel tests to rewrite the custom sections of a compiled module.
-walrus = "0.27"
+walrus = "0.28"
 # This is required to have reqwest built using the `rustls-tls-native-roots`
 # feature across all the transitive dependencies of policy-fetcher
 # This is required to have the integration tests use the system certificates instead of the
