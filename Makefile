@@ -54,9 +54,13 @@ test-e2e: controller-image audit-scanner-image policy-server-image
 
 # Run the e2e tests against images that already exist in the local
 # docker daemon (for example, images that CI built and loaded).
+# -count=1 turns off the Go test cache. The cache keys a result on the Go
+# packages that the test imports. It does not see the images, the chart or
+# the code of the controller, so without the flag a change to them can get a
+# cached PASS and no test runs.
 .PHONY: test-e2e-run
 test-e2e-run:
-	$(GO_BUILD_ENV) go test ./e2e/ -v -timeout 45m
+	$(GO_BUILD_ENV) go test ./e2e/ -v -timeout 45m -count=1
 
 .PHONY: test-all
 test-all: test helm-unittest test-e2e
