@@ -35,8 +35,6 @@ const webhookServiceWaitInterval = 2 * time.Second
 
 type DefaultsApplierReconciler struct {
 	client.Client
-	// APIReader reads from the API server, with no cache. It reads the EndpointSlices of the webhook Service.
-	APIReader            client.Reader
 	Scheme               *runtime.Scheme
 	Log                  logr.Logger
 	DeploymentsNamespace string
@@ -115,7 +113,7 @@ func (r *DefaultsApplierReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 // webhookServiceIsReady returns true if the Service of the controller webhooks has at least one ready endpoint.
 func (r *DefaultsApplierReconciler) webhookServiceIsReady(ctx context.Context) (bool, error) {
 	endpointSlices := &discoveryv1.EndpointSliceList{}
-	if err := r.APIReader.List(ctx, endpointSlices,
+	if err := r.List(ctx, endpointSlices,
 		client.InNamespace(r.DeploymentsNamespace),
 		client.MatchingLabels{discoveryv1.LabelServiceName: r.WebhookServiceName},
 	); err != nil {

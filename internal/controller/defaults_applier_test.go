@@ -423,7 +423,6 @@ func TestWebhookServiceIsReady(t *testing.T) {
 			k8sClient := fake.NewClientBuilder().WithObjects(tc.endpointSlices...).Build()
 			r := &DefaultsApplierReconciler{
 				Client:               k8sClient,
-				APIReader:            k8sClient,
 				Log:                  logr.Discard(),
 				DeploymentsNamespace: namespace,
 				WebhookServiceName:   serviceName,
@@ -453,7 +452,6 @@ func TestDefaultsApplierWaitsForTheWebhookService(t *testing.T) {
 	}).Build()
 	r := &DefaultsApplierReconciler{
 		Client:               k8sClient,
-		APIReader:            k8sClient,
 		Scheme:               scheme,
 		Log:                  logr.Discard(),
 		DeploymentsNamespace: namespace,

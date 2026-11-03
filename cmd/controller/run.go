@@ -29,6 +29,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	k8spoliciesv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -224,6 +225,13 @@ func setupManager(opts Options) (ctrl.Manager, error) {
 				&appsv1.Deployment{}:                 namespaceSelector,
 			},
 		},
+		// The RBAC marker in internal/controller/defaults_applier.go gives only the list permission on EndpointSlices,
+		// in the controller namespace. A cache must also watch EndpointSlices in all namespaces.
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{&discoveryv1.EndpointSlice{}},
+			},
+		},
 		WebhookServer: webhook.NewServer(webhook.Options{
 			CertDir:      constants.WebhookServerCertDir,
 			ClientCAName: clientCAName,
@@ -322,7 +330,6 @@ func setupReconcilers(mgr ctrl.Manager,
 
 	if err := (&controller.DefaultsApplierReconciler{
 		Client:               mgr.GetClient(),
-		APIReader:            mgr.GetAPIReader(),
 		Scheme:               mgr.GetScheme(),
 		Log:                  ctrl.Log.WithName("defaults-applier"),
 		DeploymentsNamespace: opts.DeploymentsNamespace,

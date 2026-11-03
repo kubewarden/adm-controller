@@ -109,6 +109,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{&discoveryv1.EndpointSlice{}},
+			},
+		},
 	})
 	Expect(err).ToNot(HaveOccurred())
 
@@ -170,7 +175,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	err = (&DefaultsApplierReconciler{
 		Client:               k8sManager.GetClient(),
-		APIReader:            k8sManager.GetAPIReader(),
 		Scheme:               k8sManager.GetScheme(),
 		Log:                  ctrl.Log.WithName("defaults-applier-test"),
 		DeploymentsNamespace: deploymentsNamespace,
