@@ -4078,7 +4078,6 @@ dependencies = [
  "encodify",
  "hashify",
  "memchr",
- "serde",
  "simdutf8",
 ]
 
