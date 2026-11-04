@@ -1,7 +1,7 @@
 package probes
 
 import (
-	"net"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,25 +9,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWebhookServerListening(t *testing.T) {
-	listener, err := net.Listen("tcp", "localhost:0")
-	require.NoError(t, err)
-	port := listener.Addr().(*net.TCPAddr).Port
-	go func() {
-		for {
-			conn, acceptErr := listener.Accept()
-			if acceptErr != nil {
-				return
-			}
-			_ = conn.Close()
-		}
-	}()
-
-	check := WebhookServerListening(port)
+func TestPassAfterFirstSuccess(t *testing.T) {
+	var innerErr error
+	calls := 0
+	check := PassAfterFirstSuccess(func(_ *http.Request) error {
+		calls++
+		return innerErr
+	})
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/readyz", nil)
 
-	require.NoError(t, check(request), "the check passes while the webhook server listens")
+	innerErr = errors.New("the webhook server has not been started yet")
+	require.Error(t, check(request), "the check fails while the inner check fails")
+	require.Error(t, check(request), "the check fails while the inner check fails")
+	require.Equal(t, 2, calls)
 
-	require.NoError(t, listener.Close())
-	require.Error(t, check(request), "the check fails when the webhook server does not listen")
+	innerErr = nil
+	require.NoError(t, check(request), "the check passes when the inner check passes")
+	require.Equal(t, 3, calls)
+
+	innerErr = errors.New("the webhook server is not reachable")
+	require.NoError(t, check(request), "the check passes after the inner check passed one time")
+	require.NoError(t, check(request), "the check passes after the inner check passed one time")
+	require.Equal(t, 3, calls, "the check does not run the inner check after it passed one time")
 }

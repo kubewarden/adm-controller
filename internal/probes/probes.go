@@ -2,36 +2,35 @@
 package probes
 
 import (
-	"fmt"
-	"net"
 	"net/http"
-	"strconv"
-	"time"
+	"sync/atomic"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
 
-// webhookServerDialTimeout is the timeout of the connection that WebhookServerListening opens.
-const webhookServerDialTimeout = time.Second
-
-// WebhookServerListening returns a readiness check that passes when the webhook server on port accepts connections.
+// PassAfterFirstSuccess returns a check that runs check until check passes one time. After that, the returned check
+// passes and does not run check again.
 //
-// The Service of the webhooks sends traffic only to ready pods. With this check, the API server never calls a pod
-// whose webhook server does not listen yet. The webhook server listens only after it loads its certificate.
+// Use it with the StartedChecker of the webhook server. The Service of the webhooks sends traffic only to ready pods.
+// With this check, the API server never calls a pod whose webhook server does not listen yet.
 //
-// The check opens a plain TCP connection. The StartedChecker of controller-runtime opens a TLS connection without a
-// client certificate, which a webhook server with mTLS rejects.
-func WebhookServerListening(port int) healthz.Checker {
-	address := net.JoinHostPort("localhost", strconv.Itoa(port))
-	dialer := &net.Dialer{Timeout: webhookServerDialTimeout}
+// The StartedChecker opens a TLS connection to the webhook server, without a client certificate. When mTLS is on, the
+// webhook server rejects this connection and logs an error. PassAfterFirstSuccess limits this to one log line for each
+// start of the pod, instead of one log line for each probe.
+//
+// When mTLS is on, the StartedChecker passes only with TLS 1.3. With TLS 1.3, the client completes the handshake
+// before the server rejects the missing certificate. With TLS 1.2, the handshake fails and the pod never becomes
+// ready. The webhook server permits TLS 1.3 by default. Do not limit the webhook server to TLS 1.2.
+func PassAfterFirstSuccess(check healthz.Checker) healthz.Checker {
+	var passed atomic.Bool
 	return func(request *http.Request) error {
-		conn, err := dialer.DialContext(request.Context(), "tcp", address)
-		if err != nil {
-			return fmt.Errorf("the webhook server does not accept connections: %w", err)
+		if passed.Load() {
+			return nil
 		}
-		if err = conn.Close(); err != nil {
-			return fmt.Errorf("failed to close the connection to the webhook server: %w", err)
+		if err := check(request); err != nil {
+			return err
 		}
+		passed.Store(true)
 		return nil
 	}
 }
