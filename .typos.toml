@@ -5,6 +5,8 @@ extend-exclude = [
   "config/*",
   "crates/policy-evaluator/tests/data/sbomscanner_vulnerability_report.json",
   "hack/check-for-auto-generated-changes.sh",
+  "go.mod",
+  "go.sum",
 ]
 
 [default.extend-words]
