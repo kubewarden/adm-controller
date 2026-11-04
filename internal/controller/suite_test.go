@@ -26,9 +26,11 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -107,6 +109,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{&discoveryv1.EndpointSlice{}},
+			},
+		},
 	})
 	Expect(err).ToNot(HaveOccurred())
 
@@ -172,6 +179,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		Log:                  ctrl.Log.WithName("defaults-applier-test"),
 		DeploymentsNamespace: deploymentsNamespace,
 		ConfigMapName:        constants.DefaultDefaultsConfigMapName,
+		WebhookServiceName:   webhookServiceName,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -230,6 +238,22 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 			constants.ServerCert:       auditScannerClientCert,
 			constants.ServerPrivateKey: auditScannerClientPrivateKey,
 		},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	// Envtest runs no controller pod and no EndpointSlice controller. Create the ready endpoint that the webhook
+	// Service of a running controller has, so that the defaults applier applies the defaults.
+	err = k8sClient.Create(ctx, &discoveryv1.EndpointSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      webhookServiceName,
+			Namespace: deploymentsNamespace,
+			Labels:    map[string]string{discoveryv1.LabelServiceName: webhookServiceName},
+		},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints: []discoveryv1.Endpoint{{
+			Addresses:  []string{"10.0.0.1"},
+			Conditions: discoveryv1.EndpointConditions{Ready: ptr.To(true)},
+		}},
 	})
 	Expect(err).NotTo(HaveOccurred())
 
