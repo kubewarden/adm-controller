@@ -31,6 +31,7 @@ jobs:
           # minimum permissions for updatecli to push a branch and open a PR:
           permission-contents: write
           permission-pull-requests: write
+          permission-members: read # request reviews from the teams in .pr.reviewers
 
       - name: Install cargo-set-version
         run: cargo install --locked --version 0.13.9 cargo-edit

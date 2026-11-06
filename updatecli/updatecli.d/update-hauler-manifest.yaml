@@ -182,7 +182,7 @@ actions:
         ## Update Checklist
         - [ ] I have checked that the admission-controller values `recommendedPolicies.*.settings` are up to date
         - [ ] I have updated charts/admission-controller/questions.yaml from those of the policies
-      #     {{ if .pr.reviewrs }}
+      #     {{ if .pr.reviewers }}
       reviewers:
         #           {{ range .pr.reviewers }}
         - "{{ . }}"

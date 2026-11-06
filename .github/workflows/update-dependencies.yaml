@@ -31,6 +31,7 @@ jobs:
           # (no permissions to bump deps in github workflows)
           permission-contents: write
           permission-pull-requests: write
+          permission-members: read # request reviews from the teams in .pr.reviewers
 
       - name: Update all dependencies
         env:

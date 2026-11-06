@@ -165,7 +165,7 @@ actions:
 
         > [!IMPORTANT]
         > REMEMBER USING SQUASH MERGE FOR THIS PR
-      #     {{ if .pr.reviewrs }}
+      #     {{ if .pr.reviewers }}
       reviewers:
         #           {{ range .pr.reviewers }}
         - "{{ . }}"
