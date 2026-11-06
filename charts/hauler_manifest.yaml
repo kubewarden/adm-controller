@@ -12,7 +12,7 @@ metadata:
     hauler.dev/certificate-oidc-issuer: https://token.actions.githubusercontent.com
 spec:
   images:
-    - name: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0-rc.2
+    - name: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0-rc.3
       certificate-identity-regexp: ^https://github\.com/kubewarden/github-actions/\.github/workflows/container-release\.yml@
       certificate-github-workflow-repository: kubewarden/adm-controller
     - name: ghcr.io/kubewarden/adm-controller/controller:v1.39.0-rc.2
