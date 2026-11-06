@@ -61,7 +61,7 @@ spec:
   charts:
     - name: admission-controller
       repoURL: https://charts.kubewarden.io
-      version: 6.2.0-rc.2
+      version: 6.3.0
     - name: policy-reporter
       version: 3.11.2
       repoURL: https://kyverno.github.io/policy-reporter
