@@ -158,6 +158,14 @@
       "lockFileMaintenance": {
         "enabled": false
       }
+    },
+    {
+      "description": "updatecli updates the kuberlr-kubectl image together with the Hauler manifest",
+      "matchPackageNames": [
+        "rancher/kuberlr-kubectl",
+        "ghcr.io/rancher/kuberlr-kubectl"
+      ],
+      "enabled": false
     }
   ]
 }
