@@ -82,6 +82,16 @@ targets:
     spec:
       file: charts/admission-controller/values.yaml
       key: $.policyServer.image.tag
+  update_policy_server_image_tag_question:
+    scmid: default
+    name: Update policyServer.image.tag default in Helm chart questions.yaml
+    kind: file
+    sourceid: desiredReleaseVersion
+    spec:
+      file: charts/admission-controller/questions.yaml
+      # The yaml kind cannot select a list item by the value of a field.
+      matchpattern: '(variable: "policyServer\.image\.tag"\n(?:\s+[a-z_]+: .*\n)*?\s+default: )"[^"]*"'
+      replacepattern: '${1}"{{ source "desiredReleaseVersion" }}"'
   update_readme:
     scmid: default
     name: Update Helm chart admission-controller README
