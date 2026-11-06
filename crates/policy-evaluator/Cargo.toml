@@ -24,7 +24,7 @@ ferricel-types = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
-json-patch = "4.1"
+json-patch = "5.0"
 k8s-openapi = { workspace = true }
 kube = { version = "5.0", default-features = false, features = [
   "client",
