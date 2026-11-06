@@ -18,6 +18,20 @@ This structure ensures a single source of truth for artifact definitions while a
 
 Change `updatecli/values/scms.yaml` as needed to target forks.
 
+The release pipeline computes the `version` of
+`charts/admission-controller/Chart.yaml` with `go run
+./hack/release-chart-version RELEASE_VERSION`. The helper uses the current
+`version`, the current `appVersion`, and `RELEASE_VERSION`:
+
+| Current `version` | Current `appVersion` | `RELEASE_VERSION` | New `version` |
+|---|---|---|---|
+| `6.1.0` | `v1.38.2` | `v1.39.0-rc.1` | `6.2.0-rc.1` |
+| `6.2.0-rc.2` | `v1.39.0-rc.2` | `v1.39.0-rc.3` | `6.2.0-rc.3` |
+| `6.2.0-rc.3` | `v1.39.0-rc.3` | `v1.39.0` | `6.2.0` |
+| `6.2.0` | `v1.39.0` | `v1.39.1` | `6.2.1` |
+
+If `RELEASE_VERSION` changes the major version of the stack, the helper fails.
+
 ```console
 $ cd adm-controller/
 $ export UPDATECLI_GITHUB_TOKEN=<your token>

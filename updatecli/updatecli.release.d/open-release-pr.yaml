@@ -29,13 +29,10 @@ sources:
         kind: latest
 
   controllerChartVersion:
-    name: "Get latest admission-controller helm version"
-    kind: yaml
-    transformers:
-      - semverinc: minor
+    name: "Compute new admission-controller Helm chart version"
+    kind: shell
     spec:
-      file: charts/admission-controller/Chart.yaml
-      key: $.version
+      command: go run ./hack/release-chart-version '{{ requiredEnv "RELEASE_VERSION" }}'
   readmeFile:
     kind: file
     spec:
