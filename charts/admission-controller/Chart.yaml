@@ -52,7 +52,7 @@ annotations:
     - name: controller
       image: ghcr.io/kubewarden/adm-controller/controller:v1.39.0-rc.2
     - name: audit-scanner
-      image: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0-rc.2
+      image: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0-rc.3
     - name: policy-server
       image: ghcr.io/kubewarden/adm-controller/policy-server:v1.39.0-rc.3
     - name: kuberlr-kubectl
