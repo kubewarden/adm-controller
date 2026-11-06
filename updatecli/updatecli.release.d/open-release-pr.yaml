@@ -12,7 +12,7 @@ pipelineid: "{{ .pipelineid }}"
 
 sources:
   desiredReleaseVersion:
-    name: "desired release version (e.g: v1.32.0-rc2)"
+    name: "desired release version (e.g: v1.39.0-rc.2)"
     kind: shell
     spec:
       command: |

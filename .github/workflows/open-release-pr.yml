@@ -2,7 +2,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "stack version (E.g: v1.32.0-rc2)"
+        description: "stack version (E.g: v1.39.0-rc.2)"
         required: true
         type: string
 
