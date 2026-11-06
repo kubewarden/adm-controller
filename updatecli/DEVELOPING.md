@@ -32,6 +32,11 @@ The release pipeline computes the `version` of
 
 If `RELEASE_VERSION` changes the major version of the stack, the helper fails.
 
+`updatecli/open-release-pr.yaml` runs the release policy first, and then the
+Hauler policy on the same branch. The release policy writes the new versions
+into the chart. The Hauler policy copies them from the chart into
+`charts/hauler_manifest.yaml`.
+
 ```console
 $ cd adm-controller/
 $ export UPDATECLI_GITHUB_TOKEN=<your token>

@@ -6,6 +6,9 @@ pipelineid: "{{ .pipelineid }}"
 #
 # Then bumps all charts and Cargo.* files following that version and opens a PR against
 # the adm-controller repo.
+#
+# The updatecli/updatecli.d/update-hauler-manifest.yaml policy runs after this
+# one on the same branch, and copies the new versions into the Hauler manifest.
 
 sources:
   desiredReleaseVersion:
@@ -38,27 +41,7 @@ sources:
     spec:
       file: "./README.md"
 
-conditions:
-  admissionControllerChartPosition:
-    kind: yaml
-    disablesourceinput: true
-    spec:
-      file: "./charts/hauler_manifest.yaml"
-      key: "$.spec.charts[0].name"
-      value: "admission-controller"
-
 targets:
-  hauler_manifest_update_admission_controller_chart:
-    name: "Update admission-controller Helm chart version in Hauler manifest"
-    kind: yaml
-    sourceid: controllerChartVersion
-    scmid: "default"
-    spec:
-      file: "charts/hauler_manifest.yaml"
-      # Yamlpath to filter the helm chart by name did not work. That's why we
-      # have the condition to ensure the script is not updating the wrong helm
-      # chart
-      key: "$.spec.charts[0].version"
   update_admission_controller_helm_version:
     scmid: default
     name: Update Helm chart admission-controller version
