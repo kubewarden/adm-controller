@@ -139,7 +139,8 @@
       "matchManagers": [
         "helm-values",
         "helmfile",
-        "helm-chart"
+        "helm-chart",
+        "helmv3"
       ],
       "matchPackageNames": [
         "policy-reporter"
@@ -147,10 +148,16 @@
       "matchDatasources": [
         "helm"
       ],
-      "matchSourceUrls": [
-        "https://kyverno.github.io/policy-reporter"
-      ],
       "enabled": false
+    },
+    {
+      "description": "updatecli updates Chart.lock together with the Hauler manifest",
+      "matchManagers": [
+        "helmv3"
+      ],
+      "lockFileMaintenance": {
+        "enabled": false
+      }
     }
   ]
 }
