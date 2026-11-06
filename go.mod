@@ -7,6 +7,7 @@ replace github.com/opencontainers/runc => github.com/opencontainers/runc v1.5.2
 replace sigs.k8s.io/wg-policy-prototypes => sigs.k8s.io/wg-policy-prototypes v0.0.0-20230505033312-51c21979086a
 
 require (
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/go-logr/logr v1.4.4
 	// CEL needs to be pinned to the same version as the one used by the k8s.io/apiserver package
 	github.com/google/cel-go v0.29.2
@@ -35,7 +36,6 @@ require (
 
 require (
 	cel.dev/expr v0.25.2 // indirect
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
