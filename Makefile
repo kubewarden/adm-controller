@@ -207,7 +207,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 # renovate: datasource=github-releases depName=zizmorcore/zizmor extractVersion=^v(?<version>.*)$
 ZIZMOR_VERSION := 1.31.1
 # renovate: datasource=github-releases depName=crate-ci/typos extractVersion=^v(?<version>.*)$
-TYPOS_VERSION := 1.51.1
+TYPOS_VERSION := 1.52.0
 
 ## Tool Binaries
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
