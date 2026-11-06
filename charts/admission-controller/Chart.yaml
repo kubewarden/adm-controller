@@ -23,9 +23,9 @@ maintainers:
 # This is the chart version. This version number should be incremented each time you make changes
 # to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: 6.2.0-rc.2
+version: 6.2.0-rc.3
 # This is the version of Kubewarden stack
-appVersion: v1.39.0-rc.2
+appVersion: v1.39.0-rc.3
 annotations:
   # required ones:
   catalog.cattle.io/certified: rancher # Any application we are adding as a helm chart
@@ -50,13 +50,13 @@ annotations:
   # Reference: https://artifacthub.io/docs/topics/annotations/helm/
   artifacthub.io/images: |
     - name: controller
-      image: ghcr.io/kubewarden/adm-controller/controller:v1.39.0-rc.2
+      image: ghcr.io/kubewarden/adm-controller/controller:v1.39.0-rc.3
     - name: audit-scanner
-      image: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0-rc.2
+      image: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0-rc.3
     - name: policy-server
-      image: ghcr.io/kubewarden/adm-controller/policy-server:v1.39.0-rc.2
+      image: ghcr.io/kubewarden/adm-controller/policy-server:v1.39.0-rc.3
     - name: kuberlr-kubectl
-      image: ghcr.io/rancher/kuberlr-kubectl:v9.0.1
+      image: ghcr.io/rancher/kuberlr-kubectl:v9.0.2
     - name: policy-reporter
       image: ghcr.io/kyverno/policy-reporter:3.11.2
     - name: policy-reporter-ui
