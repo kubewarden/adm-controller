@@ -72,6 +72,7 @@ ignore = [
   { id = "RUSTSEC-2024-0436", reason = "paste, no longer maintained. transitive dependency" },
   { id = "RUSTSEC-2025-0069", reason = "daemonize crate is no longer maintained" },
   { id = "RUSTSEC-2026-0249", reason = "smartstring is no longer maintained. Transitive dependency of rhai, which depends on it unconditionally, with no feature to disable it" },
+  { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar is no longer maintained. Dev dependency only, through testcontainers, which requires it. No replacement exists yet" },
 ]
 
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
