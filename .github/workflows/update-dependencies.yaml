@@ -19,11 +19,6 @@ jobs:
 
       - name: Install Updatecli in the runner
         uses: updatecli/updatecli-action@93ae2608256484ef8598e902aa675bbc9e278e4e # v3.10.0
-        with:
-          # The version is pinned for now to workaround an issue found during
-          # the compose file exectution when updatecli reports "something wrong
-          # happen" for the conditions
-          version: v0.109.0
 
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: generate-token
