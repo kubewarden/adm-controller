@@ -59,7 +59,7 @@ questions:
       Additional namespaces that the audit scanner will not scan.
     group: "Audit checks"
   - variable: "auditScanner.parallelNamespaces"
-    type: integer
+    type: int
     default: 1
     required: false
     show_if: auditScanner.enable=true
@@ -69,7 +69,7 @@ questions:
       value controls how many Namespaces are audited at the same time.
     group: "Audit checks"
   - variable: "auditScanner.parallelResources"
-    type: integer
+    type: int
     default: 100
     required: false
     show_if: auditScanner.enable=true
@@ -83,7 +83,7 @@ questions:
       the audit-scanner will audit 100 Pods at the same time.
     group: "Audit checks"
   - variable: "auditScanner.parallelPolicies"
-    type: integer
+    type: int
     default: 5
     required: false
     show_if: auditScanner.enable=true
@@ -97,7 +97,7 @@ questions:
       to 5, the audit-scanner will evaluate 5 policies at the same time.
     group: "Audit checks"
   - variable: "auditScanner.pageSize"
-    type: integer
+    type: int
     default: 100
     required: false
     show_if: auditScanner.enable=true
@@ -108,7 +108,7 @@ questions:
     group: "Audit checks"
   # controller HA:
   - variable: "replicas"
-    type: integer
+    type: int
     default: 1
     required: true
     label: Number of replicas
@@ -265,7 +265,7 @@ questions:
     group: "Default PolicyServer"
   # Default PolicyServer HA
   - variable: "policyServer.replicaCount"
-    type: integer
+    type: int
     default: 1
     required: true
     label: Number of replicas
