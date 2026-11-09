@@ -1,56 +1,23 @@
 # The following values are used to update the Hauler manifest.
-# The ociArtifacts list all the container images and policies that needs
+# The ociArtifacts list all the container images that need
 # to be updated in the manifest
 ociArtifacts:
-  # Kubewarden container images
-  #
-  # - The skipVersionFromRegistry field defined in the Kubewarden images is a
-  #   flag to skip update of the images version in the Helm chart with the
-  #   version in the registry. These container images should use the container
-  #   image defined in the release process.
-  # - The artifactHubImage field marks the images that are also listed in the
-  #   artifacthub.io/images annotation, in charts/admission-controller/Chart.yaml.
   - file: "charts/admission-controller/values.yaml"
     key: "$.image.tag"
     image: "ghcr.io/kubewarden/adm-controller/controller"
-    skipVersionFromRegistry: true
-    artifactHubImage: true
   - file: "charts/admission-controller/values.yaml"
     key: "$.auditScanner.image.tag"
     image: "ghcr.io/kubewarden/adm-controller/audit-scanner"
-    skipVersionFromRegistry: true
-    artifactHubImage: true
   - file: "charts/admission-controller/values.yaml"
     key: "$.policyServer.image.tag"
     image: "ghcr.io/kubewarden/adm-controller/policy-server"
-    skipVersionFromRegistry: true
-    artifactHubImage: true
-  # Policies
-  - image: ghcr.io/kubewarden/policies/allow-privilege-escalation-psp
-    file: "charts/admission-controller/values.yaml"
-    key: "$.recommendedPolicies.allowPrivilegeEscalationPolicy.module.tag"
-  - image: ghcr.io/kubewarden/policies/host-namespaces-psp
-    file: "charts/admission-controller/values.yaml"
-    key: "$.recommendedPolicies.hostNamespacePolicy.module.tag"
-  - image: ghcr.io/kubewarden/policies/pod-privileged
-    file: "charts/admission-controller/values.yaml"
-    key: "$.recommendedPolicies.podPrivilegedPolicy.module.tag"
-  - image: ghcr.io/kubewarden/policies/user-group-psp
-    file: "charts/admission-controller/values.yaml"
-    key: "$.recommendedPolicies.userGroupPolicy.module.tag"
-  - image: ghcr.io/kubewarden/policies/hostpaths-psp
-    file: "charts/admission-controller/values.yaml"
-    key: "$.recommendedPolicies.hostPathsPolicy.module.tag"
-  - image: ghcr.io/kubewarden/policies/capabilities-psp
-    file: "charts/admission-controller/values.yaml"
-    key: "$.recommendedPolicies.capabilitiesPolicy.module.tag"
-  # Third party dependencies
-  - image: ghcr.io/rancher/kuberlr-kubectl
-    file: "charts/admission-controller/values.yaml"
-    key: "$.preDeleteJob.image.tag"
-    artifactHubImage: true
-# The helmCharts list all the Helm charts listed in the Hauler that needs to be
-# updated regularly. This list should be in the same order as defined in the
+# The helmCharts lists the charts that need to be updated also in Hauler:
+# - adm-controller chart
+# - policy-reporter subchart. The policy-reporter-ui image tag needs to be
+#   updated in Hauler, but there's no datasource. We could expose it in
+#   .Values.policy-reporter.ui.image.tag but we are punting on that.
+#
+# This list should be in the same order as defined in the
 # charts/hauler_manifest.yaml file.
 helmCharts:
   - name: admission-controller
@@ -60,7 +27,3 @@ helmCharts:
     file: "charts/admission-controller/Chart.yaml"
     versionKey: "$.dependencies[1].version"
     repository: https://kyverno.github.io/policy-reporter
-  - name: openreports
-    file: "charts/admission-controller/Chart.yaml"
-    versionKey: "$.dependencies[0].version"
-    repository: https://openreports.github.io/reports-api

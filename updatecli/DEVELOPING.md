@@ -8,7 +8,7 @@ as needed.
 The updatecli configuration uses a modular structure with shared values:
 
 - **`values/scms.yaml`** - GitHub authentication and repository settings
-- **`values/artifacts.yaml`** - Shared OCI artifacts and Helm charts definitions (used by all pipelines)
+- **`values/artifacts.yaml`** - Shared Kubewarden images and Helm charts definitions (used by all pipelines)
 - **`values/update-deps-pr-values.yaml`** - PR configuration for weekly dependency updates
 - **`values/release-pr-values.yaml`** - PR configuration for release PRs
 
@@ -59,17 +59,27 @@ One action to follow up:
 
 ## Dependency Updates
 
-All dependency updates are consolidated into a single weekly workflow.
+### Renovate
 
-### Weekly Dependency Updates
-Runs weekly (Monday 3:30 AM) via `.github/workflows/update-dependencies.yaml` using `update-deps.yaml`.
+Renovate updates:
+- Policy image tags in the Helm chart values
+- kuberlr-kubectl image
+- openreports chart
 
-Updates the following dependencies:
-- Policy image tags in Helm chart values
-- Policy-reporter and openreports chart versions
-- Kuberlr-kubectl image version
-- Hauler manifest with all component versions
+Renovate puts each update into one PR, which changes the Helm chart values,
+`charts/admission-controller/Chart.yaml`, `Chart.lock`, the openreports archive
+in `charts/admission-controller/charts/`, and the Hauler manifest together.
+
+### Weekly Updatecli Dependency Updates
+
+via `.github/workflows/update-dependencies.yaml`, Updatecli updates:
+- The policy-reporter chart version
+- Hauler manifest with the Kubewarden and policy-reporter versions
 - The `artifacthub.io/images` annotation in `charts/admission-controller/Chart.yaml`
+
+Renovate cannot do these updates. The policy-reporter and policy-reporter-ui
+image tags come from the policy-reporter chart, and Renovate cannot read them
+from the new chart version.
 
 ### Running Updates Manually
 For manual runs of all dependency updates:
@@ -81,7 +91,6 @@ $ updatecli compose diff --file updatecli/update-deps.yaml
 
 ### Adding New Dependencies
 
-To add a new OCI artifact or Helm chart:
-1. Edit `updatecli/values/artifacts.yaml`
-2. Add the artifact to the `ociArtifacts` or `helmCharts` list
-3. Test with `updatecli compose diff` before committing
+To add a new container image or Helm chart, add a custom manager or a
+package rule to `renovate.json`. Use updatecli only for a dependency that
+Renovate cannot update.
