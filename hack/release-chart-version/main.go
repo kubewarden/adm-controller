@@ -30,12 +30,10 @@ type chart struct {
 // nextChartVersion returns the chart version for releaseVersion:
 //   - If chartVersion is a prerelease, keep its X.Y.Z.
 //     For example: 6.2.0-rc.2, v1.39.0-rc.2 and v1.39.0-rc.3 give 6.2.0-rc.3.
-//   - If chartVersion is stable, increment the same level (minor or patch)
-//     that the stack increments.
+//   - If chartVersion is stable, increment the same level (major, minor or
+//     patch) that the stack increments.
 //     For example: 6.1.0, v1.38.2 and v1.39.0-rc.1 give 6.2.0-rc.1.
 //   - Copy the prerelease part of releaseVersion.
-//   - Fail for a stack major increment, because the chart version then needs a
-//     manual decision.
 func nextChartVersion(chartVersion, appVersion, releaseVersion string) (string, error) {
 	chartV, err := parse("chart version", chartVersion)
 	if err != nil {
@@ -62,12 +60,11 @@ func nextChartVersion(chartVersion, appVersion, releaseVersion string) (string, 
 				chartVersion, releaseVersion, appVersion)
 		}
 		next = *semver.New(chartV.Major(), chartV.Minor(), chartV.Patch(), "", "")
-	case rel.Major() != app.Major():
-		return "", fmt.Errorf("release version %s changes the major version of appVersion %s: set the chart version by hand",
-			releaseVersion, appVersion)
-	case rel.Minor() > app.Minor():
+	case rel.Major() > app.Major():
+		next = chartV.IncMajor()
+	case rel.Major() == app.Major() && rel.Minor() > app.Minor():
 		next = chartV.IncMinor()
-	case rel.Minor() == app.Minor() && rel.Patch() > app.Patch():
+	case rel.Major() == app.Major() && rel.Minor() == app.Minor() && rel.Patch() > app.Patch():
 		next = chartV.IncPatch()
 	default:
 		return "", fmt.Errorf("release version %s is not later than appVersion %s", releaseVersion, appVersion)

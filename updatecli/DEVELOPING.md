@@ -29,8 +29,7 @@ The release pipeline computes the `version` of
 | `6.2.0-rc.2` | `v1.39.0-rc.2` | `v1.39.0-rc.3` | `6.2.0-rc.3` |
 | `6.2.0-rc.3` | `v1.39.0-rc.3` | `v1.39.0` | `6.2.0` |
 | `6.2.0` | `v1.39.0` | `v1.39.1` | `6.2.1` |
-
-If `RELEASE_VERSION` changes the major version of the stack, the helper fails.
+| `6.2.0` | `v1.39.0` | `v2.0.0-rc.1` | `7.0.0-rc.1` |
 
 `updatecli/open-release-pr.yaml` runs the release policy first, and then the
 Hauler policy on the same branch. The release policy writes the new versions
