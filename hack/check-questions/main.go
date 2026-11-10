@@ -41,13 +41,20 @@ func validType(t string) bool {
 		// Rancher defaults to string
 		return true
 	}
+	// Rancher dashboard: shell/components/Questions
+	// Kubewarden UI extension: pkg/kubewarden/components/Questions
 	switch t {
-	case "string", "multiline", "boolean", "int", "integer", "float",
-		"password", "enum", "questions", "secret", "storageclass",
-		"hostname", "pvc", "cert", "date":
+	// Rancher and extension
+	case "string", "multiline", "boolean", "int", "float", "enum", "password",
+		"hostname", "reference", "configmap", "secret", "storageclass", "pvc",
+		"cloudcredential":
+		return true
+	// Rancher only
+	case "ipaddr", "cidr", "cron", "radio", "yaml":
 		return true
 	}
-	containerTypeRe := regexp.MustCompile(`^(array|map)\[[a-z]*\]$`)
+	// Container types matched by prefix, sequence[ is extension only
+	containerTypeRe := regexp.MustCompile(`^(array|map|reference|sequence)\[`)
 	return containerTypeRe.MatchString(t)
 }
 
