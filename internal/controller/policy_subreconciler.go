@@ -225,24 +225,27 @@ func (r *policySubReconciler) reconcilePolicyServerUnavailable(ctx context.Conte
 
 // reconcileWebhookConfiguration creates or patches the webhook configuration
 // for the policy, dispatching to the mutating or validating variant as needed.
+// It then deletes the webhook configuration of the other kind, because
+// spec.mutating can change. It deletes the other kind only after it creates
+// the current kind, so the policy always has a webhook configuration.
 func (r *policySubReconciler) reconcileWebhookConfiguration(ctx context.Context, policy policiesv1.Policy, secret *corev1.Secret, policyServerName string) error {
 	if policy.IsMutating() {
 		if err := r.reconcileMutatingWebhookConfiguration(ctx, policy, secret, policyServerName); err != nil {
 			return errors.Join(errors.New("error reconciling mutating webhook"), err)
 		}
-		return nil
+		return r.reconcileValidatingWebhookConfigurationDeletion(ctx, policy)
 	}
 	if err := r.reconcileValidatingWebhookConfiguration(ctx, policy, secret, policyServerName); err != nil {
 		return errors.Join(errors.New("error reconciling validating webhook"), err)
 	}
-	return nil
+	return r.reconcileMutatingWebhookConfigurationDeletion(ctx, policy)
 }
 
-// deleteWebhookConfiguration removes the webhook configuration for the policy,
-// dispatching to the mutating or validating variant as needed.
+// deleteWebhookConfiguration deletes the webhook configurations of the policy.
+// A configuration of each kind can exist, because spec.mutating can change.
 func (r *policySubReconciler) deleteWebhookConfiguration(ctx context.Context, policy policiesv1.Policy) error {
-	if policy.IsMutating() {
-		return r.reconcileMutatingWebhookConfigurationDeletion(ctx, policy)
+	if err := r.reconcileMutatingWebhookConfigurationDeletion(ctx, policy); err != nil {
+		return err
 	}
 	return r.reconcileValidatingWebhookConfigurationDeletion(ctx, policy)
 }
