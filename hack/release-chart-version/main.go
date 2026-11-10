@@ -48,8 +48,8 @@ func nextChartVersion(chartVersion, appVersion, releaseVersion string) (string, 
 		return "", err
 	}
 
-	if rel.Equal(app) {
-		return "", fmt.Errorf("appVersion is already %s", appVersion)
+	if !rel.GreaterThan(app) {
+		return "", fmt.Errorf("release version %s is not later than appVersion %s", releaseVersion, appVersion)
 	}
 
 	var next semver.Version
@@ -67,7 +67,7 @@ func nextChartVersion(chartVersion, appVersion, releaseVersion string) (string, 
 	case rel.Major() == app.Major() && rel.Minor() == app.Minor() && rel.Patch() > app.Patch():
 		next = chartV.IncPatch()
 	default:
-		return "", fmt.Errorf("release version %s is not later than appVersion %s", releaseVersion, appVersion)
+		return "", fmt.Errorf("chart version %s is stable, but appVersion %s is a prerelease", chartVersion, appVersion)
 	}
 
 	next, err = next.SetPrerelease(rel.Prerelease())

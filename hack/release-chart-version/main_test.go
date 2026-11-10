@@ -42,8 +42,11 @@ func TestNextChartVersionErrors(t *testing.T) {
 		wantErr        string
 	}{
 		{"older major release version", "6.2.0", "v1.39.0", "v0.40.0", "is not later than"},
-		{"same release version", "6.2.0-rc.2", "v1.39.0-rc.2", "v1.39.0-rc.2", "is already"},
+		{"same release version", "6.2.0-rc.2", "v1.39.0-rc.2", "v1.39.0-rc.2", "is not later than"},
+		{"older release candidate", "6.2.0-rc.2", "v1.39.0-rc.2", "v1.39.0-rc.1", "is not later than"},
+		{"release candidate after the final release", "6.2.0", "v1.39.0", "v1.39.0-rc.4", "is not later than"},
 		{"older release version", "6.2.0", "v1.39.0", "v1.38.3", "is not later than"},
+		{"stable chart with a prerelease appVersion", "6.2.0", "v1.39.0-rc.3", "v1.39.0", "is a prerelease"},
 		{"prerelease chart with a new stack X.Y.Z", "6.2.0-rc.1", "v1.38.2", "v1.39.0-rc.2", "does not continue"},
 		{"invalid release version", "6.2.0", "v1.39.0", "v1.40", "is not a semantic version"},
 	}
