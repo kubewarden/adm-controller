@@ -13,9 +13,11 @@
 # policy-reporter, policy-reporter-ui) and Helm charts (kubewarden-controller,
 # policy-reporter, openreports).
 # 
-# The weekly updatecli workflow automatically updates both Helm chart values
-# and the Hauler manifest. This validation serves as a safety check to catch
-# any manual changes or update failures.
+# Renovate updates the policies, the kuberlr-kubectl image and the openreports
+# chart. The weekly updatecli workflow updates the policy-reporter chart, and
+# copies the other versions from the Helm chart into the Hauler manifest. This
+# validation serves as a safety check to catch any manual changes or update
+# failures.
 
 set -euo pipefail
 
@@ -187,8 +189,9 @@ if [[ $ERRORS -eq 0 ]]; then
 else
     echo -e "${RED}❌ Found $ERRORS version mismatch(es). Please update the Hauler manifest.${NC}"
     echo
-    echo -e "${YELLOW}💡 Tip: The updatecli workflow should automatically keep these in sync.${NC}"
-    echo "   If you're seeing this error, you may need to run updatecli manually or"
-    echo "   wait for the next scheduled run (Mondays at 3:30 AM)."
+    echo -e "${YELLOW}💡 Tip: Renovate and the updatecli workflow should keep these in sync.${NC}"
+    echo "   If you're seeing this error, check that the Renovate PR changed all the"
+    echo "   files, or run updatecli manually, or wait for the next scheduled run"
+    echo "   (Mondays at 3:30 AM)."
     exit 1
 fi

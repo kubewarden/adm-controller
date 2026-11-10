@@ -18,6 +18,41 @@
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?\\s*\\n\\s*\\S+?\\s*(?::?=|:)\\s*\"?(?<currentValue>[^\"\\s]+)\"?",
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) digestVersion=(?<currentValue>\\S+)\\s*\\n\\s*\\S+?\\s*(?::?=|:)\\s*\"?(?<currentDigest>[^\"\\s]+)\"?"
       ]
+    },
+    {
+      "customType": "regex",
+      "description": "Update policy modules and kuberlr-kubectl image in values.yaml. The registry is global.cattle.systemDefaultRegistry",
+      "managerFilePatterns": [
+        "/^charts/admission-controller/values\\.yaml$/"
+      ],
+      "matchStrings": [
+        "repository: \"(?<depName>(?:kubewarden/policies|rancher)/[^\"]+)\"\\n\\s+tag: (?<currentValue>\\S+)"
+      ],
+      "depNameTemplate": "ghcr.io/{{{depName}}}",
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Update policy modules and kuberlr-kubectl image in the hauler_manifest.yaml and in artifacthub.io/images annotation",
+      "managerFilePatterns": [
+        "/^charts/hauler_manifest\\.yaml$/",
+        "/^charts/admission-controller/Chart\\.yaml$/"
+      ],
+      "matchStrings": [
+        "(?:- name|image): (?<depName>ghcr\\.io/(?:kubewarden/policies|rancher)/[^:\\s]+):(?<currentValue>\\S+)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Update openreports Helm chart in hauler_manifest.yaml",
+      "managerFilePatterns": [
+        "/^charts/hauler_manifest\\.yaml$/"
+      ],
+      "matchStrings": [
+        "- name: (?<depName>openreports)\\n\\s+version: (?<currentValue>\\S+)\\n\\s+repoURL: (?<registryUrl>\\S+)"
+      ],
+      "datasourceTemplate": "helm"
     }
   ],
   "lockFileMaintenance": {
@@ -26,27 +61,12 @@
   },
   "packageRules": [
     {
-      "matchDatasources": [
-        "docker"
-      ],
-      "matchPackageNames": [
-        "kubewarden/adm-controller/controller",
-        "kubewarden/adm-controller/audit-scanner"
+      "description": "helm-values looks up the images on DockerHub, but the chart pulls them from global.cattle.systemDefaultRegistry. A custom manager updates the third-party images, and the release updates the Kubewarden images",
+      "matchManagers": [
+        "helm-values"
       ],
       "matchFileNames": [
         "charts/admission-controller/values.yaml"
-      ],
-      "enabled": false
-    },
-    {
-      "matchDatasources": [
-        "docker"
-      ],
-      "matchPackageNames": [
-        "kubewarden/adm-controller/policy-server"
-      ],
-      "matchFileNames": [
-        "charts/kubewarden-defaults/values.yaml"
       ],
       "enabled": false
     },
@@ -151,7 +171,7 @@
       "enabled": false
     },
     {
-      "description": "updatecli updates Chart.lock together with the Hauler manifest",
+      "description": "Renovate updates Chart.lock with openreports, and updatecli updates it with policy-reporter",
       "matchManagers": [
         "helmv3"
       ],
@@ -160,12 +180,33 @@
       }
     },
     {
-      "description": "updatecli updates the kuberlr-kubectl image together with the Hauler manifest",
+      "description": "Update Helm chart dependencies in one PR. updatecli updates policy-reporter. Renovate reads postUpdateOptions from the first upgrade of the branch, thus helmUpdateSubChartArchives must apply to the whole group to update the vendored openreports archive in charts/.",
       "matchPackageNames": [
-        "rancher/kuberlr-kubectl",
+        "ghcr.io/kubewarden/policies/**",
+        "ghcr.io/rancher/kuberlr-kubectl",
+        "openreports"
+      ],
+      "groupName": "Helm chart dependencies",
+      "postUpdateOptions": [
+        "helmUpdateSubChartArchives"
+      ],
+      "reviewers": [
+        "team:kubewarden-developers"
+      ],
+      "prBodyNotes": [
+        "## Update Checklist\n- [ ] I have checked that the admission-controller values `recommendedPolicies.*.settings` are up to date\n- [ ] I have updated charts/admission-controller/questions.yaml from those of the policies"
+      ]
+    },
+    {
+      "description": "ghcr.io gives no release timestamps, thus a minimumReleaseAge above 0 keeps the image updates pending forever",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "ghcr.io/kubewarden/policies/**",
         "ghcr.io/rancher/kuberlr-kubectl"
       ],
-      "enabled": false
+      "minimumReleaseAge": "0 days"
     }
   ]
 }

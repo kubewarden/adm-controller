@@ -1,25 +1,10 @@
-name: Update charts with new policies, policy-reporter and kubectl versions
+name: Update charts with new policy-reporter version
 
 # {{ if .pipelineid }}
 pipelineid: "{{ .pipelineid }}"
 # {{ end }}
 
 sources:
-  # {{ range $oci := .ociArtifacts}}
-  # Kubewarden container image should now use the version from the registry.
-  # Let keep using the version defined in the release process.
-  # {{ if not $oci.skipVersionFromRegistry }}
-  "source/{{ $oci.image }}":
-    kind: dockerimage
-    spec:
-      image: "{{ $oci.image }}"
-      versionfilter:
-        kind: semver
-        # {{ if $oci.strict }}
-        strict: true
-        # {{ end }}
-  # {{ end }}
-  # {{ end }}
   # {{ range $chart := .helmCharts}}
   # {{ if $chart.repository }}
   "source/{{ $chart.name }}Chart":
@@ -31,20 +16,6 @@ sources:
   # {{ end }}
 
 targets:
-  # {{ range $oci := .ociArtifacts}}
-  # {{ if not $oci.skipVersionFromRegistry }}
-  "target/{{ $oci.image }}":
-    name: "Update {{ $oci.image }} image tag"
-    kind: yaml
-    sourceid: "source/{{ $oci.image }}"
-    scmid: "default"
-    dependson:
-      - '{{ printf "source#source/%s" $oci.image }}'
-    spec:
-      file: "{{ $oci.file }}"
-      key: "{{ $oci.key }}"
-  # {{ end }}
-  # {{ end }}
   # {{ range $chart := .helmCharts}}
   # {{ if $chart.repository }}
   "target/{{ $chart.name }}Chart":

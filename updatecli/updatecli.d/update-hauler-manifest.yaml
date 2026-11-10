@@ -130,7 +130,6 @@ targets:
   # charts/admission-controller/Chart.yaml, in sync with the image tags in
   # values.yaml.
   # {{ range $oci := .ociArtifacts }}
-  # {{ if $oci.artifactHubImage }}
   "target/{{ $oci.image }}ArtifactHubAnnotation":
     name: "Update {{ $oci.image }} image in artifacthub.io/images annotation"
     kind: file
@@ -142,7 +141,6 @@ targets:
       file: "charts/admission-controller/Chart.yaml"
       matchpattern: "image: {{ $oci.image }}:(v?\\S+)"
       replacepattern: 'image: {{ $oci.image }}:{{ printf "source/%sVersion" $oci.image | source }}'
-  # {{ end }}
   # {{ end }}
   policyReporterArtifactHubAnnotation:
     name: "Update policy-reporter image in artifacthub.io/images annotation"
@@ -173,16 +171,12 @@ actions:
       automerge: false
       mergemethod: squash
       description: |
-        Automatic update of Helm chart dependencies: Helm charts, policies, kuberlr-kubectl image, Hauler manifest, and the artifacthub.io/images annotation.
+        Automatic update of the policy-reporter Helm chart dependency, the Hauler manifest, and the artifacthub.io/images annotation.
         This PR has been created by automation.
 
         > [!IMPORTANT]
         > REMEMBER USING SQUASH MERGE FOR THIS PR
-
-        ## Update Checklist
-        - [ ] I have checked that the admission-controller values `recommendedPolicies.*.settings` are up to date
-        - [ ] I have updated charts/admission-controller/questions.yaml from those of the policies
-      #     {{ if .pr.reviewers }}
+      #     {{ if .pr.reviewrs }}
       reviewers:
         #           {{ range .pr.reviewers }}
         - "{{ . }}"
