@@ -11,7 +11,7 @@ RUN apk add --no-cache \
     musl-dev \
     pkgconfig
 
-# Download rustup-init, verify checksum, and install Rust
+# Download rustup-init, verify checksum, and install rustup
 RUN <<EOF
   case "${TARGETARCH}" in \
     amd64)
@@ -32,13 +32,25 @@ RUN <<EOF
   echo "${CHECKSUM} *./rustup-init" | sha256sum -c - || exit 1
 
   chmod +x ./rustup-init
-  ./rustup-init -y --default-toolchain stable --profile minimal --target "${RUST_TARGET}"
+  # Install rustup only, without any toolchain. The toolchain is installed
+  # further down from rust-toolchain.toml, so that the image builds with the
+  # Rust version that the repository pins. A default toolchain here would be
+  # a second one, that nothing uses.
+  ./rustup-init -y --default-toolchain none --profile minimal
   rm ./rustup-init
 
   echo "${RUST_TARGET}" > /tmp/rust_target
 EOF
 
 ENV PATH=/root/.cargo/bin:$PATH
+
+WORKDIR /usr/src/policy-server
+
+# Install the Rust toolchain that the repository pins: the version, the
+# components and the targets all come from rust-toolchain.toml. The file
+# changes only on a Rust update, so this layer stays cached.
+COPY ./rust-toolchain.toml ./
+RUN rustup toolchain install
 
 # Install cargo-auditable. It does not need the workspace files, so this step
 # stays here, before the COPY commands. A change to a crate then does not
@@ -47,8 +59,6 @@ ENV PATH=/root/.cargo/bin:$PATH
 RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
     --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
     cargo install --locked --version 0.7.4 cargo-auditable
-
-WORKDIR /usr/src/policy-server
 
 # Copy workspace files
 COPY ./Cargo.toml ./Cargo.lock ./
