@@ -75,40 +75,60 @@ jobs:
             echo "No kwctl-related files changed"
           fi
 
-  build-linux-binaries:
-    name: Build linux binaries
+  # The build job runs the code of the repository and of all its dependencies.
+  # It has no token that can sign anything. The attest job below signs, and it
+  # runs no code of the repository. It trusts the binary only if the digest
+  # matches the one that the build job reported. That is what keeps the
+  # provenance of the binaries unforgeable by the build (SLSA Build L3).
+  build:
+    name: Build ${{ matrix.target }}
     needs: changes
     if: needs.changes.outputs.kwctl == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - targetarch: aarch64
-            runner: ubuntu-24.04-arm
-          - targetarch: x86_64
+          - target: linux-x86_64
             runner: ubuntu-24.04
+            binary: kwctl-linux-x86_64
+          - target: linux-aarch64
+            runner: ubuntu-24.04-arm
+            binary: kwctl-linux-aarch64
+          - target: darwin-x86_64
+            runner: macos-latest
+            binary: kwctl-darwin-x86_64
+          - target: darwin-aarch64
+            runner: macos-latest
+            binary: kwctl-darwin-aarch64
+          - target: windows-x86_64
+            runner: windows-latest
+            binary: kwctl-windows-x86_64.exe
     permissions:
-      id-token: write
-      attestations: write
       contents: read
+    outputs:
+      digest-linux-x86_64: ${{ steps.digest.outputs.digest-linux-x86_64 }}
+      digest-linux-aarch64: ${{ steps.digest.outputs.digest-linux-aarch64 }}
+      digest-darwin-x86_64: ${{ steps.digest.outputs.digest-darwin-x86_64 }}
+      digest-darwin-aarch64: ${{ steps.digest.outputs.digest-darwin-aarch64 }}
+      digest-windows-x86_64: ${{ steps.digest.outputs.digest-windows-x86_64 }}
     steps:
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        if: ${{ !inputs.build_only }}
-
       - name: checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: runner.os == 'Linux'
 
       # Each architecture builds natively on its own runner, in the same way
       # the policy-server image is built. The binary is statically linked
       # against musl without cross-compiling. The Dockerfile exports only the
       # binary. BuildKit's own provenance and SBOM are off: the binary gets
-      # its own below. There is no build cache on purpose: a cache that
-      # other runs can write to would let them influence a release binary.
-      - name: Build kwctl
+      # its own in the attest job. There is no build cache on purpose: a cache
+      # that other runs can write to would let them influence a release binary.
+      - name: Build kwctl (linux)
+        if: runner.os == 'Linux'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -117,102 +137,20 @@ jobs:
           provenance: false
           sbom: false
 
-      - run: mv out/kwctl kwctl-linux-${{ matrix.targetarch }}
-
-      - name: Smoke test build
-        run: ./kwctl-linux-${{ matrix.targetarch }} --help
-
-      - name: Generate attestations
-        if: ${{ !inputs.build_only }}
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        id: attestations
-        with:
-          subject-path: kwctl-linux-${{ matrix.targetarch }}
-
-      - name: Sign kwctl
-        if: ${{ !inputs.build_only }}
-        run: |
-          cosign sign-blob --yes \
-            --bundle kwctl-linux-${{ matrix.targetarch }}.bundle.sigstore \
-            kwctl-linux-${{ matrix.targetarch }}
-
-      - run: zip -j9 kwctl-linux-${{ matrix.targetarch }}.zip kwctl-linux-${{ matrix.targetarch }} kwctl-linux-${{ matrix.targetarch }}.bundle.sigstore
-        if: ${{ !inputs.build_only }}
-
-      - name: Upload binary
-        if: ${{ !inputs.build_only }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: kwctl-linux-${{ matrix.targetarch }}
-          path: kwctl-linux-${{ matrix.targetarch }}.zip
-
-      - name: Install the syft command
-        if: ${{ !inputs.build_only }}
-        uses: kubewarden/github-actions/syft-installer@4d25ea5d35d22768786526f592b0f9ba27587c9c # v8.0.0
-
-      - name: Create SBOM file
-        if: ${{ !inputs.build_only }}
+      - name: Name the binary (linux)
+        if: runner.os == 'Linux'
         shell: bash
-        run: |
-          syft scan \
-          --output spdx-json=kwctl-linux-${{ matrix.targetarch }}-sbom.spdx \
-          --source-name kwctl-linux-${{ matrix.targetarch }} \
-          --source-version ${{ github.sha }} \
-          -vv \
-          dir:. # use dir default catalogers, which includes Cargo.toml
+        env:
+          BINARY: ${{ matrix.binary }}
+        run: mv out/kwctl "$BINARY"
 
-      - name: Sign SBOM file
-        if: ${{ !inputs.build_only }}
-        run: |
-          cosign sign-blob --yes \
-            --bundle kwctl-linux-${{ matrix.targetarch }}-sbom.spdx.bundle.sigstore \
-            kwctl-linux-${{ matrix.targetarch }}-sbom.spdx
-
-      - name: Upload kwctl SBOM files
-        if: ${{ !inputs.build_only }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: kwctl-linux-${{ matrix.targetarch }}-sbom
-          path: |
-            kwctl-linux-${{ matrix.targetarch }}-sbom.spdx
-            kwctl-linux-${{ matrix.targetarch }}-sbom.spdx.bundle.sigstore
-
-      - name: Upload kwctl air gap scripts
-        if: ${{ !inputs.build_only && matrix.targetarch == 'x86_64' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: kwctl-airgap-scripts
-          path: |
-            scripts/kubewarden-load-policies.sh
-            scripts/kubewarden-save-policies.sh
-
-  build-darwin-binaries:
-    name: Build darwin binary
-    needs: changes
-    if: needs.changes.outputs.kwctl == 'true'
-    strategy:
-      matrix:
-        targetarch: ["aarch64", "x86_64"]
-    runs-on: macos-latest
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "11.0"
-    permissions:
-      id-token: write
-      attestations: write
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        if: ${{ !inputs.build_only }}
-
-      - run: rustup target add ${{ matrix.targetarch }}-apple-darwin
+      - run: rustup target add ${{ matrix.target == 'darwin-x86_64' && 'x86_64' || 'aarch64' }}-apple-darwin
+        if: runner.os == 'macOS'
 
       # macos-latest is an arm64 machine, so the tool is always the arm64 one,
       # also when the target is x86_64.
-      - name: Install cargo-auditable
+      - name: Install cargo-auditable (macos)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -e
@@ -230,99 +168,19 @@ jobs:
           # renovate: datasource=github-release-attachments depName=rust-secure-code/cargo-auditable digestVersion=v0.7.7
           AUDITABLE_CHECKSUM: "a66ad6392861ca1abfe0b02b522622d91edf63e5d7b60f4d3088b5c23d240c72"
 
-      - name: Build kwctl
-        run: cargo auditable build --locked --target=${{ matrix.targetarch }}-apple-darwin --release -p kwctl
-
-      - run: mv target/${{ matrix.targetarch }}-apple-darwin/release/kwctl kwctl-darwin-${{ matrix.targetarch }}
-
-      - name: Smoke test build
-        if: matrix.targetarch == 'x86_64'
-        run: ./kwctl-darwin-x86_64 --help
-
-      - name: Generate attestations
-        if: ${{ !inputs.build_only }}
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        id: attestations
-        with:
-          subject-path: kwctl-darwin-${{ matrix.targetarch }}
-
-      - name: Sign kwctl
-        if: ${{ !inputs.build_only }}
-        run: |
-          cosign sign-blob --yes \
-            --bundle kwctl-darwin-${{ matrix.targetarch }}.bundle.sigstore \
-            kwctl-darwin-${{ matrix.targetarch }}
-
-      - run: zip -j9 kwctl-darwin-${{ matrix.targetarch }}.zip kwctl-darwin-${{ matrix.targetarch }} kwctl-darwin-${{ matrix.targetarch }}.bundle.sigstore
-        if: ${{ !inputs.build_only }}
-
-      - name: Upload binary
-        if: ${{ !inputs.build_only }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: kwctl-darwin-${{ matrix.targetarch }}
-          path: kwctl-darwin-${{ matrix.targetarch }}.zip
-
-      - name: Install the syft command
-        if: ${{ !inputs.build_only }}
-        uses: kubewarden/github-actions/syft-installer@4d25ea5d35d22768786526f592b0f9ba27587c9c # v8.0.0
-        with:
-          arch: darwin_amd64
-
-      - name: Create SBOM file
-        if: ${{ !inputs.build_only }}
+      - name: Build kwctl (macos)
+        if: runner.os == 'macOS'
         shell: bash
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          RUST_TARGET: ${{ matrix.target == 'darwin-x86_64' && 'x86_64' || 'aarch64' }}-apple-darwin
+          BINARY: ${{ matrix.binary }}
         run: |
-          syft scan \
-          --output spdx-json=kwctl-darwin-${{ matrix.targetarch }}-sbom.spdx \
-          --source-name kwctl-darwin-${{ matrix.targetarch }} \
-          --source-version ${{ github.sha }} \
-          -vv \
-          dir:. # use dir default catalogers, which includes Cargo.toml
+          cargo auditable build --locked --target="$RUST_TARGET" --release -p kwctl
+          mv "target/$RUST_TARGET/release/kwctl" "$BINARY"
 
-      - name: Sign SBOM file
-        if: ${{ !inputs.build_only }}
-        run: |
-          cosign sign-blob --yes \
-            --bundle kwctl-darwin-${{ matrix.targetarch }}-sbom.spdx.bundle.sigstore \
-            kwctl-darwin-${{ matrix.targetarch }}-sbom.spdx
-
-      - name: Upload kwctl SBOM files
-        if: ${{ !inputs.build_only }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: kwctl-darwin-${{ matrix.targetarch }}-sbom
-          path: |
-            kwctl-darwin-${{ matrix.targetarch }}-sbom.spdx
-            kwctl-darwin-${{ matrix.targetarch }}-sbom.spdx.bundle.sigstore
-
-  build-windows-x86_64:
-    name: Build windows (x86_64) binary
-    needs: changes
-    if: needs.changes.outputs.kwctl == 'true'
-    strategy:
-      matrix:
-        # workaround to have the same GH UI for all jobs
-        targetarch: ["x86_64"]
-        os: ["windows-latest"]
-    runs-on: ${{ matrix.os }}
-    env:
-      # aws-lc-sys has a CMakefile directive that cmake v4 removed. This
-      # variable lets the build work with cmake v4.
-      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-    permissions:
-      id-token: write
-      attestations: write
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        if: ${{ !inputs.build_only }}
-
-      - name: Install cargo-auditable
+      - name: Install cargo-auditable (windows)
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           set -e
@@ -340,71 +198,204 @@ jobs:
           # renovate: datasource=github-release-attachments depName=rust-secure-code/cargo-auditable digestVersion=v0.7.7
           AUDITABLE_CHECKSUM: "717ba2d3ed7997c501e9987ee7c94bebf9d7219b18b185a03009420ec7029c7d"
 
-      - name: Build kwctl
-        run: cargo auditable build --locked --target=x86_64-pc-windows-msvc --release -p kwctl
-
-      - run: mv target/x86_64-pc-windows-msvc/release/kwctl.exe kwctl-windows-x86_64.exe
+      - name: Build kwctl (windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          # aws-lc-sys has a CMakefile directive that cmake v4 removed. This
+          # variable lets the build work with cmake v4.
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+          BINARY: ${{ matrix.binary }}
+        run: |
+          cargo auditable build --locked --target=x86_64-pc-windows-msvc --release -p kwctl
+          mv target/x86_64-pc-windows-msvc/release/kwctl.exe "$BINARY"
 
       - name: Smoke test build
-        run: .\kwctl-windows-x86_64.exe --help
-
-      - name: Generate attestations
-        if: ${{ !inputs.build_only }}
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        id: attestations
-        with:
-          subject-path: kwctl-windows-${{ matrix.targetarch }}.exe
-
-      - name: Sign kwctl
-        if: ${{ !inputs.build_only }}
         shell: bash
+        env:
+          BINARY: ${{ matrix.binary }}
+        run: ./"$BINARY" --help
+
+      - name: Record the digest of the binary
+        id: digest
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          BINARY: ${{ matrix.binary }}
         run: |
-          cosign sign-blob --yes \
-            --bundle kwctl-windows-x86_64.bundle.sigstore \
-            kwctl-windows-x86_64.exe
+          set -e
 
-      - run: |
-          "/c/Program Files/7-Zip/7z.exe" a kwctl-windows-x86_64.exe.zip kwctl-windows-x86_64.exe kwctl-windows-x86_64.bundle.sigstore
-        shell: bash
-        if: ${{ !inputs.build_only }}
+          if command -v sha256sum >/dev/null; then
+            digest=$(sha256sum "$BINARY" | cut -d' ' -f1)
+          else
+            digest=$(shasum -a 256 "$BINARY" | cut -d' ' -f1)
+          fi
+          echo "digest-${TARGET}=${digest}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload binary
+      # The artifact name does not start with "kwctl-", so the release job
+      # never picks up an unsigned binary by mistake.
+      - name: Upload unsigned binary
         if: ${{ !inputs.build_only }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: kwctl-windows-x86_64
-          path: kwctl-windows-x86_64.exe.zip
+          name: unsigned-kwctl-${{ matrix.target }}
+          path: ${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload kwctl air gap scripts
+        if: ${{ !inputs.build_only && matrix.target == 'linux-x86_64' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kwctl-airgap-scripts
+          path: |
+            scripts/kubewarden-load-policies.sh
+            scripts/kubewarden-save-policies.sh
+
+  attest:
+    name: Attest and sign ${{ matrix.target }}
+    needs: build
+    if: ${{ !inputs.build_only }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            binary: kwctl-linux-x86_64
+            bundle: kwctl-linux-x86_64.bundle.sigstore
+            archive: kwctl-linux-x86_64.zip
+          - target: linux-aarch64
+            binary: kwctl-linux-aarch64
+            bundle: kwctl-linux-aarch64.bundle.sigstore
+            archive: kwctl-linux-aarch64.zip
+          - target: darwin-x86_64
+            binary: kwctl-darwin-x86_64
+            bundle: kwctl-darwin-x86_64.bundle.sigstore
+            archive: kwctl-darwin-x86_64.zip
+          - target: darwin-aarch64
+            binary: kwctl-darwin-aarch64
+            bundle: kwctl-darwin-aarch64.bundle.sigstore
+            archive: kwctl-darwin-aarch64.zip
+          - target: windows-x86_64
+            binary: kwctl-windows-x86_64.exe
+            bundle: kwctl-windows-x86_64.bundle.sigstore
+            archive: kwctl-windows-x86_64.exe.zip
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      TARGET: ${{ matrix.target }}
+      BINARY: ${{ matrix.binary }}
+      BUNDLE: ${{ matrix.bundle }}
+      ARCHIVE: ${{ matrix.archive }}
+      SBOM: kwctl-${{ matrix.target }}-sbom.spdx
+      OIDC_ISSUER: https://token.actions.githubusercontent.com
+    steps:
+      # There is no checkout in this job: no code of the repository runs here.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Install the syft command
-        if: ${{ !inputs.build_only }}
         uses: kubewarden/github-actions/syft-installer@4d25ea5d35d22768786526f592b0f9ba27587c9c # v8.0.0
+
+      # Exact artifact name, no pattern: an artifact that another job of the
+      # run uploads with a similar name is never selected.
+      - name: Download the unsigned binary
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          arch: windows_amd64
+          name: unsigned-kwctl-${{ matrix.target }}
 
+      # Every job of the run can upload artifacts. Only the digest that the
+      # build job reported through its outputs is trusted.
+      - name: Check the digest of the binary
+        env:
+          EXPECTED_DIGEST: ${{ needs.build.outputs[format('digest-{0}', matrix.target)] }}
+        run: |
+          set -e
+
+          actual=$(sha256sum "$BINARY" | cut -d' ' -f1)
+          if [ -z "$EXPECTED_DIGEST" ] || [ "$actual" != "$EXPECTED_DIGEST" ]; then
+            echo "::error::$BINARY does not match the digest of the build job"
+            echo "expected: ${EXPECTED_DIGEST:-<none>}"
+            echo "actual:   $actual"
+            exit 1
+          fi
+
+      # kwctl is built with cargo-auditable, so the binary carries the exact
+      # list of crates that went into it. The SBOM describes that list, not
+      # the whole workspace.
       - name: Create SBOM file
-        if: ${{ !inputs.build_only }}
-        shell: bash
         run: |
+          set -e
+
           syft scan \
-          --output spdx-json=kwctl-windows-x86_64-sbom.spdx \
-          --source-name kwctl-windows-x86_64 \
-          --source-version ${{ github.sha }} \
-          -vv \
-          dir:. # use dir default catalogers, which includes Cargo.toml
+            --output spdx-json="$SBOM" \
+            --source-name "kwctl-$TARGET" \
+            --source-version "$GITHUB_SHA" \
+            -vv \
+            "file:$BINARY"
 
-      - name: Sign SBOM
-        if: ${{ !inputs.build_only }}
-        shell: bash
+          # Fail rather than publish an SBOM without the Rust dependencies.
+          # It happens when the binary was not built with cargo-auditable.
+          packages=$(jq '[.packages[] | select(.name != "kwctl-'"$TARGET"'")] | length' "$SBOM")
+          if [ "$packages" -lt 1 ]; then
+            echo "::error::The SBOM of $BINARY lists no dependencies"
+            exit 1
+          fi
+
+      - name: Generate provenance attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ matrix.binary }}
+
+      - name: Generate SBOM attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ matrix.binary }}
+          sbom-path: kwctl-${{ matrix.target }}-sbom.spdx
+
+      - name: Sign and verify kwctl and its SBOM
         run: |
-          cosign sign-blob --yes \
-            --bundle kwctl-windows-x86_64-sbom.spdx.bundle.sigstore \
-            kwctl-windows-x86_64-sbom.spdx
+          set -e
 
-      - name: Upload kwctl SBOM files
-        if: ${{ !inputs.build_only }}
+          # The signer is this workflow, in this repository, at this commit.
+          signer_identity_regexp="^https://github\.com/${GITHUB_REPOSITORY}/\.github/workflows/build-kwctl\.yml@"
+
+          cosign sign-blob --yes --bundle "$BUNDLE" "$BINARY"
+          cosign sign-blob --yes --bundle "$SBOM.bundle.sigstore" "$SBOM"
+
+          cosign verify-blob \
+            --bundle "$BUNDLE" \
+            --certificate-oidc-issuer="$OIDC_ISSUER" \
+            --certificate-identity-regexp="$signer_identity_regexp" \
+            --certificate-github-workflow-repository="$GITHUB_REPOSITORY" \
+            --certificate-github-workflow-sha="$GITHUB_SHA" \
+            "$BINARY"
+          cosign verify-blob \
+            --bundle "$SBOM.bundle.sigstore" \
+            --certificate-oidc-issuer="$OIDC_ISSUER" \
+            --certificate-identity-regexp="$signer_identity_regexp" \
+            --certificate-github-workflow-repository="$GITHUB_REPOSITORY" \
+            --certificate-github-workflow-sha="$GITHUB_SHA" \
+            "$SBOM"
+
+      # Artifacts lose the file mode when they travel between jobs.
+      - name: Package the binary
+        run: |
+          chmod +x "$BINARY"
+          zip -j9 "$ARCHIVE" "$BINARY" "$BUNDLE"
+
+      - name: Upload binary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: kwctl-windows-x86_64-sbom
+          name: kwctl-${{ matrix.target }}
+          path: ${{ matrix.archive }}
+
+      - name: Upload kwctl SBOM files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kwctl-${{ matrix.target }}-sbom
           path: |
-            kwctl-windows-x86_64-sbom.spdx
-            kwctl-windows-x86_64-sbom.spdx.bundle.sigstore
+            kwctl-${{ matrix.target }}-sbom.spdx
+            kwctl-${{ matrix.target }}-sbom.spdx.bundle.sigstore
