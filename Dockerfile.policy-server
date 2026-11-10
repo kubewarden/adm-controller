@@ -70,7 +70,7 @@ ENV RUSTFLAGS="-C target-feature=+crt-static"
 RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
     --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
     --mount=type=cache,id=cargo-target-${TARGETARCH},target=/usr/src/policy-server/target,sharing=locked \
-    cargo auditable build --release -p policy-server --target $(cat /tmp/rust_target) && \
+    cargo auditable build --locked --release -p policy-server --target $(cat /tmp/rust_target) && \
     cp target/$(cat /tmp/rust_target)/release/policy-server /policy-server
 
 # Verify the binary is statically linked

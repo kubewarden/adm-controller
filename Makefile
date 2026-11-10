@@ -136,7 +136,7 @@ POLICY_SERVER_SRC_DIRS := crates/policy-server crates/policy-evaluator crates/po
 POLICY_SERVER_SRCS := $(shell find $(POLICY_SERVER_SRC_DIRS) -type f -name '*.rs') Cargo.toml Cargo.lock $(shell find crates -name 'Cargo.*')
 .PHONY: policy-server
 policy-server: $(POLICY_SERVER_SRCS) lint-rust
-	cross build --target $(RUST_TARGET) --release -p policy-server
+	cross build --locked --target $(RUST_TARGET) --release -p policy-server
 	cp ./target/$(RUST_TARGET)/release/policy-server ./bin/policy-server
 
 .PHONY: policy-server-image
@@ -149,7 +149,7 @@ KWCTL_SRC_DIRS := crates/kwctl
 KWCTL_SRCS := $(shell find $(KWCTL_SRC_DIRS) -type f -name '*.rs') Cargo.toml Cargo.lock $(shell find crates -name 'Cargo.*')
 .PHONY: kwctl
 kwctl: $(KWCTL_SRCS) lint-rust
-	cross build --target $(RUST_TARGET) --release -p kwctl
+	cross build --locked --target $(RUST_TARGET) --release -p kwctl
 	cp ./target/$(RUST_TARGET)/release/kwctl ./bin/kwctl
 
 .PHONY: generate
