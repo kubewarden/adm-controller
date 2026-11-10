@@ -92,6 +92,7 @@ jobs:
 
     permissions:
       contents: write
+      attestations: read # gh attestation verify
 
     runs-on: ubuntu-latest
 
@@ -145,6 +146,56 @@ jobs:
           merge-multiple: false
       - name: Display structure of downloaded files
         run: ls -R
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # Publish a kwctl binary only if it was built and signed by build-kwctl.yml
+      # of this repository, at the commit of this release. Any failure here
+      # stops the release before it uploads anything.
+      - name: Verify the kwctl binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_REF_NAME: ${{ github.ref_name }}
+          OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: |
+          set -e
+
+          signer_workflow="${GITHUB_REPOSITORY}/.github/workflows/build-kwctl.yml"
+          signer_identity_regexp="^https://github\.com/${GITHUB_REPOSITORY}/\.github/workflows/build-kwctl\.yml@"
+
+          verify_blob() {
+            cosign verify-blob \
+              --bundle "$1.bundle.sigstore" \
+              --certificate-oidc-issuer="$OIDC_ISSUER" \
+              --certificate-identity-regexp="$signer_identity_regexp" \
+              --certificate-github-workflow-repository="$GITHUB_REPOSITORY" \
+              --certificate-github-workflow-ref="refs/tags/${GIT_REF_NAME}" \
+              "$1"
+          }
+
+          for target in linux-x86_64 linux-aarch64 darwin-x86_64 darwin-aarch64 windows-x86_64; do
+            binary="kwctl-${target}"
+
+            workdir=$(mktemp -d)
+            unzip -q "kwctl-${target}"/*.zip -d "$workdir"
+
+            # On Windows the binary has the ".exe" extension, but its bundle
+            # does not. Rename the bundle to what verify_blob expects.
+            if [ "$target" = "windows-x86_64" ]; then
+              binary="${binary}.exe"
+              mv "${workdir}/kwctl-${target}.bundle.sigstore" "${workdir}/${binary}.bundle.sigstore"
+            fi
+
+            gh attestation verify "${workdir}/${binary}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$signer_workflow" \
+              --source-digest "$GITHUB_SHA" \
+              --source-ref "refs/tags/${GIT_REF_NAME}"
+
+            verify_blob "${workdir}/${binary}"
+
+            sbom="kwctl-${target}-sbom/kwctl-${target}-sbom.spdx"
+            verify_blob "$sbom"
+          done
       - name: Upload release assets
         id: upload_release_assets
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
