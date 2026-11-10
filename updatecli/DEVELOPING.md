@@ -18,6 +18,24 @@ This structure ensures a single source of truth for artifact definitions while a
 
 Change `updatecli/values/scms.yaml` as needed to target forks.
 
+The release pipeline computes the `version` of
+`charts/admission-controller/Chart.yaml` with `go run
+./hack/release-chart-version RELEASE_VERSION`. The helper uses the current
+`version`, the current `appVersion`, and `RELEASE_VERSION`:
+
+| Current `version` | Current `appVersion` | `RELEASE_VERSION` | New `version` |
+|---|---|---|---|
+| `6.1.0` | `v1.38.2` | `v1.39.0-rc.1` | `6.2.0-rc.1` |
+| `6.2.0-rc.2` | `v1.39.0-rc.2` | `v1.39.0-rc.3` | `6.2.0-rc.3` |
+| `6.2.0-rc.3` | `v1.39.0-rc.3` | `v1.39.0` | `6.2.0` |
+| `6.2.0` | `v1.39.0` | `v1.39.1` | `6.2.1` |
+| `6.2.0` | `v1.39.0` | `v2.0.0-rc.1` | `7.0.0-rc.1` |
+
+`updatecli/open-release-pr.yaml` runs the release policy first, and then the
+Hauler policy on the same branch. The release policy writes the new versions
+into the chart. The Hauler policy copies them from the chart into
+`charts/hauler_manifest.yaml`.
+
 ```console
 $ cd adm-controller/
 $ export UPDATECLI_GITHUB_TOKEN=<your token>

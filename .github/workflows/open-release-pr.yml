@@ -2,7 +2,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "stack version (E.g: v1.32.0-rc2)"
+        description: "stack version (E.g: v1.39.0-rc.2)"
         required: true
         type: string
 
@@ -31,15 +31,13 @@ jobs:
           # minimum permissions for updatecli to push a branch and open a PR:
           permission-contents: write
           permission-pull-requests: write
+          permission-members: read # request reviews from the teams in .pr.reviewers
 
       - name: Install cargo-set-version
         run: cargo install --locked --version 0.13.9 cargo-edit
 
       - name: Install Updatecli in the runner
         uses: updatecli/updatecli-action@93ae2608256484ef8598e902aa675bbc9e278e4e # v3.10.0
-        with:
-          # Pinned to v0.109.0 due to a behavior change in newer versions that breaks the update script
-          version: v0.109.0
 
       - name: Install helm
         # Helm and helm plugins installation required by the updatecli release action

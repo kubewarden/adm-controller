@@ -68,6 +68,10 @@ conditions:
     disablesourceinput: true
     spec:
       file: "charts/hauler_manifest.yaml"
+      # The Charts document is the fourth document of the Hauler manifest.
+      # Without documentindex, updatecli evaluates every document, and the
+      # other documents have no spec.charts key.
+      documentindex: 3
       key: "$.spec.charts[{{ $i }}].name"
       value: "{{ $chart.name }}"
   # {{ end }}
@@ -97,6 +101,7 @@ targets:
       - '{{ printf "condition#condition/%sPosition" $chart.name }}'
     spec:
       file: "charts/hauler_manifest.yaml"
+      documentindex: 3
       # Yamlpath to filter the helm chart by name did not work. That's why we
       # have the condition to ensure the script is not updating the wrong helm
       # chart
@@ -177,7 +182,7 @@ actions:
         ## Update Checklist
         - [ ] I have checked that the admission-controller values `recommendedPolicies.*.settings` are up to date
         - [ ] I have updated charts/admission-controller/questions.yaml from those of the policies
-      #     {{ if .pr.reviewrs }}
+      #     {{ if .pr.reviewers }}
       reviewers:
         #           {{ range .pr.reviewers }}
         - "{{ . }}"

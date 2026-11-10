@@ -6,10 +6,13 @@ pipelineid: "{{ .pipelineid }}"
 #
 # Then bumps all charts and Cargo.* files following that version and opens a PR against
 # the adm-controller repo.
+#
+# The updatecli/updatecli.d/update-hauler-manifest.yaml policy runs after this
+# one on the same branch, and copies the new versions into the Hauler manifest.
 
 sources:
   desiredReleaseVersion:
-    name: "desired release version (e.g: v1.32.0-rc2)"
+    name: "desired release version (e.g: v1.39.0-rc.2)"
     kind: shell
     spec:
       command: |
@@ -29,39 +32,16 @@ sources:
         kind: latest
 
   controllerChartVersion:
-    name: "Get latest admission-controller helm version"
-    kind: yaml
-    transformers:
-      - semverinc: minor
+    name: "Compute new admission-controller Helm chart version"
+    kind: shell
     spec:
-      file: charts/admission-controller/Chart.yaml
-      key: $.version
+      command: go run ./hack/release-chart-version '{{ requiredEnv "RELEASE_VERSION" }}'
   readmeFile:
     kind: file
     spec:
       file: "./README.md"
 
-conditions:
-  admissionControllerChartPosition:
-    kind: yaml
-    disablesourceinput: true
-    spec:
-      file: "./charts/hauler_manifest.yaml"
-      key: "$.spec.charts[0].name"
-      value: "admission-controller"
-
 targets:
-  hauler_manifest_update_admission_controller_chart:
-    name: "Update admission-controller Helm chart version in Hauler manifest"
-    kind: yaml
-    sourceid: controllerChartVersion
-    scmid: "default"
-    spec:
-      file: "charts/hauler_manifest.yaml"
-      # Yamlpath to filter the helm chart by name did not work. That's why we
-      # have the condition to ensure the script is not updating the wrong helm
-      # chart
-      key: "$.spec.charts[0].version"
   update_admission_controller_helm_version:
     scmid: default
     name: Update Helm chart admission-controller version
@@ -102,6 +82,16 @@ targets:
     spec:
       file: charts/admission-controller/values.yaml
       key: $.policyServer.image.tag
+  update_policy_server_image_tag_question:
+    scmid: default
+    name: Update policyServer.image.tag default in Helm chart questions.yaml
+    kind: file
+    sourceid: desiredReleaseVersion
+    spec:
+      file: charts/admission-controller/questions.yaml
+      # The yaml kind cannot select a list item by the value of a field.
+      matchpattern: '(variable: "policyServer\.image\.tag"\n(?:\s+[a-z_]+: .*\n)*?\s+default: )"[^"]*"'
+      replacepattern: '${1}"{{ source "desiredReleaseVersion" }}"'
   update_readme:
     scmid: default
     name: Update Helm chart admission-controller README
@@ -175,7 +165,7 @@ actions:
 
         > [!IMPORTANT]
         > REMEMBER USING SQUASH MERGE FOR THIS PR
-      #     {{ if .pr.reviewrs }}
+      #     {{ if .pr.reviewers }}
       reviewers:
         #           {{ range .pr.reviewers }}
         - "{{ . }}"
