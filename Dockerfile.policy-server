@@ -4,40 +4,33 @@ FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c
 
 ARG TARGETARCH # provided by docker buildkit
 
-# Install build dependencies for Rust and C libraries
+# Install build dependencies for Rust and C libraries. rustup comes from the
+# Alpine package repository, whose packages are signed. This image does not
+# download an installer, so there is no installer checksum to keep up to date.
 RUN apk add --no-cache \
-    curl \
     build-base \
     musl-dev \
-    pkgconfig
+    pkgconfig \
+    rustup
 
-# Download rustup-init, verify checksum, and install rustup
 RUN <<EOF
-  case "${TARGETARCH}" in \
+  case "${TARGETARCH}" in
     amd64)
       RUST_TARGET="x86_64-unknown-linux-musl"
-      CHECKSUM="9cd3fda5fd293890e36ab271af6a786ee22084b5f6c2b83fd8323cec6f0992c1"
       ;;
     arm64)
       RUST_TARGET="aarch64-unknown-linux-musl"
-      CHECKSUM="88761caacddb92cd79b0b1f939f3990ba1997d701a38b3e8dd6746a562f2a759"
       ;;
     *)
       echo "Unsupported architecture: ${TARGETARCH}" && exit 1
       ;;
   esac
 
-  curl --proto '=https' --tlsv1.2 --output rustup-init -sSf \
-    "https://static.rust-lang.org/rustup/archive/1.29.0/${RUST_TARGET}/rustup-init"
-  echo "${CHECKSUM} *./rustup-init" | sha256sum -c - || exit 1
-
-  chmod +x ./rustup-init
   # Install rustup only, without any toolchain. The toolchain is installed
   # further down from rust-toolchain.toml, so that the image builds with the
   # Rust version that the repository pins. A default toolchain here would be
   # a second one, that nothing uses.
-  ./rustup-init -y --default-toolchain none --profile minimal
-  rm ./rustup-init
+  rustup-init -y --default-toolchain none --profile minimal
 
   echo "${RUST_TARGET}" > /tmp/rust_target
 EOF
