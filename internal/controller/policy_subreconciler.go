@@ -241,20 +241,20 @@ func (r *policySubReconciler) reconcileWebhookConfiguration(ctx context.Context,
 	return r.reconcileMutatingWebhookConfigurationDeletion(ctx, policy)
 }
 
-// deleteWebhookConfiguration deletes the webhook configurations of the policy.
-// A configuration of each kind can exist, because spec.mutating can change.
-func (r *policySubReconciler) deleteWebhookConfiguration(ctx context.Context, policy policiesv1.Policy) error {
-	if err := r.reconcileMutatingWebhookConfigurationDeletion(ctx, policy); err != nil {
-		return err
-	}
-	return r.reconcileValidatingWebhookConfigurationDeletion(ctx, policy)
+// deleteWebhookConfigurations deletes the webhook configurations of the policy.
+// A configuration of each kind can briefly exist, because spec.mutating changed.
+func (r *policySubReconciler) deleteWebhookConfigurations(ctx context.Context, policy policiesv1.Policy) error {
+	return errors.Join(
+		r.reconcileMutatingWebhookConfigurationDeletion(ctx, policy),
+		r.reconcileValidatingWebhookConfigurationDeletion(ctx, policy),
+	)
 }
 
 // removePolicyWebhooksAndFinalizers removes the webhook configurations, which
 // means that the policy can be safely deleted. Therefore, it also removes the
 // policy finalizers.
 func (r *policySubReconciler) removePolicyWebhooksAndFinalizers(ctx context.Context, policy policiesv1.Policy) error {
-	if err := r.deleteWebhookConfiguration(ctx, policy); err != nil {
+	if err := r.deleteWebhookConfigurations(ctx, policy); err != nil {
 		return err
 	}
 

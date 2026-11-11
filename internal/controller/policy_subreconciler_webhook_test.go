@@ -15,8 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -485,9 +483,7 @@ func TestRemovePolicyWebhooksAndFinalizersDeletesBothKinds(t *testing.T) {
 				policy := newPolicy(mutating)
 				policy.SetFinalizers([]string{constants.KubewardenFinalizer})
 				name := policy.GetUniqueName()
-				scheme := runtime.NewScheme()
-				require.NoError(t, clientgoscheme.AddToScheme(scheme))
-				require.NoError(t, policiesv1.AddToScheme(scheme))
+				scheme := newTestScheme()
 				k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
 					policy,
 					newWebhookConfigurationOfKind(true, name),
