@@ -26,8 +26,10 @@ FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c
 ARG TARGETARCH # provided by docker buildkit
 
 # The version of cargo-auditable that embeds the list of dependencies in the
-# binary. Renovate updates it.
-# renovate: datasource=github-releases depName=rust-secure-code/cargo-auditable extractVersion=^v(?<version>.*)$
+# binary. Renovate updates it. It follows crates.io, because `cargo install`
+# downloads the crate from there. A bare version is a range for cargo, so the
+# versioning is semver: a range would hide the patch releases from Renovate.
+# renovate: datasource=crate depName=cargo-auditable versioning=semver
 ARG CARGO_AUDITABLE_VERSION=0.7.7
 
 # Install build dependencies for Rust and C libraries. rustup comes from the
