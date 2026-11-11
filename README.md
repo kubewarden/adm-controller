@@ -322,7 +322,7 @@ cargo audit bin kwctl-linux-x86_64
 To build the Linux binary yourself the way the release does, run:
 
 ```shell
-docker build -f Dockerfile.kwctl --output type=local,dest=out .
+docker build -f Dockerfile.rust --target kwctl --output type=local,dest=out .
 ```
 
 The binary is then `out/kwctl`.

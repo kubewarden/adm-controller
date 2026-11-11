@@ -119,7 +119,7 @@ jobs:
           fi
 
           # Check for Rust file changes
-          RUST_CHANGES=$(git diff --name-only "$BASE_REF" HEAD | grep -E '^crates/.*\.rs$|^crates/.*/Cargo\.(toml|lock)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^crates/Makefile$|^Dockerfile\.(kwctl|policy-server)$' || true)
+          RUST_CHANGES=$(git diff --name-only "$BASE_REF" HEAD | grep -E '^crates/.*\.rs$|^crates/.*/Cargo\.(toml|lock)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^crates/Makefile$|^Dockerfile\.rust$' || true)
           if [ -n "$RUST_CHANGES" ]; then
             echo "rust=true" >> $GITHUB_OUTPUT
             echo "Rust files changed:"
@@ -160,7 +160,16 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: [controller, audit-scanner, policy-server]
+        include:
+          - component: controller
+            dockerfile: Dockerfile.controller
+          - component: audit-scanner
+            dockerfile: Dockerfile.audit-scanner
+          # The policy-server image is one stage of the Dockerfile that also
+          # builds kwctl.
+          - component: policy-server
+            dockerfile: Dockerfile.rust
+            target: policy-server
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -170,7 +179,8 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: ./Dockerfile.${{ matrix.component }}
+          file: ./${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
           tags: ghcr.io/kubewarden/adm-controller/${{ matrix.component }}:dev
           cache-from: type=gha,scope=e2e-${{ matrix.component }}
           cache-to: type=gha,scope=e2e-${{ matrix.component }},mode=max

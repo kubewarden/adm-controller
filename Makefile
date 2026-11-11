@@ -141,7 +141,7 @@ policy-server: $(POLICY_SERVER_SRCS) lint-rust
 
 .PHONY: policy-server-image
 policy-server-image:
-	docker build -f ./Dockerfile.policy-server \
+	docker build -f ./Dockerfile.rust --target policy-server \
 		-t "$(REGISTRY)/$(REPO)/policy-server:$(TAG)" .
 	@echo "Built $(REGISTRY)/$(REPO)/policy-server:$(TAG)"
 

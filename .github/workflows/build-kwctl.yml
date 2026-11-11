@@ -65,7 +65,7 @@ jobs:
           echo "Comparing against base: $BASE_REF"
 
           # Check for kwctl-related file changes
-          KWCTL_CHANGES=$(git diff --name-only "$BASE_REF" HEAD | grep -E '^crates/(kwctl|policy-evaluator|policy-fetcher|burrego)/|^Cargo\.(toml|lock)$|^Dockerfile\.kwctl$' || true)
+          KWCTL_CHANGES=$(git diff --name-only "$BASE_REF" HEAD | grep -E '^crates/(kwctl|policy-evaluator|policy-fetcher|burrego)/|^Cargo\.(toml|lock)$|^Dockerfile\.rust$' || true)
           if [ -n "$KWCTL_CHANGES" ]; then
             echo "kwctl=true" >> $GITHUB_OUTPUT
             echo "kwctl-related files changed:"
@@ -121,9 +121,9 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: runner.os == 'Linux'
 
-      # Each architecture builds natively on its own runner, in the same way
-      # the policy-server image is built. The binary is statically linked
-      # against musl without cross-compiling. The Dockerfile exports only the
+      # Each architecture builds natively on its own runner, from the same
+      # Dockerfile as the policy-server image. The binary is statically linked
+      # against musl without cross-compiling. The kwctl stage holds only the
       # binary. BuildKit's own provenance and SBOM are off: the binary gets
       # its own in the attest job. There is no build cache on purpose: a cache
       # that other runs can write to would let them influence a release binary.
@@ -132,7 +132,8 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: ./Dockerfile.kwctl
+          file: ./Dockerfile.rust
+          target: kwctl
           outputs: type=local,dest=out
           provenance: false
           sbom: false

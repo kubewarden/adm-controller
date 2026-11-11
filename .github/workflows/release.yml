@@ -68,8 +68,25 @@ jobs:
       attestations: write # actions/attest (SLSA L3 provenance)
     uses: kubewarden/github-actions/.github/workflows/container-release.yml@d12b2b18e1f9dbfe15c79c9ecb7149cf956704a7 # v8.1.0
     with:
-      components: '["policy-server","controller","audit-scanner"]'
+      components: '["controller","audit-scanner"]'
       image-namespace: ${{ github.event.repository.name }}
+      version: ${{ github.ref_name }}
+
+  # The policy-server image is one stage of Dockerfile.rust, which also builds
+  # kwctl. The `dockerfile` input applies to all the components of a call, so
+  # this image has its own call.
+  build-policy-server:
+    name: Build, sign and attest the policy-server image
+    permissions:
+      contents: read # Checkout private forks
+      packages: write # Pushing images to ghcr.io
+      id-token: write # Signing images with cosign and actions/attest
+      attestations: write # actions/attest (SLSA L3 provenance)
+    uses: kubewarden/github-actions/.github/workflows/container-release.yml@d12b2b18e1f9dbfe15c79c9ecb7149cf956704a7 # v8.1.0
+    with:
+      components: '["policy-server"]'
+      image-namespace: ${{ github.event.repository.name }}
+      dockerfile: Dockerfile.rust
       version: ${{ github.ref_name }}
 
   build-kwctl:
@@ -88,6 +105,7 @@ jobs:
     needs:
       - ci
       - build-containers
+      - build-policy-server
       - build-kwctl
 
     permissions:

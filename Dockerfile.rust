@@ -1,18 +1,27 @@
 # syntax=docker/dockerfile:1
 #
-# Build the statically linked kwctl binary for Linux, natively on musl.
+# Build the Rust binaries of this repository: policy-server and kwctl. Both
+# are statically linked against musl, and both embed their list of
+# dependencies with cargo-auditable. The build uses the architecture of the
+# machine that runs it.
 #
-# This image is not meant to run. Its only output is the binary, which is
-# the sole content of the last stage. Export it with:
+# Select what to build with --target:
 #
-#   docker build -f Dockerfile.kwctl --output type=local,dest=out .
+#   policy-server  The container image of the policy server.
 #
-# The build uses the architecture of the machine that runs it, and writes
-# out/kwctl. The binary embeds its list of dependencies with cargo-auditable.
+#   kwctl          Only the kwctl binary. This stage is not an image to run.
+#                  Export the binary with:
 #
-# Keep the builder stage in sync with Dockerfile.policy-server.
+#                    docker build -f Dockerfile.rust --target kwctl \
+#                      --output type=local,dest=out .
+#
+#                  The binary is then out/kwctl.
+#
+# The two targets share the base stage. Docker builds only the stages that
+# the selected target needs.
 
-FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS builder
+# The toolchain and the sources, common to both binaries.
+FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS base
 
 ARG TARGETARCH # provided by docker buildkit
 
@@ -54,7 +63,7 @@ EOF
 
 ENV PATH=/root/.cargo/bin:$PATH
 
-WORKDIR /usr/src/kwctl
+WORKDIR /usr/src/kubewarden
 
 # Install the Rust toolchain that the repository pins: the version, the
 # components and the targets all come from rust-toolchain.toml. The file
@@ -78,14 +87,20 @@ COPY crates/ ./crates
 # apparently it cannot be statically linked.
 ENV RUSTFLAGS="-C target-feature=+crt-static"
 
+# The two builder stages that follow use a cargo-target mount. It holds the
+# compiled dependencies between builds, so a change to one crate does not
+# force a rebuild of the full dependency tree. The mount stays on the build
+# machine and not in the image, so each stage copies its binary out before
+# the mount closes. Run "docker builder prune" to clear this cache.
+
+FROM base AS kwctl-builder
+
+ARG TARGETARCH
+
 # Build the kwctl binary statically linked.
-# The cargo-target mount holds the compiled dependencies between builds, so a
-# change to one crate does not force a rebuild of the full dependency tree.
-# It stays on the build machine and not in the image, so the binary is copied
-# out before the mount closes.
 RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
     --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
-    --mount=type=cache,id=cargo-target-kwctl-${TARGETARCH},target=/usr/src/kwctl/target,sharing=locked \
+    --mount=type=cache,id=cargo-target-kwctl-${TARGETARCH},target=/usr/src/kubewarden/target,sharing=locked \
     cargo auditable build --locked --release -p kwctl --target $(cat /tmp/rust_target) && \
     cp target/$(cat /tmp/rust_target)/release/kwctl /kwctl
 
@@ -98,5 +113,46 @@ RUN readelf -lW /kwctl > /tmp/elf && readelf -dW /kwctl >> /tmp/elf && \
     fi
 
 # The binary is the only thing that leaves the build
-FROM scratch
-COPY --from=builder /kwctl /kwctl
+FROM scratch AS kwctl
+COPY --from=kwctl-builder /kwctl /kwctl
+
+FROM base AS policy-server-builder
+
+ARG TARGETARCH
+
+# Build the policy-server binary statically linked.
+RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
+    --mount=type=cache,id=cargo-target-policy-server-${TARGETARCH},target=/usr/src/kubewarden/target,sharing=locked \
+    cargo auditable build --locked --release -p policy-server --target $(cat /tmp/rust_target) && \
+    cp target/$(cat /tmp/rust_target)/release/policy-server /policy-server
+
+# Fail the build unless the binary is static, as for kwctl.
+RUN readelf -lW /policy-server > /tmp/elf && readelf -dW /policy-server >> /tmp/elf && \
+    if grep -q -e INTERP -e NEEDED /tmp/elf; then \
+      echo "policy-server is not statically linked" >&2; exit 1; \
+    fi
+
+# Create minimal user configuration
+FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS cfg
+
+RUN echo "policy-server:x:65533:65533::/tmp:/sbin/nologin" >> /etc/passwd && \
+    echo "policy-server:x:65533:policy-server" >> /etc/group
+
+# The policy-server image, on a distroless base
+FROM gcr.io/distroless/static:nonroot AS policy-server
+COPY --from=policy-server-builder /policy-server /policy-server
+COPY --from=cfg /etc/passwd /etc/passwd
+COPY --from=cfg /etc/group /etc/group
+COPY ./Cargo.lock /Cargo.lock
+
+USER 65533:65533
+
+# Default port, should be used when tls is not enabled
+EXPOSE 3000
+# Readiness probe port, always http
+EXPOSE 8081
+# To be used when tls is enabled
+EXPOSE 8443
+
+ENTRYPOINT ["/policy-server"]
