@@ -34,8 +34,7 @@ ARG TARGETARCH
 ARG CARGO_AUDITABLE_VERSION=0.7.7
 
 # Install build dependencies for Rust and C libraries. rustup comes from the
-# Alpine package repository, whose packages are signed. This image does not
-# download an installer, so there is no installer checksum to keep up to date.
+# Alpine package repository, whose packages are signed.
 RUN apk add --no-cache \
     build-base \
     musl-dev \
