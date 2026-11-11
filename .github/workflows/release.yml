@@ -169,6 +169,7 @@ jobs:
               --certificate-identity-regexp="$signer_identity_regexp" \
               --certificate-github-workflow-repository="$GITHUB_REPOSITORY" \
               --certificate-github-workflow-ref="refs/tags/${GIT_REF_NAME}" \
+              --certificate-github-workflow-sha="$GITHUB_SHA" \
               "$1"
           }
 
@@ -195,6 +196,15 @@ jobs:
 
             sbom="kwctl-${target}-sbom/kwctl-${target}-sbom.spdx"
             verify_blob "$sbom"
+
+            # All the SBOMs of a release have the same signer, commit and tag.
+            # The signature does not say which binary an SBOM describes, so
+            # read that from the SBOM.
+            sbom_name=$(jq -r '.name' "$sbom")
+            if [ "$sbom_name" != "kwctl-${target}" ]; then
+              echo "::error::$sbom describes $sbom_name, not kwctl-${target}"
+              exit 1
+            fi
           done
       - name: Upload release assets
         id: upload_release_assets
