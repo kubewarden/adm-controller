@@ -339,9 +339,11 @@ jobs:
 
           # Fail rather than publish an SBOM without the Rust dependencies.
           # It happens when the binary was not built with cargo-auditable.
-          packages=$(jq '[.packages[] | select(.name != "kwctl-'"$TARGET"'")] | length' "$SBOM")
+          # Count only the Rust crates: other kinds of packages do not prove
+          # that the list is there.
+          packages=$(jq '[.packages[] | select(any(.externalRefs[]?; .referenceLocator | startswith("pkg:cargo/")))] | length' "$SBOM")
           if [ "$packages" -lt 1 ]; then
-            echo "::error::The SBOM of $BINARY lists no dependencies"
+            echo "::error::The SBOM of $BINARY lists no Rust crates"
             exit 1
           fi
 
