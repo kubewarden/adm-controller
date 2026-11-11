@@ -23,7 +23,8 @@
 # The toolchain and the sources, common to both binaries.
 FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS base
 
-ARG TARGETARCH # provided by docker buildkit
+# provided by docker buildkit
+ARG TARGETARCH
 
 # The version of cargo-auditable that embeds the list of dependencies in the
 # binary. Renovate updates it. It follows crates.io, because `cargo install`
