@@ -65,7 +65,7 @@ jobs:
           echo "Comparing against base: $BASE_REF"
 
           # Check for kwctl-related file changes
-          KWCTL_CHANGES=$(git diff --name-only "$BASE_REF" HEAD | grep -E '^crates/(kwctl|policy-evaluator|policy-fetcher|burrego)/|^Cargo\.(toml|lock)$' || true)
+          KWCTL_CHANGES=$(git diff --name-only "$BASE_REF" HEAD | grep -E '^crates/(kwctl|policy-evaluator|policy-fetcher|burrego)/|^Cargo\.(toml|lock)$|^Dockerfile\.kwctl$' || true)
           if [ -n "$KWCTL_CHANGES" ]; then
             echo "kwctl=true" >> $GITHUB_OUTPUT
             echo "kwctl-related files changed:"

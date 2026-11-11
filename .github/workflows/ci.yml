@@ -119,7 +119,7 @@ jobs:
           fi
 
           # Check for Rust file changes
-          RUST_CHANGES=$(git diff --name-only "$BASE_REF" HEAD | grep -E '^crates/.*\.rs$|^crates/.*/Cargo\.(toml|lock)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^crates/Makefile$' || true)
+          RUST_CHANGES=$(git diff --name-only "$BASE_REF" HEAD | grep -E '^crates/.*\.rs$|^crates/.*/Cargo\.(toml|lock)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^crates/Makefile$|^Dockerfile\.(kwctl|policy-server)$' || true)
           if [ -n "$RUST_CHANGES" ]; then
             echo "rust=true" >> $GITHUB_OUTPUT
             echo "Rust files changed:"
