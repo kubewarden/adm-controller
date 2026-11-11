@@ -322,7 +322,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install opa
-        uses: kubewarden/github-actions/opa-installer@4d25ea5d35d22768786526f592b0f9ba27587c9c # v8.0.0
+        uses: kubewarden/github-actions/opa-installer@d12b2b18e1f9dbfe15c79c9ecb7149cf956704a7 # v8.1.0
         with:
           # renovate: datasource=github-release-attachments depName=open-policy-agent/opa
           opa-version: v1.22.0

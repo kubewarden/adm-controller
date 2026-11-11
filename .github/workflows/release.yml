@@ -66,7 +66,7 @@ jobs:
       packages: write # Pushing images to ghcr.io
       id-token: write # Signing images with cosign and actions/attest
       attestations: write # actions/attest (SLSA L3 provenance)
-    uses: kubewarden/github-actions/.github/workflows/container-release.yml@4d25ea5d35d22768786526f592b0f9ba27587c9c # v8.0.0
+    uses: kubewarden/github-actions/.github/workflows/container-release.yml@d12b2b18e1f9dbfe15c79c9ecb7149cf956704a7 # v8.1.0
     with:
       components: '["policy-server","controller","audit-scanner"]'
       image-namespace: ${{ github.event.repository.name }}
