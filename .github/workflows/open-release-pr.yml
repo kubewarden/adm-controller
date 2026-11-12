@@ -50,6 +50,26 @@ jobs:
         # Disable plugin verification until helm v4 is supported
         run: helm plugin install https://github.com/losisin/helm-values-schema-json.git --verify=false
 
+      - name: Delete the updatecli working branch (and close existing PR)
+        # Workaround for https://github.com/updatecli/updatecli/issues/11278 :
+        #   Updatecli reuses an existing working branch. If that branch is behind
+        #   main, updatecli v0.123.0 force-pushes main over its own commits and
+        #   opens no PR. Deleting the branch also closes any open release PR.
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          # From the "branch" and "pipelineid" values in updatecli/values/
+          WORKING_BRANCH: updatecli_main_release_pr
+        run: |-
+          matches=$(gh api "repos/$REPO/git/matching-refs/heads/$WORKING_BRANCH" \
+            --jq 'map(select(.ref == "refs/heads/" + env.WORKING_BRANCH)) | length')
+          if [ "$matches" -gt 0 ]; then
+            gh api -X DELETE "repos/$REPO/git/refs/heads/$WORKING_BRANCH"
+            echo "Deleted branch $WORKING_BRANCH"
+          else
+            echo "Branch $WORKING_BRANCH does not exist"
+          fi
+
       - name: Open PR with updatecli
         env:
           UPDATECLI_GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
