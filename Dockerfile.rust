@@ -1,0 +1,160 @@
+# syntax=docker/dockerfile:1
+#
+# Build the Rust binaries of this repository: policy-server and kwctl. Both
+# are statically linked against musl, and both embed their list of
+# dependencies with cargo-auditable. The build uses the architecture of the
+# machine that runs it.
+#
+# Select what to build with --target:
+#
+#   policy-server  The container image of the policy server.
+#
+#   kwctl          Only the kwctl binary. This stage is not an image to run.
+#                  Export the binary with:
+#
+#                    docker build -f Dockerfile.rust --target kwctl \
+#                      --output type=local,dest=out .
+#
+#                  The binary is then out/kwctl.
+#
+# The two targets share the base stage. Docker builds only the stages that
+# the selected target needs.
+
+# The toolchain and the sources, common to both binaries.
+FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS base
+
+# provided by docker buildkit
+ARG TARGETARCH
+
+# The version of cargo-auditable that embeds the list of dependencies in the
+# binary. Renovate updates it. It follows crates.io, because `cargo install`
+# downloads the crate from there. A bare version is a range for cargo, so the
+# versioning is semver: a range would hide the patch releases from Renovate.
+# renovate: datasource=crate depName=cargo-auditable versioning=semver
+ARG CARGO_AUDITABLE_VERSION=0.7.7
+
+# Install build dependencies for Rust and C libraries. rustup comes from the
+# Alpine package repository, whose packages are signed.
+RUN apk add --no-cache \
+    build-base \
+    musl-dev \
+    pkgconfig \
+    rustup
+
+RUN <<EOF
+  case "${TARGETARCH}" in
+    amd64)
+      RUST_TARGET="x86_64-unknown-linux-musl"
+      ;;
+    arm64)
+      RUST_TARGET="aarch64-unknown-linux-musl"
+      ;;
+    *)
+      echo "Unsupported architecture: ${TARGETARCH}" && exit 1
+      ;;
+  esac
+
+  # Install rustup only, without any toolchain. The toolchain is installed
+  # further down from rust-toolchain.toml, so that the image builds with the
+  # Rust version that the repository pins. A default toolchain here would be
+  # a second one, that nothing uses.
+  rustup-init -y --default-toolchain none --profile minimal
+
+  echo "${RUST_TARGET}" > /tmp/rust_target
+EOF
+
+ENV PATH=/root/.cargo/bin:$PATH
+
+WORKDIR /usr/src/kubewarden
+
+# Install the Rust toolchain that the repository pins: the version, the
+# components and the targets all come from rust-toolchain.toml. The file
+# changes only on a Rust update, so this layer stays cached.
+COPY ./rust-toolchain.toml ./
+RUN rustup toolchain install
+
+# Install cargo-auditable. It does not need the workspace files, so this step
+# stays here, before the COPY commands. A change to a crate then does not
+# invalidate this layer. The two mounts hold the cargo download cache. The
+# cache stays on the build machine. It does not go into the image.
+RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
+    cargo install --locked --version "${CARGO_AUDITABLE_VERSION}" cargo-auditable
+
+# Copy workspace files
+COPY ./Cargo.toml ./Cargo.lock ./
+COPY crates/ ./crates
+
+# Enable static linking after cargo-auditable is installed,
+# apparently it cannot be statically linked.
+ENV RUSTFLAGS="-C target-feature=+crt-static"
+
+# The two builder stages that follow use a cargo-target mount. It holds the
+# compiled dependencies between builds, so a change to one crate does not
+# force a rebuild of the full dependency tree. The mount stays on the build
+# machine and not in the image, so each stage copies its binary out before
+# the mount closes. Run "docker builder prune" to clear this cache.
+
+FROM base AS kwctl-builder
+
+ARG TARGETARCH
+
+# Build the kwctl binary statically linked.
+RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
+    --mount=type=cache,id=cargo-target-kwctl-${TARGETARCH},target=/usr/src/kubewarden/target,sharing=locked \
+    cargo auditable build --locked --release -p kwctl --target $(cat /tmp/rust_target) && \
+    cp target/$(cat /tmp/rust_target)/release/kwctl /kwctl
+
+# Fail the build unless the binary is static: it must name no dynamic loader
+# (INTERP) and need no shared library (NEEDED). The output of readelf goes
+# to a file first, so an error of readelf also fails the build.
+RUN readelf -lW /kwctl > /tmp/elf && readelf -dW /kwctl >> /tmp/elf && \
+    if grep -q -e INTERP -e NEEDED /tmp/elf; then \
+      echo "kwctl is not statically linked" >&2; exit 1; \
+    fi
+
+# The binary is the only thing that leaves the build
+FROM scratch AS kwctl
+COPY --from=kwctl-builder /kwctl /kwctl
+
+FROM base AS policy-server-builder
+
+ARG TARGETARCH
+
+# Build the policy-server binary statically linked.
+RUN --mount=type=cache,id=cargo-registry,target=/root/.cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/root/.cargo/git \
+    --mount=type=cache,id=cargo-target-policy-server-${TARGETARCH},target=/usr/src/kubewarden/target,sharing=locked \
+    cargo auditable build --locked --release -p policy-server --target $(cat /tmp/rust_target) && \
+    cp target/$(cat /tmp/rust_target)/release/policy-server /policy-server
+
+# Fail the build unless the binary is static, as for kwctl.
+RUN readelf -lW /policy-server > /tmp/elf && readelf -dW /policy-server >> /tmp/elf && \
+    if grep -q -e INTERP -e NEEDED /tmp/elf; then \
+      echo "policy-server is not statically linked" >&2; exit 1; \
+    fi
+
+# Create minimal user configuration
+FROM alpine:3.24.4@sha256:93b41ef40b1677fce8fcc64ff4af09daddfacf5040afde618bc46c1e2d1cc7d4 AS cfg
+
+RUN echo "policy-server:x:65533:65533::/tmp:/sbin/nologin" >> /etc/passwd && \
+    echo "policy-server:x:65533:policy-server" >> /etc/group
+
+# The policy-server image, on a distroless base
+FROM gcr.io/distroless/static:nonroot AS policy-server
+COPY --from=policy-server-builder /policy-server /policy-server
+COPY --from=cfg /etc/passwd /etc/passwd
+COPY --from=cfg /etc/group /etc/group
+COPY ./Cargo.lock /Cargo.lock
+
+USER 65533:65533
+
+# Default port, should be used when tls is not enabled
+EXPOSE 3000
+# Readiness probe port, always http
+EXPOSE 8081
+# To be used when tls is enabled
+EXPOSE 8443
+
+ENTRYPOINT ["/policy-server"]

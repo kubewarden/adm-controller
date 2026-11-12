@@ -3,7 +3,7 @@ build: build-release build-docs
 
 .PHONY: build-release
 build-release:
-	cargo build --release
+	cargo build --locked --release
 
 .PHONY:build-docs
 build-docs:

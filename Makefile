@@ -136,12 +136,12 @@ POLICY_SERVER_SRC_DIRS := crates/policy-server crates/policy-evaluator crates/po
 POLICY_SERVER_SRCS := $(shell find $(POLICY_SERVER_SRC_DIRS) -type f -name '*.rs') Cargo.toml Cargo.lock $(shell find crates -name 'Cargo.*')
 .PHONY: policy-server
 policy-server: $(POLICY_SERVER_SRCS) lint-rust
-	cross build --target $(RUST_TARGET) --release -p policy-server
+	cross build --locked --target $(RUST_TARGET) --release -p policy-server
 	cp ./target/$(RUST_TARGET)/release/policy-server ./bin/policy-server
 
 .PHONY: policy-server-image
 policy-server-image:
-	docker build -f ./Dockerfile.policy-server \
+	docker build -f ./Dockerfile.rust --target policy-server \
 		-t "$(REGISTRY)/$(REPO)/policy-server:$(TAG)" .
 	@echo "Built $(REGISTRY)/$(REPO)/policy-server:$(TAG)"
 
@@ -149,7 +149,7 @@ KWCTL_SRC_DIRS := crates/kwctl
 KWCTL_SRCS := $(shell find $(KWCTL_SRC_DIRS) -type f -name '*.rs') Cargo.toml Cargo.lock $(shell find crates -name 'Cargo.*')
 .PHONY: kwctl
 kwctl: $(KWCTL_SRCS) lint-rust
-	cross build --target $(RUST_TARGET) --release -p kwctl
+	cross build --locked --target $(RUST_TARGET) --release -p kwctl
 	cp ./target/$(RUST_TARGET)/release/kwctl ./bin/kwctl
 
 .PHONY: generate
