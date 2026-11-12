@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	policiesv1 "github.com/kubewarden/adm-controller/api/policies/v1"
 	"github.com/kubewarden/adm-controller/internal/certs"
@@ -419,3 +420,142 @@ func webhookRules(webhookConfiguration client.Object) []admissionregistrationv1.
 		return nil
 	}
 }
+
+func newWebhookConfigurationOfKind(mutating bool, name string) client.Object {
+	if mutating {
+		return &admissionregistrationv1.MutatingWebhookConfiguration{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	}
+	return &admissionregistrationv1.ValidatingWebhookConfiguration{ObjectMeta: metav1.ObjectMeta{Name: name}}
+}
+
+func requireWebhookConfigurationExists(t *testing.T, k8sClient client.Client, mutating bool, name string) {
+	t.Helper()
+	require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKey{Name: name}, newWebhookConfigurationOfKind(mutating, name)))
+}
+
+func requireWebhookConfigurationNotFound(t *testing.T, k8sClient client.Client, mutating bool, name string) {
+	t.Helper()
+	err := k8sClient.Get(t.Context(), client.ObjectKey{Name: name}, newWebhookConfigurationOfKind(mutating, name))
+	require.True(t, apierrors.IsNotFound(err), "expected not found, got: %v", err)
+}
+
+func newTestPolicyFactories() map[string]func(mutating bool) policiesv1.Policy {
+	return map[string]func(mutating bool) policiesv1.Policy{
+		"AdmissionPolicy": func(mutating bool) policiesv1.Policy {
+			return policiesv1.NewAdmissionPolicyFactory().WithMutating(mutating).Build()
+		},
+		"ClusterAdmissionPolicy": func(mutating bool) policiesv1.Policy {
+			return policiesv1.NewClusterAdmissionPolicyFactory().WithMutating(mutating).Build()
+		},
+	}
+}
+
+func TestReconcileWebhookConfigurationDeletesTheOtherKind(t *testing.T) {
+	caRootSecret := &corev1.Secret{Data: map[string][]byte{}}
+
+	for policyKind, newPolicy := range newTestPolicyFactories() {
+		for _, mutating := range []bool{true, false} {
+			for _, otherKindExists := range []bool{true, false} {
+				name := fmt.Sprintf("%s mutating=%t other kind exists=%t", policyKind, mutating, otherKindExists)
+				t.Run(name, func(t *testing.T) {
+					policy := newPolicy(mutating)
+					builder := fake.NewClientBuilder()
+					if otherKindExists {
+						builder = builder.WithObjects(newWebhookConfigurationOfKind(!mutating, policy.GetUniqueName()))
+					}
+					k8sClient := builder.Build()
+					r := &policySubReconciler{Client: k8sClient, Log: logr.Discard(), deploymentsNamespace: testDeploymentsNamespace}
+
+					require.NoError(t, r.reconcileWebhookConfiguration(t.Context(), policy, caRootSecret, "policy-server-default"))
+
+					requireWebhookConfigurationExists(t, k8sClient, mutating, policy.GetUniqueName())
+					requireWebhookConfigurationNotFound(t, k8sClient, !mutating, policy.GetUniqueName())
+				})
+			}
+		}
+	}
+}
+
+func TestRemovePolicyWebhooksAndFinalizersDeletesBothKinds(t *testing.T) {
+	for policyKind, newPolicy := range newTestPolicyFactories() {
+		for _, mutating := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s mutating=%t", policyKind, mutating), func(t *testing.T) {
+				policy := newPolicy(mutating)
+				policy.SetFinalizers([]string{constants.KubewardenFinalizer})
+				name := policy.GetUniqueName()
+				scheme := newTestScheme()
+				k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+					policy,
+					newWebhookConfigurationOfKind(true, name),
+					newWebhookConfigurationOfKind(false, name),
+				).Build()
+				r := &policySubReconciler{Client: k8sClient, Log: logr.Discard(), deploymentsNamespace: testDeploymentsNamespace}
+
+				require.NoError(t, r.removePolicyWebhooksAndFinalizers(t.Context(), policy))
+
+				requireWebhookConfigurationNotFound(t, k8sClient, true, name)
+				requireWebhookConfigurationNotFound(t, k8sClient, false, name)
+				storedPolicy := newPolicy(mutating)
+				require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(policy), storedPolicy))
+				require.Empty(t, storedPolicy.GetFinalizers())
+			})
+		}
+	}
+}
+
+var _ = Describe("Webhook configuration of a deleted policy whose spec.mutating changed", func() {
+	ctx := context.Background()
+
+	It("should delete the webhook configuration of the old kind", func() {
+		policyServerName := newName("policy-server")
+		createPolicyServerAndWaitForItsService(ctx, policiesv1.NewPolicyServerFactory().WithName(policyServerName).Build())
+		policy := policiesv1.NewAdmissionPolicyFactory().
+			WithPolicyServer(policyServerName).
+			WithMutating(true).
+			WithoutFinalizers().
+			Build()
+		// Envtest runs no pods, so the controller never adds the finalizer. Add it by hand.
+		controllerutil.AddFinalizer(policy, constants.KubewardenFinalizer)
+		Expect(k8sClient.Create(ctx, policy)).To(Succeed())
+
+		// The controller creates no webhook configuration for the same reason. Create the validating
+		// configuration by hand, as a leftover of an earlier spec.mutating value. It has no rules, so
+		// it intercepts no request of the other specs.
+		leftover := &admissionregistrationv1.ValidatingWebhookConfiguration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   policy.GetUniqueName(),
+				Labels: map[string]string{constants.PartOfLabelKey: constants.PartOfLabelValue},
+				Annotations: map[string]string{
+					constants.WebhookConfigurationPolicyNameAnnotationKey:      policy.GetName(),
+					constants.WebhookConfigurationPolicyNamespaceAnnotationKey: policy.GetNamespace(),
+				},
+			},
+			Webhooks: []admissionregistrationv1.ValidatingWebhook{{
+				Name:                    policy.GetUniqueName() + constants.WebhookNameSuffix,
+				AdmissionReviewVersions: []string{"v1"},
+				SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
+				ClientConfig: admissionregistrationv1.WebhookClientConfig{
+					Service: &admissionregistrationv1.ServiceReference{Namespace: deploymentsNamespace, Name: policyServerName},
+				},
+			}},
+		}
+		Expect(k8sClient.Create(ctx, leftover)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, leftover))).To(Succeed())
+		})
+
+		Expect(k8sClient.Delete(ctx, policy)).To(Succeed())
+
+		key := client.ObjectKey{Name: policy.GetUniqueName()}
+		Eventually(func() error {
+			return k8sClient.Get(ctx, key, &admissionregistrationv1.ValidatingWebhookConfiguration{})
+		}, timeout, pollInterval).Should(WithTransform(apierrors.IsNotFound, BeTrue()))
+		Eventually(func() error {
+			return k8sClient.Get(ctx, key, &admissionregistrationv1.MutatingWebhookConfiguration{})
+		}, timeout, pollInterval).Should(WithTransform(apierrors.IsNotFound, BeTrue()))
+		Eventually(func() error {
+			_, err := getTestAdmissionPolicy(ctx, policy.Namespace, policy.Name)
+			return err
+		}, timeout, pollInterval).Should(WithTransform(apierrors.IsNotFound, BeTrue()))
+	})
+})

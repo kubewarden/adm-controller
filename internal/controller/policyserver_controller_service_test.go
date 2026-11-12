@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,12 +33,14 @@ import (
 	"github.com/kubewarden/adm-controller/internal/constants"
 )
 
-// newTestScheme returns a runtime.Scheme with the PolicyServer types
-// registered, which is needed by updateService (SetOwnerReference).
+// newTestScheme returns a runtime.Scheme for the unit tests of this package.
+// updateService needs the PolicyServer types for SetOwnerReference. The policy
+// tests need the webhook configuration types in the fake client.
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = policiesv1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
+	_ = admissionregistrationv1.AddToScheme(s)
 	return s
 }
 
