@@ -15,7 +15,7 @@ spec:
     - name: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0-rc.4
       certificate-identity-regexp: ^https://github\.com/kubewarden/github-actions/\.github/workflows/container-release\.yml@
       certificate-github-workflow-repository: kubewarden/adm-controller
-    - name: ghcr.io/kubewarden/adm-controller/controller:v1.39.0-rc.3
+    - name: ghcr.io/kubewarden/adm-controller/controller:v1.39.0-rc.4
       certificate-identity-regexp: ^https://github\.com/kubewarden/github-actions/\.github/workflows/container-release\.yml@
       certificate-github-workflow-repository: kubewarden/adm-controller
     - name: ghcr.io/kubewarden/adm-controller/policy-server:v1.39.0-rc.4
