@@ -270,6 +270,63 @@ To download one file, use the digest of its layer:
 crane blob ghcr.io/kubewarden/adm-controller/controller@sha256:<LAYER DIGEST>
 ```
 
+## Verifying kwctl
+
+Every release also publishes the `kwctl` binaries for Linux, macOS and Windows.
+The release assets follow the pattern `kwctl-<os>-<arch>.zip`. Each zip file
+holds the binary and its cosign signature bundle. Next to the zip files, the
+release has the SBOM of each binary, `kwctl-<os>-<arch>-sbom.spdx`, and its
+signature bundle.
+
+The build of the binaries and the signing are two separate jobs of the same
+workflow. The job that compiles the code cannot request a signing identity. The
+job that signs does not run any code of the repository, and it signs only a
+binary with the digest that the build job reported. For this reason the binaries
+have SLSA Build L3 provenance.
+
+To verify the provenance of a binary, run:
+
+```shell
+gh attestation verify kwctl-linux-x86_64 \
+    --repo kubewarden/adm-controller \
+    --signer-workflow kubewarden/adm-controller/.github/workflows/build-kwctl.yml \
+    --source-ref refs/tags/<TAG TO VERIFY>
+```
+
+To verify the cosign signature of a binary, run:
+
+```shell
+cosign verify-blob --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
+    --certificate-identity-regexp='^https://github\.com/kubewarden/adm-controller/\.github/workflows/build-kwctl\.yml@' \
+    --certificate-github-workflow-repository=kubewarden/adm-controller \
+    --certificate-github-workflow-ref='refs/tags/<TAG TO VERIFY>' \
+    --bundle kwctl-linux-x86_64.bundle.sigstore \
+    kwctl-linux-x86_64
+```
+
+The SBOM files use the same command, with the `.spdx` file and its
+`.spdx.bundle.sigstore` bundle. On Windows, the binary is called
+`kwctl-windows-x86_64.exe` and its bundle `kwctl-windows-x86_64.bundle.sigstore`.
+
+The build embeds the list of the Rust dependencies in each binary with
+[`cargo-auditable`](https://github.com/rust-secure-code/cargo-auditable). The
+SBOM comes from this list. Thus it names only the crates that are part of that
+binary. To read the list yourself, or to scan the binary for known
+vulnerabilities, run:
+
+```shell
+syft scan file:kwctl-linux-x86_64
+cargo audit bin kwctl-linux-x86_64
+```
+
+To build the Linux binary yourself the way the release does, run:
+
+```shell
+docker build -f Dockerfile.rust --target kwctl --output type=local,dest=out .
+```
+
+The binary is then `out/kwctl`.
+
 ## Security disclosure
 
 See [SECURITY.md](https://github.com/kubewarden/.github/blob/main/SECURITY.md) in the kubewarden/.github repo.
