@@ -590,7 +590,7 @@ recommendedPolicies:
   allowPrivilegeEscalationPolicy:
     module:
       repository: "kubewarden/policies/allow-privilege-escalation-psp"
-      tag: v1.0.15
+      tag: v1.0.16
     name: "no-privilege-escalation"
     settings:
       allowPrivilegeEscalation: false
@@ -598,7 +598,7 @@ recommendedPolicies:
   hostNamespacePolicy:
     module:
       repository: "kubewarden/policies/host-namespaces-psp"
-      tag: v1.1.13
+      tag: v1.1.14
     name: "no-host-namespace-sharing"
     settings:
       allow_host_ipc: false
@@ -632,7 +632,7 @@ recommendedPolicies:
   hostPathsPolicy:
     module:
       repository: "kubewarden/policies/hostpaths-psp"
-      tag: v1.1.12
+      tag: v1.1.13
     name: "do-not-share-host-paths"
     settings:
       allowedHostPaths:
@@ -642,7 +642,7 @@ recommendedPolicies:
   capabilitiesPolicy:
     module:
       repository: "kubewarden/policies/capabilities-psp"
-      tag: v1.0.15
+      tag: v1.0.16
     name: "drop-capabilities"
     settings:
       allowed_capabilities: []
