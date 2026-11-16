@@ -85,6 +85,21 @@ impl From<ResourceLimits> for ferricel_core::runtime::ResourceLimits {
     }
 }
 
+/// Create a `wasmtime::Config` with the WebAssembly features that policies
+/// need.
+///
+/// Every engine that compiles or runs policies must start from this
+/// configuration. Otherwise kwctl and policy-server accept different policies.
+pub fn wasmtime_config() -> wasmtime::Config {
+    let mut config = wasmtime::Config::new();
+    // required by policies built by the official go compiler >= 1.26.0
+    config.wasm_function_references(true);
+    // required by policies optimized with `wasm-opt --all-features` from
+    // binaryen >= 133
+    config.wasm_compact_imports(true);
+    config
+}
+
 /// Helper Struct that creates a `PolicyEvaluator` object
 #[derive(Default)]
 pub struct PolicyEvaluatorBuilder {
@@ -372,5 +387,24 @@ mod tests {
             .enable_epoch_interruptions(1, 2);
 
         _ = policy_evaluator_builder.build_pre().unwrap();
+    }
+
+    #[rstest::rstest]
+    #[case::standard_imports(r#"(module (import "env" "a" (func)) (import "env" "b" (func)))"#)]
+    #[case::compact_imports_encoding_1(
+        r#"(module (import "env" (item "a" (func)) (item "b" (func))))"#
+    )]
+    #[case::compact_imports_encoding_2(r#"(module (import "env" (item "a") (item "b") (func)))"#)]
+    #[case::function_references(
+        r#"(module
+            (type $t (func))
+            (func $f (type $t))
+            (elem declare func $f)
+            (func (call_ref $t (ref.func $f))))"#
+    )]
+    fn wasmtime_config_accepts_policy_features(#[case] wat: &str) {
+        let engine = wasmtime::Engine::new(&wasmtime_config()).expect("the policy config is valid");
+
+        wasmtime::Module::new(&engine, wat).expect("cannot compile module");
     }
 }
