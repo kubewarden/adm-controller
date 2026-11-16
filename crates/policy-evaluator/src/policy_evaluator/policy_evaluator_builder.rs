@@ -296,7 +296,7 @@ impl PolicyEvaluatorBuilder {
             .as_ref()
             .map_or_else(
                 || {
-                    let mut wasmtime_config = wasmtime::Config::new();
+                    let mut wasmtime_config = wasmtime_config();
                     if self.wasmtime_cache {
                         let cache = wasmtime::Cache::new(wasmtime::CacheConfig::new())?;
                         wasmtime_config.cache(Some(cache));
@@ -304,8 +304,6 @@ impl PolicyEvaluatorBuilder {
                     if self.epoch_deadlines.is_some() {
                         wasmtime_config.epoch_interruption(true);
                     }
-                    // required by policies built by the official go compiler >= 1.26.0
-                    wasmtime_config.wasm_function_references(true);
 
                     wasmtime::Engine::new(&wasmtime_config)
                 },
