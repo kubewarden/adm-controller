@@ -369,6 +369,8 @@ impl PolicyEvaluatorBuilder {
 
 #[cfg(test)]
 mod tests {
+    use std::hash::{Hash, Hasher};
+
     use super::*;
 
     #[test]
@@ -385,6 +387,80 @@ mod tests {
             .enable_epoch_interruptions(1, 2);
 
         _ = policy_evaluator_builder.build_pre().unwrap();
+    }
+
+    fn compatibility_hash(engine: &wasmtime::Engine) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        engine.precompile_compatibility_hash().hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[rstest::rstest]
+    #[case::default(PolicyEvaluatorBuilder::new(), wasmtime_config())]
+    #[case::epoch_interruptions(
+        PolicyEvaluatorBuilder::new().enable_epoch_interruptions(1, 2),
+        {
+            let mut config = wasmtime_config();
+            config.epoch_interruption(true);
+            config
+        }
+    )]
+    fn build_engine_starts_from_wasmtime_config(
+        #[case] builder: PolicyEvaluatorBuilder,
+        #[case] expected_config: wasmtime::Config,
+    ) {
+        let engine = builder.build_engine().expect("cannot build engine");
+        let expected_engine =
+            wasmtime::Engine::new(&expected_config).expect("cannot build expected engine");
+
+        assert_eq!(
+            compatibility_hash(&expected_engine),
+            compatibility_hash(&engine)
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::wasmtime_default(PolicyEvaluatorBuilder::new(), wasmtime::Config::new())]
+    #[case::without_compact_imports(
+        PolicyEvaluatorBuilder::new(),
+        {
+            let mut config = wasmtime_config();
+            config.wasm_compact_imports(false);
+            config
+        }
+    )]
+    #[case::without_function_references(
+        PolicyEvaluatorBuilder::new(),
+        {
+            let mut config = wasmtime_config();
+            config.wasm_function_references(false);
+            config
+        }
+    )]
+    #[case::without_epoch_interruptions(
+        PolicyEvaluatorBuilder::new().enable_epoch_interruptions(1, 2),
+        wasmtime_config()
+    )]
+    #[case::with_unrequested_epoch_interruptions(
+        PolicyEvaluatorBuilder::new(),
+        {
+            let mut config = wasmtime_config();
+            config.epoch_interruption(true);
+            config
+        }
+    )]
+    fn build_engine_differs_from_regressed_config(
+        #[case] builder: PolicyEvaluatorBuilder,
+        #[case] regressed_config: wasmtime::Config,
+    ) {
+        let engine = builder.build_engine().expect("cannot build engine");
+        let regressed_engine =
+            wasmtime::Engine::new(&regressed_config).expect("cannot build regressed engine");
+
+        assert_ne!(
+            compatibility_hash(&regressed_engine),
+            compatibility_hash(&engine)
+        );
     }
 
     #[rstest::rstest]
