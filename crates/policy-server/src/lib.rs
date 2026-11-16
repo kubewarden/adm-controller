@@ -29,7 +29,7 @@ use config::Config;
 use evaluation::EvaluationEnvironmentBuilder;
 use policy_evaluator::{
     callback_handler::{CallbackHandler, CallbackHandlerBuilder},
-    kube,
+    kube, policy_evaluator_builder,
     policy_fetcher::sigstore::trust::sigstore::SigstoreTrustRoot,
     wasmtime,
 };
@@ -170,20 +170,15 @@ impl PolicyServer {
             )
             .await;
 
-        let mut wasmtime_config = wasmtime::Config::default();
-        // required by policies built by the official go compiler >= 1.26.0
-        wasmtime_config.wasm_function_references(true);
-
-        if config.policy_evaluation_limit_seconds.is_some() {
-            wasmtime_config.epoch_interruption(true);
-        } else if config::any_policy_has_timeout(&config.policies) {
+        let timeout_protection = config.policy_evaluation_limit_seconds.is_some();
+        if !timeout_protection && config::any_policy_has_timeout(&config.policies) {
             warn!(
                 "timeout protection is disabled: the timeoutEvalSeconds setting of policies \
                  will be ignored"
             );
         }
 
-        let engine = wasmtime::Engine::new(&wasmtime_config)?;
+        let engine = build_engine(timeout_protection)?;
         let precompiled_policies = precompile_policies(&engine, &fetched_policies);
 
         if !config.continue_on_errors {
@@ -385,6 +380,12 @@ impl PolicyServer {
     pub fn router(&self) -> Router {
         self.router.clone()
     }
+}
+
+fn build_engine(epoch_interruption: bool) -> Result<wasmtime::Engine> {
+    let mut wasmtime_config = policy_evaluator_builder::wasmtime_config();
+    wasmtime_config.epoch_interruption(epoch_interruption);
+    Ok(wasmtime::Engine::new(&wasmtime_config)?)
 }
 
 fn precompile_policies(
