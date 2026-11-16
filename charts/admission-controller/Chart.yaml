@@ -40,7 +40,7 @@ annotations:
   # Assume the most standard setup for your chart. These can be strings with amounts, ie 64Mi or 2Gi are both valid.
   catalog.cattle.io/requests-cpu: "250m"
   catalog.cattle.io/requests-memory: "50Mi"
-  catalog.cattle.io/rancher-version: ">= 2.6.0-0 <= 2.15.100-0" # Chart will only be available for users in the specified Rancher version(s). This _must_ use build metadata or it won't work correctly for future RC's.
+  catalog.cattle.io/rancher-version: ">= 2.6.0-0 <= 2.16.100-0" # Chart will only be available for users in the specified Rancher version(s). This _must_ use build metadata or it won't work correctly for future RC's.
   # Valid values for the following annotation include: `cluster-tool`, `app` or `cluster-template`
   # See the Cluster Tools section to learn more about when to set this value to `cluster-tool`.
   catalog.cattle.io/type: cluster-tool
