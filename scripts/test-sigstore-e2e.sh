@@ -348,7 +348,7 @@ function sign_image() {
     cosign sign --yes \
         --rekor-url "${REKOR_URL}" \
         --fulcio-url "${FULCIO_URL}" \
-        --allow-insecure-registry \
+        --allow-http-registry \
         --new-bundle-format=false \
         --use-signing-config=false \
         --trusted-root trusted_root.json \
@@ -364,7 +364,7 @@ function verify_image_cosign() {
     cosign verify \
         --new-bundle-format=false \
         --rekor-url "${REKOR_URL}" \
-        --allow-insecure-registry \
+        --allow-http-registry \
         --trusted-root trusted_root.json \
         --certificate-identity \
             "https://kubernetes.io/namespaces/default/serviceaccounts/default" \

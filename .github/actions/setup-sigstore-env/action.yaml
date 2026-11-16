@@ -72,7 +72,7 @@ runs:
         # rust crate still does not support it
         cosign sign --yes --rekor-url ${REKOR_URL} \
           --fulcio-url ${FULCIO_URL} \
-          --allow-insecure-registry \
+          --allow-http-registry \
           --new-bundle-format=false \
           --use-signing-config=false \
           --identity-token $(curl -s $ISSUER_URL) \
@@ -85,7 +85,7 @@ runs:
         cosign verify \
           --new-bundle-format=false \
           --rekor-url "${REKOR_URL}" \
-          --allow-insecure-registry \
+          --allow-http-registry \
           --certificate-identity "https://kubernetes.io/namespaces/default/serviceaccounts/default" \
           --certificate-oidc-issuer "https://kubernetes.default.svc.cluster.local" \
           "registry.local:5000/policies/testing:latest"
