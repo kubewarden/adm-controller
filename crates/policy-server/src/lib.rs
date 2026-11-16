@@ -470,3 +470,77 @@ fn build_sigstore_trust_root_from_config(pki_file: &PathBuf) -> Result<Arc<Sigst
 
     Ok(Arc::new(trust_root))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::hash::{Hash, Hasher};
+
+    use rstest::rstest;
+
+    use super::*;
+
+    fn compatibility_hash(engine: &wasmtime::Engine) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        engine.precompile_compatibility_hash().hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[rstest]
+    #[case::without_epoch_interruption(false)]
+    #[case::with_epoch_interruption(true)]
+    fn build_engine_starts_from_wasmtime_config(#[case] epoch_interruption: bool) {
+        let mut expected_config = policy_evaluator_builder::wasmtime_config();
+        expected_config.epoch_interruption(epoch_interruption);
+        let expected_engine =
+            wasmtime::Engine::new(&expected_config).expect("cannot build expected engine");
+
+        let engine = build_engine(epoch_interruption).expect("cannot build engine");
+
+        assert_eq!(
+            compatibility_hash(&expected_engine),
+            compatibility_hash(&engine)
+        );
+    }
+
+    #[rstest]
+    #[case::wasmtime_default(false, wasmtime::Config::default())]
+    #[case::without_compact_imports(
+        false,
+        {
+            let mut config = policy_evaluator_builder::wasmtime_config();
+            config.wasm_compact_imports(false);
+            config
+        }
+    )]
+    #[case::without_function_references(
+        false,
+        {
+            let mut config = policy_evaluator_builder::wasmtime_config();
+            config.wasm_function_references(false);
+            config
+        }
+    )]
+    #[case::without_epoch_interruption(true, policy_evaluator_builder::wasmtime_config())]
+    #[case::with_unrequested_epoch_interruption(
+        false,
+        {
+            let mut config = policy_evaluator_builder::wasmtime_config();
+            config.epoch_interruption(true);
+            config
+        }
+    )]
+    fn build_engine_differs_from_regressed_config(
+        #[case] epoch_interruption: bool,
+        #[case] regressed_config: wasmtime::Config,
+    ) {
+        let regressed_engine =
+            wasmtime::Engine::new(&regressed_config).expect("cannot build regressed engine");
+
+        let engine = build_engine(epoch_interruption).expect("cannot build engine");
+
+        assert_ne!(
+            compatibility_hash(&regressed_engine),
+            compatibility_hash(&engine)
+        );
+    }
+}
