@@ -6,8 +6,8 @@ branding:
 runs:
   using: "composite"
   steps:
-    - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-    - uses: sigstore/scaffolding/actions/setup@a43392f3c4fc9fd7a0b54c8b0eb2a10b20ee241b # v0.7.40
+    - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+    - uses: sigstore/scaffolding/actions/setup@c9e7cb4a331fad6ff917e0f912a37035487f6d55 # v0.7.41
       with:
         # Pin the release installed by the action. Without this it defaults to
         # "latest-release" (currently v0.7.37), which dropped release-rekor.yaml
