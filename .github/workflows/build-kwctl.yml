@@ -257,7 +257,7 @@ jobs:
     name: Attest and sign ${{ matrix.target }}
     needs: build
     if: ${{ !inputs.build_only }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
