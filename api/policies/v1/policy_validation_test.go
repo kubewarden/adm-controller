@@ -800,15 +800,37 @@ func TestValidatePolicyModule(t *testing.T) {
 		require.Empty(t, validatePolicyCreate(policy))
 	})
 
-	t.Run("update rejects a bad module", func(t *testing.T) {
+	t.Run("update with the same bad module passes", func(t *testing.T) {
 		oldPolicy := NewClusterAdmissionPolicyFactory().Build()
 		oldPolicy.Spec.Module = badModule
 		newPolicy := oldPolicy.DeepCopy()
+		newPolicy.Finalizers = nil
+		newPolicy.Labels = map[string]string{"changed": "true"}
+
+		require.Empty(t, validatePolicyUpdate(oldPolicy, newPolicy))
+	})
+
+	t.Run("update to a bad module is rejected", func(t *testing.T) {
+		oldPolicy := NewClusterAdmissionPolicyFactory().Build()
+		oldPolicy.Spec.Module = goodModule
+		newPolicy := oldPolicy.DeepCopy()
+		newPolicy.Spec.Module = badModule
 
 		errs := validatePolicyUpdate(oldPolicy, newPolicy)
 		require.Len(t, errs, 1)
 		require.Equal(t, modulePath, errs[0].Field)
 		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("update from a bad module to another bad module is rejected", func(t *testing.T) {
+		oldPolicy := NewClusterAdmissionPolicyFactory().Build()
+		oldPolicy.Spec.Module = badModule
+		newPolicy := oldPolicy.DeepCopy()
+		newPolicy.Spec.Module = badModule + "2"
+
+		errs := validatePolicyUpdate(oldPolicy, newPolicy)
+		require.Len(t, errs, 1)
+		require.Equal(t, modulePath, errs[0].Field)
 	})
 
 	t.Run("namespaced policy rejects a bad module", func(t *testing.T) {
@@ -820,7 +842,13 @@ func TestValidatePolicyModule(t *testing.T) {
 		require.Equal(t, modulePath, errs[0].Field)
 		require.Equal(t, message, errs[0].Detail)
 
-		errs = validatePolicyUpdate(policy, policy.DeepCopy())
+		unchanged := policy.DeepCopy()
+		unchanged.Labels = map[string]string{"changed": "true"}
+		require.Empty(t, validatePolicyUpdate(policy, unchanged))
+
+		goodPolicy := NewAdmissionPolicyFactory().Build()
+		goodPolicy.Spec.Module = goodModule
+		errs = validatePolicyUpdate(goodPolicy, policy)
 		require.Len(t, errs, 1)
 		require.Equal(t, modulePath, errs[0].Field)
 		require.Equal(t, message, errs[0].Detail)
