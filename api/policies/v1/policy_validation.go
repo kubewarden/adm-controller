@@ -53,6 +53,9 @@ func validatePolicyCreate(policy Policy) field.ErrorList {
 	allErrors = append(allErrors, validateRulesField(policy)...)
 	allErrors = append(allErrors, validateMatchConditions(policy.GetMatchConditions(), field.NewPath("spec").Child("matchConditions"))...)
 	allErrors = append(allErrors, validateTimeoutSeconds(policy)...)
+	if err := validateModuleURL(policy.GetModule(), field.NewPath("spec").Child("module")); err != nil {
+		allErrors = append(allErrors, err)
+	}
 	if err := validateUniqueNameLength(policy); err != nil {
 		allErrors = append(allErrors, err)
 	}
@@ -65,6 +68,9 @@ func validatePolicyUpdate(oldPolicy, newPolicy Policy) field.ErrorList {
 	allErrors = append(allErrors, validateRulesField(newPolicy)...)
 	allErrors = append(allErrors, validateMatchConditions(newPolicy.GetMatchConditions(), field.NewPath("spec").Child("matchConditions"))...)
 	allErrors = append(allErrors, validateTimeoutSeconds(newPolicy)...)
+	if err := validateModuleURL(newPolicy.GetModule(), field.NewPath("spec").Child("module")); err != nil {
+		allErrors = append(allErrors, err)
+	}
 	if err := validatePolicyServerField(oldPolicy, newPolicy); err != nil {
 		allErrors = append(allErrors, err)
 	}

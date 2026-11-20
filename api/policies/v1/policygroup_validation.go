@@ -2,7 +2,9 @@ package v1
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/decls"
@@ -35,6 +37,7 @@ func validatePolicyGroupCreate(policyGroup PolicyGroup) field.ErrorList {
 	allErrors = append(allErrors, validatePolicyCreate(policyGroup)...)
 	allErrors = append(allErrors, validatePolicyGroupMembers(policyGroup)...)
 	allErrors = append(allErrors, validatePolicyGroupMembersTimeouts(policyGroup)...)
+	allErrors = append(allErrors, validatePolicyGroupMembersModule(policyGroup)...)
 	if err := validatePolicyGroupExpressionField(policyGroup); err != nil {
 		allErrors = append(allErrors, err)
 	}
@@ -51,6 +54,7 @@ func validatePolicyGroupUpdate(oldPolicyGroup, newPolicyGroup PolicyGroup) field
 	allErrors = append(allErrors, validatePolicyUpdate(oldPolicyGroup, newPolicyGroup)...)
 	allErrors = append(allErrors, validatePolicyGroupMembers(newPolicyGroup)...)
 	allErrors = append(allErrors, validatePolicyGroupMembersTimeouts(newPolicyGroup)...)
+	allErrors = append(allErrors, validatePolicyGroupMembersModule(newPolicyGroup)...)
 	if err := validatePolicyGroupExpressionField(newPolicyGroup); err != nil {
 		allErrors = append(allErrors, err)
 	}
@@ -191,5 +195,19 @@ func validatePolicyGroupMembersTimeouts(policyGroup PolicyGroup) field.ErrorList
 		))
 	}
 
+	return allErrors
+}
+
+func validatePolicyGroupMembersModule(policyGroup PolicyGroup) field.ErrorList {
+	var allErrors field.ErrorList
+	fldMembers := field.NewPath("spec").Child("policies")
+
+	members := policyGroup.GetPolicyGroupMembersWithContext()
+	for _, memberName := range slices.Sorted(maps.Keys(members)) {
+		member := members[memberName]
+		if err := validateModuleURL(member.Module, fldMembers.Key(memberName).Child("module")); err != nil {
+			allErrors = append(allErrors, err)
+		}
+	}
 	return allErrors
 }
