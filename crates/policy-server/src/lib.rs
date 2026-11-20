@@ -401,7 +401,7 @@ fn precompile_policies(
         .map(|(policy_url, fetched_policy)| match fetched_policy {
             Ok(policy) => {
                 let precompiled_policy = PrecompiledPolicy::new(engine, policy);
-                debug!(?policy_url, "module compiled");
+                debug!(module_path = ?policy, "module compiled");
                 (policy_url.clone(), precompiled_policy)
             }
             Err(error) => (policy_url.clone(), Err(anyhow!(error.to_string()))),
