@@ -431,3 +431,51 @@ func TestValidatePolicyGroupTimeoutSeconds(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePolicyGroupMembersModule(t *testing.T) {
+	message := "the module URL is not valid. An http or https module URL must have only " +
+		"the host, an optional port, and the full path to the file."
+	members := PolicyGroupMembersWithContext{
+		"good": {
+			PolicyGroupMember: PolicyGroupMember{Module: "https://example.com/good.wasm"},
+		},
+		"bad": {
+			PolicyGroupMember: PolicyGroupMember{Module: "https://example.com/bad.wasm#a"},
+		},
+	}
+	policyGroup := NewClusterAdmissionPolicyGroupFactory().WithMembers(members).Build()
+	policyGroup.Spec.Expression = "good() && bad()"
+
+	t.Run("create reports only the bad member", func(t *testing.T) {
+		errs := validatePolicyGroupCreate(policyGroup)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[bad].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("update reports only the bad member", func(t *testing.T) {
+		errs := validatePolicyGroupUpdate(policyGroup, policyGroup.DeepCopy())
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[bad].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("namespaced group reports only the bad member", func(t *testing.T) {
+		namespacedGroup := NewAdmissionPolicyGroupFactory().Build()
+		namespacedGroup.Spec.Expression = "good() && bad()"
+		namespacedGroup.Spec.Policies = PolicyGroupMembers{
+			"good": {Module: "https://example.com/good.wasm"},
+			"bad":  {Module: "https://example.com/bad.wasm#a"},
+		}
+
+		errs := validatePolicyGroupCreate(namespacedGroup)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[bad].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+
+		errs = validatePolicyGroupUpdate(namespacedGroup, namespacedGroup.DeepCopy())
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[bad].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+}

@@ -791,6 +791,10 @@ local file (file://), a remote file served by an HTTP server
 registry (registry://).
 If prefix is missing, it will default to registry:// and use that
 internally.
+An http or https URL must have only the host, an optional port, and
+the full path to the file. It must not have a query, a fragment, a
+user name, a password, or a backslash (`\`). Its path must not have
+two slashes in a row (`//`) or a `.` or `..` part.
 ##### `settings`
 
 **Type:** _[RawExtension](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rawextension-runtime-pkg)_
@@ -1349,6 +1353,10 @@ local file (file://), a remote file served by an HTTP server
 registry (registry://).
 If prefix is missing, it will default to registry:// and use that
 internally.
+An http or https URL must have only the host, an optional port, and
+the full path to the file. It must not have a query, a fragment, a
+user name, a password, or a backslash (`\`). Its path must not have
+two slashes in a row (`//`) or a `.` or `..` part.
 ##### `settings`
 
 **Type:** _[RawExtension](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.36/#rawextension-runtime-pkg)_
