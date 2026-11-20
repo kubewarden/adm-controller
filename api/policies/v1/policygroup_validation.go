@@ -37,7 +37,7 @@ func validatePolicyGroupCreate(policyGroup PolicyGroup) field.ErrorList {
 	allErrors = append(allErrors, validatePolicyCreate(policyGroup)...)
 	allErrors = append(allErrors, validatePolicyGroupMembers(policyGroup)...)
 	allErrors = append(allErrors, validatePolicyGroupMembersTimeouts(policyGroup)...)
-	allErrors = append(allErrors, validatePolicyGroupMembersModule(policyGroup)...)
+	allErrors = append(allErrors, validatePolicyGroupMembersModule(policyGroup, nil)...)
 	if err := validatePolicyGroupExpressionField(policyGroup); err != nil {
 		allErrors = append(allErrors, err)
 	}
@@ -54,7 +54,7 @@ func validatePolicyGroupUpdate(oldPolicyGroup, newPolicyGroup PolicyGroup) field
 	allErrors = append(allErrors, validatePolicyUpdate(oldPolicyGroup, newPolicyGroup)...)
 	allErrors = append(allErrors, validatePolicyGroupMembers(newPolicyGroup)...)
 	allErrors = append(allErrors, validatePolicyGroupMembersTimeouts(newPolicyGroup)...)
-	allErrors = append(allErrors, validatePolicyGroupMembersModule(newPolicyGroup)...)
+	allErrors = append(allErrors, validatePolicyGroupMembersModule(newPolicyGroup, oldPolicyGroup)...)
 	if err := validatePolicyGroupExpressionField(newPolicyGroup); err != nil {
 		allErrors = append(allErrors, err)
 	}
@@ -198,13 +198,23 @@ func validatePolicyGroupMembersTimeouts(policyGroup PolicyGroup) field.ErrorList
 	return allErrors
 }
 
-func validatePolicyGroupMembersModule(policyGroup PolicyGroup) field.ErrorList {
+// validatePolicyGroupMembersModule checks the module of each member. If
+// oldPolicyGroup is not nil, it skips the members whose module did not change.
+// A member with a new name is checked, even if its module did not change.
+func validatePolicyGroupMembersModule(policyGroup, oldPolicyGroup PolicyGroup) field.ErrorList {
 	var allErrors field.ErrorList
 	fldMembers := field.NewPath("spec").Child("policies")
 
 	members := policyGroup.GetPolicyGroupMembersWithContext()
+	var oldMembers PolicyGroupMembersWithContext
+	if oldPolicyGroup != nil {
+		oldMembers = oldPolicyGroup.GetPolicyGroupMembersWithContext()
+	}
 	for _, memberName := range slices.Sorted(maps.Keys(members)) {
 		member := members[memberName]
+		if oldMember, found := oldMembers[memberName]; found && oldMember.Module == member.Module {
+			continue
+		}
 		if err := validateModuleURL(member.Module, fldMembers.Key(memberName).Child("module")); err != nil {
 			allErrors = append(allErrors, err)
 		}
