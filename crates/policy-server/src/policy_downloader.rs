@@ -143,12 +143,7 @@ impl Downloader {
                     );
                     fetched_policies.insert(
                         policy_url.to_owned(),
-                        Err(anyhow!(
-                            "Error while downloading policy '{}' from {}: {}",
-                            name,
-                            policy_url,
-                            e
-                        )),
+                        Err(anyhow!("Error while downloading policy '{}': {}", name, e)),
                     );
 
                     continue;
