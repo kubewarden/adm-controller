@@ -51,6 +51,10 @@ type PolicySpec struct {
 	// registry (registry://).
 	// If prefix is missing, it will default to registry:// and use that
 	// internally.
+	// An http or https URL must have only the host, an optional port, and
+	// the full path to the file. It must not have a query, a fragment, a
+	// user name, a password, or a backslash (`\`). Its path must not have
+	// two slashes in a row (`//`) or a `.` or `..` part.
 	// +kubebuilder:validation:Required
 	Module string `json:"module"`
 
@@ -178,6 +182,10 @@ type PolicyGroupMember struct {
 	// registry (registry://).
 	// If prefix is missing, it will default to registry:// and use that
 	// internally.
+	// An http or https URL must have only the host, an optional port, and
+	// the full path to the file. It must not have a query, a fragment, a
+	// user name, a password, or a backslash (`\`). Its path must not have
+	// two slashes in a row (`//`) or a `.` or `..` part.
 	// +kubebuilder:validation:Required
 	Module string `json:"module"`
 

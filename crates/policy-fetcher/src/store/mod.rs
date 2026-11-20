@@ -95,6 +95,7 @@ impl Store {
     /// included.
     pub fn policy_path(&self, url: &str, policy_path: PolicyPath) -> StoreResult<PathBuf> {
         let url = Url::parse(url)?;
+        validate_http_module_url(&url)?;
         let filename = policy_file_name(&url);
         let policy_prefix = self.policy_prefix(&url);
 
@@ -231,6 +232,26 @@ fn host_and_port(url: &Url) -> String {
         .unwrap_or_default()
 }
 
+/// Rejects `http` and `https` URLs that two policies can share in the store.
+pub fn validate_http_module_url(url: &Url) -> StoreResult<()> {
+    if !matches!(url.scheme(), "http" | "https") {
+        return Ok(());
+    }
+
+    let has_collision_risk = url.query().is_some()
+        || url.fragment().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        // The url crate gives "http://host" the path "/", so this also rejects a URL
+        // with no file path.
+        || url.path().ends_with('/')
+        || url.path().contains("//");
+    if has_collision_risk {
+        return Err(StoreError::InvalidHttpModuleUrl);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -312,5 +333,46 @@ mod tests {
         assert_eq!(path::encode_path(expected_path), path);
 
         Ok(())
+    }
+
+    #[rstest]
+    #[case("https://example.com/policy.wasm")]
+    #[case("http://example.com:8080/path/to/policy.wasm")]
+    #[case("registry://ghcr.io/org/policy:v1")]
+    #[case("file:///tmp/policy.wasm")]
+    fn accepted_http_module_url(#[case] input_url: &str) {
+        let url = Url::parse(input_url).expect("the test URL is valid");
+        assert!(validate_http_module_url(&url).is_ok());
+    }
+
+    #[rstest]
+    #[case("https://example.com/policy.wasm?id=1")]
+    #[case("https://example.com/policy.wasm?")]
+    #[case("https://example.com/policy.wasm#a")]
+    #[case("https://example.com/policy.wasm#")]
+    #[case("https://user@example.com/policy.wasm")]
+    #[case("https://user:secret@example.com/policy.wasm")]
+    #[case("https://example.com")]
+    #[case("https://example.com/")]
+    #[case("https://example.com/path/")]
+    #[case("https://example.com//policy.wasm")]
+    #[case("https://example.com/a//policy.wasm")]
+    #[case("HTTPS://example.com/policy.wasm?id=1")]
+    fn rejected_http_module_url(#[case] input_url: &str) {
+        let url = Url::parse(input_url).expect("the test URL is valid");
+        let error = validate_http_module_url(&url).expect_err("the URL must be rejected");
+        assert!(matches!(error, StoreError::InvalidHttpModuleUrl));
+        assert_eq!(
+            "the module URL is not valid. An http or https module URL must have only the host, \
+             an optional port, and the full path to the file.",
+            error.to_string()
+        );
+        assert!(!error.to_string().contains("secret"));
+        assert!(!error.to_string().contains("example.com"));
+
+        let error = Store::default()
+            .policy_path(input_url, PolicyPath::PrefixAndFilename)
+            .expect_err("policy_path must reject the URL");
+        assert!(matches!(error, StoreError::InvalidHttpModuleUrl));
     }
 }

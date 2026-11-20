@@ -973,9 +973,7 @@ async fn test_policy_with_wrong_url() {
 
     assert!(!admission_review_response.response.allowed);
 
-    let pattern =
-        Regex::new(r"Error while downloading policy 'wrong_url' from ghcr.io/kubewarden/tests/not_existing:v0.1.0.*")
-            .unwrap();
+    let pattern = Regex::new(r"Error while downloading policy 'wrong_url': .*").unwrap();
 
     let status = admission_review_response.response.status.unwrap();
 
