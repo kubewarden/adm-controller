@@ -83,6 +83,7 @@ pub async fn fetch_policy(
     sources: Option<&Sources>,
 ) -> FetcherResult<Policy> {
     let url = parse_url(url)?;
+    store::validate_http_module_url(&url)?;
     match url.scheme() {
         "file" => {
             // no-op: return early
@@ -273,6 +274,51 @@ mod tests {
 
     fn store_path(path: &str) -> PathBuf {
         Store::default().root.join(store::path::encode_path(path))
+    }
+
+    #[test]
+    fn module_without_scheme_is_accepted() {
+        let url = parse_url("ghcr.io/org/p:v1").expect("the URL is valid");
+        assert_eq!("registry", url.scheme());
+        assert!(store::validate_http_module_url(&url).is_ok());
+    }
+
+    #[rstest]
+    #[case("https://example.com/policy.wasm?id=1")]
+    #[case("https://user:secret@example.com/policy.wasm")]
+    #[case("https://example.com/path/")]
+    #[case("https://example.com//policy.wasm")]
+    #[tokio::test]
+    async fn fetch_policy_rejects_colliding_http_url(
+        #[case] url: &str,
+        #[values(true, false)] to_store: bool,
+    ) {
+        let directory = tempfile::tempdir().expect("cannot create temp dir");
+        let destination = if to_store {
+            PullDestination::Store(directory.path().to_path_buf())
+        } else {
+            PullDestination::LocalFile(directory.path().join("policy.wasm"))
+        };
+
+        let error = fetch_policy(url, destination, None)
+            .await
+            .expect_err("the URL must be rejected");
+
+        assert!(matches!(
+            error,
+            FetcherError::StoreError(StoreError::InvalidHttpModuleUrl)
+        ));
+        assert_eq!(
+            "the module URL is not valid. An http or https module URL must have only the host, \
+             an optional port, and the full path to the file.",
+            error.to_string()
+        );
+        assert_eq!(
+            fs::read_dir(directory.path())
+                .expect("the temp directory exists")
+                .count(),
+            0
+        );
     }
 
     struct UrlParseDetails {
