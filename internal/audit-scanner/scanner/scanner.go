@@ -284,7 +284,7 @@ func (s *Scanner) ScanAllNamespaces(ctx context.Context, runUID string) error {
 			slog.Int("parallel-namespaces-audits", s.parallelNamespacesAudits)))
 	nsList, err := s.k8sClient.GetAuditedNamespaces(ctx)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "error scanning all namespaces", slog.String("error", err.Error()))
+		return fmt.Errorf("error scanning all namespaces: %w", err)
 	}
 	semaphore := semaphore.NewWeighted(int64(s.parallelNamespacesAudits))
 	var workers sync.WaitGroup
