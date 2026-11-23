@@ -1301,6 +1301,31 @@ func TestScanFailureAllNamespaces(t *testing.T) {
 	require.Len(t, reports.Items, 2)
 }
 
+func TestScanAllNamespacesFailsWhenNamespacesCannotBeListed(t *testing.T) {
+	dynamicClient := dynamicFake.NewSimpleDynamicClient(scheme.Scheme)
+	clientset := fake.NewClientset()
+	client, err := testutils.NewFakeClient()
+	require.NoError(t, err)
+
+	// Simulate a failure when listing the namespaces.
+	clientset.PrependReactor("list", "namespaces", func(_ testingclient.Action) (bool, runtime.Object, error) {
+		return true, nil, apimachineryErrors.NewServiceUnavailable("reactor error")
+	})
+
+	logger := slog.Default()
+	k8sClient := k8s.NewClient(dynamicClient, clientset, "kubewarden", nil, pageSize, logger)
+	policiesClient := policies.NewClient(client, "kubewarden", "", logger)
+	policyReportStore := report.NewPolicyReportStore(client, logger)
+
+	config := newTestConfig(policiesClient, k8sClient, policyReportStore)
+	scanner, err := NewScanner(config)
+	require.NoError(t, err)
+
+	err = scanner.ScanAllNamespaces(t.Context(), uuid.New().String())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "reactor error")
+}
+
 func TestScanAllNamespacesWithOpenReport(t *testing.T) {
 	mockPolicyServer := newMockPolicyServer()
 	defer mockPolicyServer.Close()
