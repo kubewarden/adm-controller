@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -46,6 +47,12 @@ Each namespace will have a PolicyReport with the outcome of the scan for resourc
 There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			logLevel, err := ParseLogLevel(level)
+			if err != nil {
+				return err
+			}
+			logger := slog.New(NewHandler(os.Stdout, os.Stderr, logLevel))
+
 			namespace, err := cmd.Flags().GetString("namespace")
 			if err != nil {
 				return fmt.Errorf("failed to get namespace flag %w", err)
@@ -105,9 +112,18 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 				return fmt.Errorf("invalid report-kind '%s': supported values are '%s' and '%s'", reportKindStr, report.OpenReportsKind, report.PolicyReportKind)
 			}
 
-			config := ctrl.GetConfigOrDie()
-			dynamicClient := dynamic.NewForConfigOrDie(config)
-			clientset := kubernetes.NewForConfigOrDie(config)
+			config, err := ctrl.GetConfig()
+			if err != nil {
+				return fmt.Errorf("failed to get kubeconfig: %w", err)
+			}
+			dynamicClient, err := dynamic.NewForConfig(config)
+			if err != nil {
+				return fmt.Errorf("failed to create dynamic client: %w", err)
+			}
+			clientset, err := kubernetes.NewForConfig(config)
+			if err != nil {
+				return fmt.Errorf("failed to create clientset: %w", err)
+			}
 
 			auditScheme, err := scheme.NewScheme()
 			if err != nil {
@@ -117,7 +133,6 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 			if err != nil {
 				return fmt.Errorf("failed to create kubernetes client: %w", err)
 			}
-			logger := slog.New(NewHandler(os.Stdout, level))
 			policiesClient := policies.NewClient(client, kubewardenNamespace, policyServerURL, logger)
 
 			k8sClient := k8s.NewClient(dynamicClient, clientset, kubewardenNamespace, skippedNs, int64(pageSize), logger)
@@ -148,7 +163,7 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 				},
 				OutputScan:   outputScan,
 				DisableStore: disableStore,
-				Logger:       logger.With("component", "scanner"),
+				Logger:       logger,
 				ReportKind:   reportKind,
 			}
 
@@ -168,7 +183,7 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 	rootCmd.Flags().BoolP("cluster", "c", false, "scan cluster wide resources")
 	rootCmd.Flags().StringP("kubewarden-namespace", "k", defaultKubewardenNamespace, "namespace where the Kubewarden components (e.g. PolicyServer) are installed (required)")
 	rootCmd.Flags().StringP("policy-server-url", "u", "", "URI to the PolicyServers the Audit Scanner will query. Example: https://localhost:3000. Useful for out-of-cluster debugging")
-	rootCmd.Flags().StringVarP(&level, "loglevel", "l", "", fmt.Sprintf("level of the logs. Supported values are: %v", SupportedLogLevels()))
+	rootCmd.Flags().StringVarP(&level, "loglevel", "l", LevelInfoString, fmt.Sprintf("level of the logs. Supported values are: %v", SupportedLogLevels()))
 	rootCmd.Flags().BoolVarP(&outputScan, "output-scan", "o", false, "print result of scan in JSON to stdout")
 	rootCmd.Flags().StringSliceVarP(&skippedNs, "ignore-namespaces", "i", nil, "comma separated list of namespace names to be skipped from scan. This flag can be repeated")
 	rootCmd.Flags().BoolVar(&insecureSSL, "insecure-ssl", false, "skip SSL cert validation when connecting to PolicyServers endpoints. Useful for development")
@@ -176,6 +191,7 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 	rootCmd.Flags().StringP("client-cert", "", "", "File path to client cert in PEM format used for mTLS communication with the PolicyServer endpoints")
 	rootCmd.Flags().StringP("client-key", "", "", "File path to client key in PEM format used for mTLS communication with the PolicyServer endpoints")
 	rootCmd.MarkFlagsRequiredTogether("client-cert", "client-key")
+	rootCmd.MarkFlagsMutuallyExclusive("cluster", "namespace")
 	rootCmd.Flags().BoolVar(&disableStore, "disable-store", false, "do not create, update or delete (Cluster)Reports in the cluster; scan results are only computed in memory (use with --output-scan)")
 	rootCmd.Flags().IntP("parallel-namespaces", "", defaultParallelNamespaces, "number of Namespaces to scan in parallel")
 	rootCmd.Flags().IntP("parallel-resources", "", defaultParallelResources, "number of resources to scan in parallel")
@@ -190,17 +206,14 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(rootCmd *cobra.Command) {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error on cmd.Execute(): %s\n", err.Error())
+		logger := slog.New(NewHandler(os.Stdout, os.Stderr, slog.LevelError))
+		logger.Error("audit scanner failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }
 
 //nolint:wrapcheck // this function calls internal package which already wrap the errors with context
 func startScanner(namespace string, clusterWide bool, scanner *scanner.Scanner) error {
-	if clusterWide && namespace != "" {
-		fmt.Fprintln(os.Stderr, "Cannot scan cluster wide and only a namespace at the same time")
-	}
-
 	runUID := uuid.New().String()
 	ctx := context.Background()
 	if clusterWide {
@@ -212,10 +225,8 @@ func startScanner(namespace string, clusterWide bool, scanner *scanner.Scanner) 
 		return scanner.ScanNamespace(ctx, namespace, runUID)
 	}
 
-	// neither clusterWide flag nor namespace was provided, default
-	// behaviour of scanning cluster wide and all ns
-	if err := scanner.ScanClusterWideResources(ctx, runUID); err != nil {
-		return err
-	}
-	return scanner.ScanAllNamespaces(ctx, runUID)
+	// default mode
+	clusterErr := scanner.ScanClusterWideResources(ctx, runUID)
+	nsErr := scanner.ScanAllNamespaces(ctx, runUID)
+	return errors.Join(clusterErr, nsErr)
 }

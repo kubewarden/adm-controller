@@ -63,6 +63,10 @@ func (r *OpenReport) SetErrorPolicies(erroredPoliciesNumber int) {
 	r.report.Summary.Error = erroredPoliciesNumber
 }
 
+func (r *OpenReport) MarshalJSON() ([]byte, error) {
+	return marshalReport(r.report)
+}
+
 func (r *OpenClusterReport) AddResult(
 	policy policiesv1.Policy,
 	admissionReview *admissionv1.AdmissionReview,
@@ -87,6 +91,10 @@ func (r *OpenClusterReport) SetSkipPolicies(skippedPoliciesNumber int) {
 
 func (r *OpenClusterReport) SetErrorPolicies(erroredPoliciesNumber int) {
 	r.report.Summary.Error = erroredPoliciesNumber
+}
+
+func (r *OpenClusterReport) MarshalJSON() ([]byte, error) {
+	return marshalReport(r.report)
 }
 
 // NewClusterOpenReport creates a new ClusterPolicyReport from a given resource.

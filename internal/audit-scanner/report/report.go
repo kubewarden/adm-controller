@@ -1,6 +1,9 @@
 package report
 
 import (
+	"encoding/json"
+	"fmt"
+
 	policiesv1 "github.com/kubewarden/adm-controller/api/policies/v1"
 	"github.com/kubewarden/adm-controller/internal/audit-scanner/constants"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -20,9 +23,18 @@ const (
 // Report interface to abstract which kind of report are under use. This is useful
 // to support both PolicyReport and OpenReport without duplicating code.
 type Report interface {
+	json.Marshaler
 	SetSkipPolicies(n int)
 	SetErrorPolicies(n int)
 	AddResult(policy policiesv1.Policy, admissionReview *admissionv1.AdmissionReview, errored bool)
+}
+
+func marshalReport(report any) ([]byte, error) {
+	reportJSON, err := json.Marshal(report)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal report: %w", err)
+	}
+	return reportJSON, nil
 }
 
 func getCategoryAndMessage(policy policiesv1.Policy, admissionReview *admissionv1.AdmissionReview) (string, string) {

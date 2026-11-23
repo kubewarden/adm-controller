@@ -514,12 +514,7 @@ func (s *Scanner) auditResource(ctx context.Context, policies []*policies.Policy
 	}
 
 	if s.outputScan {
-		policyReportJSON, err := json.Marshal(policyReport)
-		if err != nil {
-			s.logger.ErrorContext(ctx, "error while marshalling PolicyReport to JSON, skipping output scan", slog.String("error", err.Error()))
-		}
-
-		s.logger.InfoContext(ctx, "PolicyReport summary", slog.String("report", string(policyReportJSON)))
+		s.logger.InfoContext(ctx, "PolicyReport summary", slog.Any("report", policyReport))
 	}
 
 	if !s.disableStore {
@@ -592,12 +587,7 @@ func (s *Scanner) auditClusterResource(ctx context.Context, policies []*policies
 	}
 
 	if s.outputScan {
-		clusterPolicyReportJSON, err := json.Marshal(clusterReport)
-		if err != nil {
-			s.logger.ErrorContext(ctx, "error while marshalling ClusterPolicyReport to JSON, skipping output scan", slog.String("error", err.Error()))
-		}
-
-		s.logger.InfoContext(ctx, "ClusterPolicyReport summary", slog.Any("report", clusterPolicyReportJSON))
+		s.logger.InfoContext(ctx, "ClusterPolicyReport summary", slog.Any("report", clusterReport))
 	}
 
 	if !s.disableStore {
