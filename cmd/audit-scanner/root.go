@@ -112,9 +112,18 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 				return fmt.Errorf("invalid report-kind '%s': supported values are '%s' and '%s'", reportKindStr, report.OpenReportsKind, report.PolicyReportKind)
 			}
 
-			config := ctrl.GetConfigOrDie()
-			dynamicClient := dynamic.NewForConfigOrDie(config)
-			clientset := kubernetes.NewForConfigOrDie(config)
+			config, err := ctrl.GetConfig()
+			if err != nil {
+				return fmt.Errorf("failed to get kubeconfig: %w", err)
+			}
+			dynamicClient, err := dynamic.NewForConfig(config)
+			if err != nil {
+				return fmt.Errorf("failed to create dynamic client: %w", err)
+			}
+			clientset, err := kubernetes.NewForConfig(config)
+			if err != nil {
+				return fmt.Errorf("failed to create clientset: %w", err)
+			}
 
 			auditScheme, err := scheme.NewScheme()
 			if err != nil {
