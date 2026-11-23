@@ -362,11 +362,11 @@ func (s *Scanner) ScanClusterWideResources(ctx context.Context, runUID string) e
 				return errors.New("failed to convert runtime.Object to *unstructured.Unstructured")
 			}
 
-			workers.Add(1)
 			acquireErr := semaphore.Acquire(ctx, 1)
 			if acquireErr != nil {
 				return fmt.Errorf("failed to acquire the permission to audit a resource: %w", acquireErr)
 			}
+			workers.Add(1)
 			policiesToAudit := pols
 
 			go func() {

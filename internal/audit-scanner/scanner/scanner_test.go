@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	policiesv1 "github.com/kubewarden/adm-controller/api/policies/v1"
@@ -1355,6 +1357,89 @@ func TestScanAllNamespacesJoinsErrorsOfParallelNamespaces(t *testing.T) {
 	err = scanner.ScanAllNamespaces(t.Context(), uuid.New().String())
 	for _, name := range namespaceNames {
 		require.ErrorContains(t, err, "failed to get namespace "+name)
+	}
+}
+
+func TestScanClusterWideResourcesReturnsWhenCancelledWhileWaitingForAudit(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	// The first audit cancels the context while the second resource waits for
+	// the only audit slot, so the semaphore acquisition fails.
+	mockPolicyServer := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		cancel()
+	}))
+	defer mockPolicyServer.Close()
+
+	policyServer := &policiesv1.PolicyServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "default",
+		},
+	}
+
+	policyServerService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"app.kubernetes.io/instance": "policy-server-default",
+			},
+			Name:      "policy-server-default",
+			Namespace: "kubewarden",
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Name: "http",
+					Port: 443,
+				},
+			},
+		},
+	}
+
+	namespace1 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace1", UID: "namespace1-uid"}}
+	namespace2 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace2", UID: "namespace2-uid"}}
+
+	clusterAdmissionPolicy := testutils.
+		NewClusterAdmissionPolicyFactory().
+		Name("clusterAdmissionPolicy").
+		Rule(admissionregistrationv1.Rule{
+			APIGroups:   []string{""},
+			APIVersions: []string{"v1"},
+			Resources:   []string{"namespaces"},
+		}).
+		Status(policiesv1.PolicyStatusActive).
+		Build()
+
+	dynamicClient := dynamicFake.NewSimpleDynamicClient(scheme.Scheme, namespace1, namespace2)
+	clientset := fake.NewClientset(namespace1, namespace2)
+	client, err := testutils.NewFakeClient(
+		namespace1,
+		namespace2,
+		policyServer,
+		policyServerService,
+		clusterAdmissionPolicy,
+	)
+	require.NoError(t, err)
+
+	logger := slog.Default()
+	k8sClient := k8s.NewClient(dynamicClient, clientset, "kubewarden", nil, pageSize, logger)
+	policiesClient := policies.NewClient(client, "kubewarden", mockPolicyServer.URL, logger)
+	policyReportStore := report.NewPolicyReportStore(client, logger)
+
+	config := newTestConfig(policiesClient, k8sClient, policyReportStore)
+	config.Parallelization.ParallelResourcesAudits = 1
+	scanner, err := NewScanner(config)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = scanner.ScanClusterWideResources(ctx, uuid.New().String())
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ScanClusterWideResources did not return after the context was cancelled")
 	}
 }
 
