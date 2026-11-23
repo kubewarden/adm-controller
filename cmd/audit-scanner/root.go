@@ -163,7 +163,7 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 				},
 				OutputScan:   outputScan,
 				DisableStore: disableStore,
-				Logger:       logger.With("component", "scanner"),
+				Logger:       logger,
 				ReportKind:   reportKind,
 			}
 
