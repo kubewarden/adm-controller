@@ -290,11 +290,12 @@ func (s *Scanner) ScanAllNamespaces(ctx context.Context, runUID string) error {
 	var workers sync.WaitGroup
 
 	for _, namespace := range nsList.Items {
-		workers.Add(1)
 		acquireErr := semaphore.Acquire(ctx, 1)
 		if acquireErr != nil {
+			workers.Wait()
 			return fmt.Errorf("failed to acquire the permission to audit namespace: %w", acquireErr)
 		}
+		workers.Add(1)
 		namespaceName := namespace.Name
 
 		go func() {
