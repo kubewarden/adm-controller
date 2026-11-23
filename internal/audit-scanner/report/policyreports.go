@@ -79,6 +79,10 @@ func (r *PolicyReport) SetErrorPolicies(erroredPoliciesNumber int) {
 	r.report.Summary.Error = erroredPoliciesNumber
 }
 
+func (r *PolicyReport) MarshalJSON() ([]byte, error) {
+	return marshalReport(r.report)
+}
+
 // NewClusterPolicyReport creates a new ClusterPolicyReport from a given resource.
 //
 // Deprecated: use NewClusterReport instead. wgpolicy.ClusterPolicyReport is deprecated in favor of openreports.ClusterReport.
@@ -122,6 +126,10 @@ func (r *ClusterPolicyReport) SetSkipPolicies(skippedPoliciesNumber int) {
 
 func (r *ClusterPolicyReport) SetErrorPolicies(erroredPoliciesNumber int) {
 	r.report.Summary.Error = erroredPoliciesNumber
+}
+
+func (r *ClusterPolicyReport) MarshalJSON() ([]byte, error) {
+	return marshalReport(r.report)
 }
 
 func newPolicyReportResult(policy policiesv1.Policy, admissionReview *admissionv1.AdmissionReview, errored bool, timestamp metav1.Timestamp) *wgpolicy.PolicyReportResult {
