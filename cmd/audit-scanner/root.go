@@ -192,7 +192,8 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(rootCmd *cobra.Command) {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error on cmd.Execute(): %s\n", err.Error())
+		logger := slog.New(NewHandler(os.Stderr, LevelErrorString))
+		logger.Error("audit scanner failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }
