@@ -293,7 +293,7 @@ func (s *Scanner) ScanAllNamespaces(ctx context.Context, runUID string) error {
 		workers.Add(1)
 		acquireErr := semaphore.Acquire(ctx, 1)
 		if acquireErr != nil {
-			return fmt.Errorf("failed to acquire the permission to audit namespace: %w", err)
+			return fmt.Errorf("failed to acquire the permission to audit namespace: %w", acquireErr)
 		}
 		namespaceName := namespace.Name
 
