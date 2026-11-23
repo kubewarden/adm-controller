@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -212,10 +213,8 @@ func startScanner(namespace string, clusterWide bool, scanner *scanner.Scanner) 
 		return scanner.ScanNamespace(ctx, namespace, runUID)
 	}
 
-	// neither clusterWide flag nor namespace was provided, default
-	// behaviour of scanning cluster wide and all ns
-	if err := scanner.ScanClusterWideResources(ctx, runUID); err != nil {
-		return err
-	}
-	return scanner.ScanAllNamespaces(ctx, runUID)
+	// default mode
+	clusterErr := scanner.ScanClusterWideResources(ctx, runUID)
+	nsErr := scanner.ScanAllNamespaces(ctx, runUID)
+	return errors.Join(clusterErr, nsErr)
 }
