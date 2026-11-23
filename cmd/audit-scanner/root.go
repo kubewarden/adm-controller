@@ -51,7 +51,7 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 			if err != nil {
 				return err
 			}
-			logger := slog.New(NewHandler(os.Stdout, logLevel))
+			logger := slog.New(NewHandler(os.Stdout, os.Stderr, logLevel))
 
 			namespace, err := cmd.Flags().GetString("namespace")
 			if err != nil {
@@ -197,7 +197,7 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(rootCmd *cobra.Command) {
 	if err := rootCmd.Execute(); err != nil {
-		logger := slog.New(NewHandler(os.Stderr, slog.LevelError))
+		logger := slog.New(NewHandler(os.Stdout, os.Stderr, slog.LevelError))
 		logger.Error("audit scanner failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
