@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1357,6 +1358,70 @@ func TestScanAllNamespacesJoinsErrorsOfParallelNamespaces(t *testing.T) {
 	err = scanner.ScanAllNamespaces(t.Context(), uuid.New().String())
 	for _, name := range namespaceNames {
 		require.ErrorContains(t, err, "failed to get namespace "+name)
+	}
+}
+
+func TestScanAllNamespacesWaitsForRunningScanWhenCancelled(t *testing.T) {
+	namespace1 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace1"}}
+	namespace2 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace2"}}
+
+	dynamicClient := dynamicFake.NewSimpleDynamicClient(scheme.Scheme)
+	clientset := fake.NewClientset(namespace1, namespace2)
+	client, err := testutils.NewFakeClient()
+	require.NoError(t, err)
+
+	// Block the first namespace scan until the test releases it.
+	firstScanStarted := make(chan struct{})
+	releaseFirstScan := make(chan struct{})
+	var firstScanFinished atomic.Bool
+	var getCalls atomic.Int32
+	clientset.PrependReactor("get", "namespaces", func(_ testingclient.Action) (bool, runtime.Object, error) {
+		if getCalls.Add(1) == 1 {
+			close(firstScanStarted)
+			<-releaseFirstScan
+			firstScanFinished.Store(true)
+		}
+		return true, nil, apimachineryErrors.NewServiceUnavailable("reactor error")
+	})
+
+	logger := slog.Default()
+	k8sClient := k8s.NewClient(dynamicClient, clientset, "kubewarden", nil, pageSize, logger)
+	policiesClient := policies.NewClient(client, "kubewarden", "", logger)
+	policyReportStore := report.NewPolicyReportStore(client, logger)
+
+	config := newTestConfig(policiesClient, k8sClient, policyReportStore)
+	config.Parallelization.ParallelNamespacesAudits = 1
+	scanner, err := NewScanner(config)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	type scanResult struct {
+		err               error
+		firstScanFinished bool
+	}
+	done := make(chan scanResult, 1)
+	go func() {
+		err := scanner.ScanAllNamespaces(ctx, uuid.New().String())
+		done <- scanResult{err: err, firstScanFinished: firstScanFinished.Load()}
+	}()
+
+	// The first scan holds the only slot, so the second namespace waits to
+	// acquire it when the context is cancelled.
+	<-firstScanStarted
+	cancel()
+	// Leave time for ScanAllNamespaces to return early if it does not wait for
+	// the running scan.
+	time.Sleep(100 * time.Millisecond)
+	close(releaseFirstScan)
+
+	select {
+	case result := <-done:
+		require.True(t, result.firstScanFinished, "ScanAllNamespaces returned before the first namespace scan finished")
+		require.ErrorIs(t, result.err, context.Canceled)
+	case <-time.After(10 * time.Second):
+		t.Fatal("ScanAllNamespaces did not return after the first namespace scan finished")
 	}
 }
 
