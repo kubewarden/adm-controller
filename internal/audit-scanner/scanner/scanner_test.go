@@ -1302,9 +1302,7 @@ func TestScanFailureAllNamespaces(t *testing.T) {
 }
 
 func TestScanAllNamespacesFailsWhenNamespacesCannotBeListed(t *testing.T) {
-	auditScheme, err := auditscheme.NewScheme()
-	require.NoError(t, err)
-	dynamicClient := dynamicFake.NewSimpleDynamicClient(auditScheme)
+	dynamicClient := dynamicFake.NewSimpleDynamicClient(scheme.Scheme)
 	clientset := fake.NewClientset()
 	client, err := testutils.NewFakeClient()
 	require.NoError(t, err)
