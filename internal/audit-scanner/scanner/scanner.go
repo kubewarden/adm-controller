@@ -288,13 +288,15 @@ func (s *Scanner) ScanAllNamespaces(ctx context.Context, runUID string) error {
 	}
 	semaphore := semaphore.NewWeighted(int64(s.parallelNamespacesAudits))
 	var workers sync.WaitGroup
+	var errLock sync.Mutex
 
 	for _, namespace := range nsList.Items {
-		workers.Add(1)
 		acquireErr := semaphore.Acquire(ctx, 1)
 		if acquireErr != nil {
-			return fmt.Errorf("failed to acquire the permission to audit namespace: %w", err)
+			workers.Wait()
+			return fmt.Errorf("failed to acquire the permission to audit namespace: %w", acquireErr)
 		}
+		workers.Add(1)
 		namespaceName := namespace.Name
 
 		go func() {
@@ -303,7 +305,9 @@ func (s *Scanner) ScanAllNamespaces(ctx context.Context, runUID string) error {
 
 			if e := s.ScanNamespace(ctx, namespaceName, runUID); e != nil {
 				s.logger.ErrorContext(ctx, "error scanning namespace", slog.String("error", e.Error()), slog.String("ns", namespaceName))
+				errLock.Lock()
 				err = errors.Join(err, e)
+				errLock.Unlock()
 			}
 		}()
 	}
@@ -358,11 +362,11 @@ func (s *Scanner) ScanClusterWideResources(ctx context.Context, runUID string) e
 				return errors.New("failed to convert runtime.Object to *unstructured.Unstructured")
 			}
 
-			workers.Add(1)
 			acquireErr := semaphore.Acquire(ctx, 1)
 			if acquireErr != nil {
 				return fmt.Errorf("failed to acquire the permission to audit a resource: %w", acquireErr)
 			}
+			workers.Add(1)
 			policiesToAudit := pols
 
 			go func() {

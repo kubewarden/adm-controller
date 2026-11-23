@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -8,7 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	policiesv1 "github.com/kubewarden/adm-controller/api/policies/v1"
@@ -1324,6 +1327,185 @@ func TestScanAllNamespacesFailsWhenNamespacesCannotBeListed(t *testing.T) {
 	err = scanner.ScanAllNamespaces(t.Context(), uuid.New().String())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "reactor error")
+}
+
+func TestScanAllNamespacesJoinsErrorsOfParallelNamespaces(t *testing.T) {
+	namespaceNames := []string{"namespace1", "namespace2", "namespace3"}
+	var namespaces []runtime.Object
+	for _, name := range namespaceNames {
+		namespaces = append(namespaces, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}})
+	}
+
+	dynamicClient := dynamicFake.NewSimpleDynamicClient(scheme.Scheme)
+	clientset := fake.NewClientset(namespaces...)
+	client, err := testutils.NewFakeClient()
+	require.NoError(t, err)
+
+	clientset.PrependReactor("get", "namespaces", func(_ testingclient.Action) (bool, runtime.Object, error) {
+		return true, nil, apimachineryErrors.NewServiceUnavailable("reactor error")
+	})
+
+	logger := slog.Default()
+	k8sClient := k8s.NewClient(dynamicClient, clientset, "kubewarden", nil, pageSize, logger)
+	policiesClient := policies.NewClient(client, "kubewarden", "", logger)
+	policyReportStore := report.NewPolicyReportStore(client, logger)
+
+	config := newTestConfig(policiesClient, k8sClient, policyReportStore)
+	config.Parallelization.ParallelNamespacesAudits = len(namespaceNames)
+	scanner, err := NewScanner(config)
+	require.NoError(t, err)
+
+	err = scanner.ScanAllNamespaces(t.Context(), uuid.New().String())
+	for _, name := range namespaceNames {
+		require.ErrorContains(t, err, "failed to get namespace "+name)
+	}
+}
+
+func TestScanAllNamespacesWaitsForRunningScanWhenCancelled(t *testing.T) {
+	namespace1 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace1"}}
+	namespace2 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace2"}}
+
+	dynamicClient := dynamicFake.NewSimpleDynamicClient(scheme.Scheme)
+	clientset := fake.NewClientset(namespace1, namespace2)
+	client, err := testutils.NewFakeClient()
+	require.NoError(t, err)
+
+	// Block the first namespace scan until the test releases it.
+	firstScanStarted := make(chan struct{})
+	releaseFirstScan := make(chan struct{})
+	var firstScanFinished atomic.Bool
+	var getCalls atomic.Int32
+	clientset.PrependReactor("get", "namespaces", func(_ testingclient.Action) (bool, runtime.Object, error) {
+		if getCalls.Add(1) == 1 {
+			close(firstScanStarted)
+			<-releaseFirstScan
+			firstScanFinished.Store(true)
+		}
+		return true, nil, apimachineryErrors.NewServiceUnavailable("reactor error")
+	})
+
+	logger := slog.Default()
+	k8sClient := k8s.NewClient(dynamicClient, clientset, "kubewarden", nil, pageSize, logger)
+	policiesClient := policies.NewClient(client, "kubewarden", "", logger)
+	policyReportStore := report.NewPolicyReportStore(client, logger)
+
+	config := newTestConfig(policiesClient, k8sClient, policyReportStore)
+	config.Parallelization.ParallelNamespacesAudits = 1
+	scanner, err := NewScanner(config)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	type scanResult struct {
+		err               error
+		firstScanFinished bool
+	}
+	done := make(chan scanResult, 1)
+	go func() {
+		err := scanner.ScanAllNamespaces(ctx, uuid.New().String())
+		done <- scanResult{err: err, firstScanFinished: firstScanFinished.Load()}
+	}()
+
+	// The first scan holds the only slot, so the second namespace waits to
+	// acquire it when the context is cancelled.
+	<-firstScanStarted
+	cancel()
+	// Leave time for ScanAllNamespaces to return early if it does not wait for
+	// the running scan.
+	time.Sleep(100 * time.Millisecond)
+	close(releaseFirstScan)
+
+	select {
+	case result := <-done:
+		require.True(t, result.firstScanFinished, "ScanAllNamespaces returned before the first namespace scan finished")
+		require.ErrorIs(t, result.err, context.Canceled)
+	case <-time.After(10 * time.Second):
+		t.Fatal("ScanAllNamespaces did not return after the first namespace scan finished")
+	}
+}
+
+func TestScanClusterWideResourcesReturnsWhenCancelledWhileWaitingForAudit(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	// The first audit cancels the context while the second resource waits for
+	// the only audit slot, so the semaphore acquisition fails.
+	mockPolicyServer := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		cancel()
+	}))
+	defer mockPolicyServer.Close()
+
+	policyServer := &policiesv1.PolicyServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "default",
+		},
+	}
+
+	policyServerService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"app.kubernetes.io/instance": "policy-server-default",
+			},
+			Name:      "policy-server-default",
+			Namespace: "kubewarden",
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Name: "http",
+					Port: 443,
+				},
+			},
+		},
+	}
+
+	namespace1 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace1", UID: "namespace1-uid"}}
+	namespace2 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "namespace2", UID: "namespace2-uid"}}
+
+	clusterAdmissionPolicy := testutils.
+		NewClusterAdmissionPolicyFactory().
+		Name("clusterAdmissionPolicy").
+		Rule(admissionregistrationv1.Rule{
+			APIGroups:   []string{""},
+			APIVersions: []string{"v1"},
+			Resources:   []string{"namespaces"},
+		}).
+		Status(policiesv1.PolicyStatusActive).
+		Build()
+
+	dynamicClient := dynamicFake.NewSimpleDynamicClient(scheme.Scheme, namespace1, namespace2)
+	clientset := fake.NewClientset(namespace1, namespace2)
+	client, err := testutils.NewFakeClient(
+		namespace1,
+		namespace2,
+		policyServer,
+		policyServerService,
+		clusterAdmissionPolicy,
+	)
+	require.NoError(t, err)
+
+	logger := slog.Default()
+	k8sClient := k8s.NewClient(dynamicClient, clientset, "kubewarden", nil, pageSize, logger)
+	policiesClient := policies.NewClient(client, "kubewarden", mockPolicyServer.URL, logger)
+	policyReportStore := report.NewPolicyReportStore(client, logger)
+
+	config := newTestConfig(policiesClient, k8sClient, policyReportStore)
+	config.Parallelization.ParallelResourcesAudits = 1
+	scanner, err := NewScanner(config)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = scanner.ScanClusterWideResources(ctx, uuid.New().String())
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ScanClusterWideResources did not return after the context was cancelled")
+	}
 }
 
 func TestScanAllNamespacesWithOpenReport(t *testing.T) {
