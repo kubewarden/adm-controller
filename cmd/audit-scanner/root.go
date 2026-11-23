@@ -177,6 +177,7 @@ There will be a ClusterPolicyReport with results for cluster-wide resources.`,
 	rootCmd.Flags().StringP("client-cert", "", "", "File path to client cert in PEM format used for mTLS communication with the PolicyServer endpoints")
 	rootCmd.Flags().StringP("client-key", "", "", "File path to client key in PEM format used for mTLS communication with the PolicyServer endpoints")
 	rootCmd.MarkFlagsRequiredTogether("client-cert", "client-key")
+	rootCmd.MarkFlagsMutuallyExclusive("cluster", "namespace")
 	rootCmd.Flags().BoolVar(&disableStore, "disable-store", false, "do not create, update or delete (Cluster)Reports in the cluster; scan results are only computed in memory (use with --output-scan)")
 	rootCmd.Flags().IntP("parallel-namespaces", "", defaultParallelNamespaces, "number of Namespaces to scan in parallel")
 	rootCmd.Flags().IntP("parallel-resources", "", defaultParallelResources, "number of resources to scan in parallel")
@@ -198,10 +199,6 @@ func Execute(rootCmd *cobra.Command) {
 
 //nolint:wrapcheck // this function calls internal package which already wrap the errors with context
 func startScanner(namespace string, clusterWide bool, scanner *scanner.Scanner) error {
-	if clusterWide && namespace != "" {
-		fmt.Fprintln(os.Stderr, "Cannot scan cluster wide and only a namespace at the same time")
-	}
-
 	runUID := uuid.New().String()
 	ctx := context.Background()
 	if clusterWide {
