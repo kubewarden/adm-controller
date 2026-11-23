@@ -288,6 +288,7 @@ func (s *Scanner) ScanAllNamespaces(ctx context.Context, runUID string) error {
 	}
 	semaphore := semaphore.NewWeighted(int64(s.parallelNamespacesAudits))
 	var workers sync.WaitGroup
+	var errLock sync.Mutex
 
 	for _, namespace := range nsList.Items {
 		acquireErr := semaphore.Acquire(ctx, 1)
@@ -304,7 +305,9 @@ func (s *Scanner) ScanAllNamespaces(ctx context.Context, runUID string) error {
 
 			if e := s.ScanNamespace(ctx, namespaceName, runUID); e != nil {
 				s.logger.ErrorContext(ctx, "error scanning namespace", slog.String("error", e.Error()), slog.String("ns", namespaceName))
+				errLock.Lock()
 				err = errors.Join(err, e)
+				errLock.Unlock()
 			}
 		}()
 	}

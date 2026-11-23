@@ -1326,6 +1326,38 @@ func TestScanAllNamespacesFailsWhenNamespacesCannotBeListed(t *testing.T) {
 	require.ErrorContains(t, err, "reactor error")
 }
 
+func TestScanAllNamespacesJoinsErrorsOfParallelNamespaces(t *testing.T) {
+	namespaceNames := []string{"namespace1", "namespace2", "namespace3"}
+	var namespaces []runtime.Object
+	for _, name := range namespaceNames {
+		namespaces = append(namespaces, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}})
+	}
+
+	dynamicClient := dynamicFake.NewSimpleDynamicClient(scheme.Scheme)
+	clientset := fake.NewClientset(namespaces...)
+	client, err := testutils.NewFakeClient()
+	require.NoError(t, err)
+
+	clientset.PrependReactor("get", "namespaces", func(_ testingclient.Action) (bool, runtime.Object, error) {
+		return true, nil, apimachineryErrors.NewServiceUnavailable("reactor error")
+	})
+
+	logger := slog.Default()
+	k8sClient := k8s.NewClient(dynamicClient, clientset, "kubewarden", nil, pageSize, logger)
+	policiesClient := policies.NewClient(client, "kubewarden", "", logger)
+	policyReportStore := report.NewPolicyReportStore(client, logger)
+
+	config := newTestConfig(policiesClient, k8sClient, policyReportStore)
+	config.Parallelization.ParallelNamespacesAudits = len(namespaceNames)
+	scanner, err := NewScanner(config)
+	require.NoError(t, err)
+
+	err = scanner.ScanAllNamespaces(t.Context(), uuid.New().String())
+	for _, name := range namespaceNames {
+		require.ErrorContains(t, err, "failed to get namespace "+name)
+	}
+}
+
 func TestScanAllNamespacesWithOpenReport(t *testing.T) {
 	mockPolicyServer := newMockPolicyServer()
 	defer mockPolicyServer.Close()
