@@ -6,16 +6,15 @@ use policy_evaluator::policy_fetcher::store::{PolicyPath, Store};
 
 // saves all policies in a tarball with the name provided as output.
 // policies must be inside the default store.
-pub(crate) fn save(policies: Vec<&String>, output: &str) -> Result<()> {
+pub(crate) fn save(policies: Vec<&String>, output: &str, store: &Store) -> Result<()> {
     let tar_gz =
         File::create(output).map_err(|e| anyhow!("cannot create file {}: {}", output, e))?;
     let enc = GzEncoder::new(tar_gz, Compression::default());
     let mut tar = tar::Builder::new(enc);
 
     for policy in policies {
-        let store = Store::default();
-        let uri = crate::utils::map_path_to_uri(policy.as_str())?;
-        let wasm_path = crate::utils::wasm_path(&uri)
+        let uri = crate::utils::map_path_to_uri(policy.as_str(), store)?;
+        let wasm_path = crate::utils::wasm_path(&uri, store)
             .map_err(|e| anyhow!("cannot find policy {}: {}", policy, e))?;
         let mut file = File::open(wasm_path)
             .map_err(|e| anyhow!("cannot open policy file {}: {}", policy, e))?;

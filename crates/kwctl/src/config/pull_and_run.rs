@@ -10,7 +10,7 @@ use std::{
 use anyhow::{Result, anyhow};
 use clap::ArgMatches;
 use policy_evaluator::policy_fetcher::{
-    sigstore::trust::sigstore::SigstoreTrustRoot, sources::Sources,
+    sigstore::trust::sigstore::SigstoreTrustRoot, sources::Sources, store::Store,
     verify::config::LatestVerificationConfig,
 };
 use tracing::{info, warn};
@@ -44,7 +44,10 @@ pub(crate) struct PullAndRunSettings {
     pub host_capabilities_mode: HostCapabilitiesMode,
 }
 
-pub(crate) fn parse_policy_definitions(matches: &ArgMatches) -> Result<Vec<PolicyDefinition>> {
+pub(crate) fn parse_policy_definitions(
+    matches: &ArgMatches,
+    store: &Store,
+) -> Result<Vec<PolicyDefinition>> {
     let uri = matches
         .get_one::<String>("uri_or_sha_prefix_or_yaml_file")
         .expect("uri_or_sha_prefix is guaranteed to be Some here");
@@ -72,7 +75,7 @@ pub(crate) fn parse_policy_definitions(matches: &ArgMatches) -> Result<Vec<Polic
         return PolicyDefinition::from_yaml_file(uri, &allowed_host_capabilities);
     }
 
-    Ok(vec![PolicyDefinition::from_cli(matches)?])
+    Ok(vec![PolicyDefinition::from_cli(matches, store)?])
 }
 
 pub(crate) async fn parse_pull_and_run_settings(

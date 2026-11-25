@@ -5,10 +5,8 @@ use policy_evaluator::policy_fetcher::store::{PolicyPath, Store};
 
 use crate::utils::LookupError;
 
-pub(crate) fn rm(uri_or_sha_prefix: &str) -> Result<()> {
-    let uri = crate::utils::get_uri(&uri_or_sha_prefix.to_string())?;
-
-    let store = Store::default();
+pub(crate) fn rm(uri_or_sha_prefix: &str, store: &Store) -> Result<()> {
+    let uri = crate::utils::get_uri(&uri_or_sha_prefix.to_string(), store)?;
 
     if store.get_policy_by_uri(&uri)?.is_none() {
         return Err(anyhow!(LookupError::PolicyMissing(uri)));

@@ -3,7 +3,7 @@ use clap::crate_version;
 use itertools::Itertools;
 use policy_evaluator::{
     burrego,
-    policy_fetcher::store::{DEFAULT_ROOT, Store},
+    policy_fetcher::store::{DEFAULT_ROOT, DEFAULT_STORE_ROOT},
 };
 
 pub(crate) fn info() -> Result<()> {
@@ -12,8 +12,6 @@ pub(crate) fn info() -> Result<()> {
         .sorted()
         .map(|builtin| format!("  - {builtin}"))
         .join("\n");
-
-    let store = Store::default();
 
     println!(
         r#"kwctl version: {}
@@ -27,7 +25,7 @@ kwctl cache directory: {}
     "#,
         crate_version!(),
         builtins,
-        store.root.to_string_lossy(),
+        DEFAULT_STORE_ROOT.to_string_lossy(),
         DEFAULT_ROOT.config_dir().to_string_lossy(),
         crate::scaffold::DEFAULT_KWCTL_CACHE.to_string_lossy(),
     );

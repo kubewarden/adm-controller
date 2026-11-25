@@ -5,8 +5,9 @@ use policy_evaluator::{
 };
 use prettytable::{Table, format, row};
 
-pub(crate) fn list() -> Result<()> {
-    if policy_list()?.is_empty() {
+pub(crate) fn list(store: &Store) -> Result<()> {
+    let policies = policy_list(store)?;
+    if policies.is_empty() {
         return Ok(());
     }
     let mut table = Table::new();
@@ -18,7 +19,7 @@ pub(crate) fn list() -> Result<()> {
         "SHA-256",
         "Size"
     ]);
-    for policy in policy_list()? {
+    for policy in policies {
         let (mutating, context_aware) = if let Some(policy_metadata) =
             PolicyMetadata::from_path(&policy.local_path)
                 .map_err(|e| anyhow!("error processing metadata of policy {}: {:?}", policy, e))?
@@ -57,6 +58,6 @@ pub(crate) fn list() -> Result<()> {
     Ok(())
 }
 
-fn policy_list() -> Result<Vec<Policy>> {
-    Store::default().list().map_err(anyhow::Error::new)
+fn policy_list(store: &Store) -> Result<Vec<Policy>> {
+    store.list().map_err(anyhow::Error::new)
 }
