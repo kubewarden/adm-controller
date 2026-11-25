@@ -35,6 +35,7 @@ Default value: `policy-server.pid`
 * `--disable-memory-limit` — Disable policy memory limit
 * `--disable-timeout-protection` — Disable policy timeout protection
 * `--docker-config-json-path <DOCKER_CONFIG>` — Path to a Docker config.json-like path. Can be used to indicate registry authentication details
+* `--enable-http-policies` — Deprecated. Allow downloading policies from http:// and https:// URLs. Disabled by default. Support for these URLs will be removed
 * `--enable-metrics` — Enable metrics
 * `--enable-pprof` — Enable pprof profiling
 * `--ignore-kubernetes-connection-failure` — Do not exit with an error if the Kubernetes connection fails. This will cause context-aware policies to break when there's no connection with Kubernetes.

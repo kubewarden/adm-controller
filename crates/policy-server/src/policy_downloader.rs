@@ -28,6 +28,7 @@ pub(crate) type FetchedPolicies = HashMap<String, Result<PathBuf>>;
 pub(crate) struct Downloader {
     verifier: Option<Verifier>,
     sources: Option<Sources>,
+    enable_http_policies: bool,
 }
 
 impl Downloader {
@@ -39,6 +40,7 @@ impl Downloader {
     pub async fn new(
         sources: Option<Sources>,
         manual_root: Option<Arc<SigstoreTrustRoot>>,
+        enable_http_policies: bool,
     ) -> Result<Self> {
         let verifier = if let Some(manual_root) = manual_root {
             info!("Fetching sigstore data from remote TUF repository");
@@ -47,7 +49,11 @@ impl Downloader {
             None
         };
 
-        Ok(Downloader { verifier, sources })
+        Ok(Downloader {
+            verifier,
+            sources,
+            enable_http_policies,
+        })
     }
 
     /// Download all the policies to the given destination
@@ -131,7 +137,7 @@ impl Downloader {
                 policy_url,
                 policy_fetcher::PullDestination::Store(destination.as_ref().to_path_buf()),
                 self.sources.as_ref(),
-                true,
+                self.enable_http_policies,
             )
             .await
             {
@@ -303,7 +309,7 @@ mod tests {
 
         let policy_download_dir = TempDir::new().expect("Cannot create temp dir");
 
-        let mut downloader = Downloader::new(None, None).await.unwrap();
+        let mut downloader = Downloader::new(None, None, false).await.unwrap();
 
         let fetched_policies = downloader
             .download_policies(
@@ -324,6 +330,30 @@ mod tests {
                 .unwrap()
                 .is_ok()
         );
+    }
+
+    #[tokio::test]
+    async fn http_policies_disabled() {
+        let policies_cfg = r#"
+    http-policy:
+      module: https://127.0.0.1:1/policy.wasm
+    "#;
+        let policies: HashMap<String, PolicyOrPolicyGroup> =
+            serde_yaml::from_str(policies_cfg).expect("Cannot parse policy cfg");
+        let policy_download_dir = TempDir::new().expect("Cannot create temp dir");
+        let mut downloader = Downloader::new(None, None, false)
+            .await
+            .expect("Cannot create the downloader");
+
+        let fetched_policies = downloader
+            .download_policies(&policies, policy_download_dir.path(), None)
+            .await;
+
+        assert!(matches!(
+            fetched_policies.get("https://127.0.0.1:1/policy.wasm"),
+            Some(Err(error)) if error.to_string().contains("'http-policy'")
+                && error.to_string().contains("--enable-http-policies")
+        ));
     }
 
     #[tokio::test]
@@ -350,7 +380,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut downloader = Downloader::new(None, Some(Arc::new(trust_root)))
+        let mut downloader = Downloader::new(None, Some(Arc::new(trust_root)), false)
             .await
             .unwrap();
 
