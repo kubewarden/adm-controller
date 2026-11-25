@@ -409,7 +409,7 @@ mod tests {
     fn local_file_pull_destination_excluding_filename() {
         assert_eq!(
             pull_destination(
-                &Url::parse("https://host.example.com:1234/path/to/policy.wasm").unwrap(),
+                &Url::parse("registry://host.example.com:1234/path/to/policy.wasm").unwrap(),
                 &PullDestination::LocalFile(std::env::current_dir().unwrap()),
             )
             .expect("pull_destination failed"),
@@ -421,7 +421,7 @@ mod tests {
     fn local_file_pull_destination_including_filename() {
         assert_eq!(
             pull_destination(
-                &Url::parse("https://host.example.com:1234/path/to/policy.wasm").unwrap(),
+                &Url::parse("registry://host.example.com:1234/path/to/policy.wasm").unwrap(),
                 &PullDestination::LocalFile(
                     std::env::current_dir().unwrap().join("named-policy.wasm")
                 ),
@@ -434,63 +434,28 @@ mod tests {
         );
     }
 
-    #[test]
-    fn store_pull_destination_from_http_with_port() {
+    #[rstest]
+    #[case::http_with_port(
+        "http://host.example.com:1234/path/to/policy.wasm",
+        "http/host.example.com:1234/path/to/policy.wasm"
+    )]
+    #[case::http(
+        "http://host.example.com/path/to/policy.wasm",
+        "http/host.example.com/path/to/policy.wasm"
+    )]
+    #[case::https(
+        "https://host.example.com/path/to/policy.wasm",
+        "https/host.example.com/path/to/policy.wasm"
+    )]
+    #[case::https_with_port(
+        "https://host.example.com:1234/path/to/policy.wasm",
+        "https/host.example.com:1234/path/to/policy.wasm"
+    )]
+    fn http_policies_store_pull_destination(#[case] url: &str, #[case] expected_path: &str) {
         assert_eq!(
-            pull_destination(
-                &Url::parse("http://host.example.com:1234/path/to/policy.wasm").unwrap(),
-                &PullDestination::MainStore,
-            )
-            .expect("pull_destination failed"),
-            (
-                Some(Store::default()),
-                store_path("http/host.example.com:1234/path/to/policy.wasm"),
-            ),
-        );
-    }
-
-    #[test]
-    fn store_pull_destination_from_http() {
-        assert_eq!(
-            pull_destination(
-                &Url::parse("http://host.example.com/path/to/policy.wasm").unwrap(),
-                &PullDestination::MainStore,
-            )
-            .expect("pull_destination failed"),
-            (
-                Some(Store::default()),
-                store_path("http/host.example.com/path/to/policy.wasm"),
-            ),
-        );
-    }
-
-    #[test]
-    fn store_pull_destination_from_https() {
-        assert_eq!(
-            pull_destination(
-                &Url::parse("https://host.example.com/path/to/policy.wasm").unwrap(),
-                &PullDestination::MainStore,
-            )
-            .expect("pull_destination failed"),
-            (
-                Some(Store::default()),
-                store_path("https/host.example.com/path/to/policy.wasm"),
-            ),
-        );
-    }
-
-    #[test]
-    fn store_pull_destination_from_https_with_port() {
-        assert_eq!(
-            pull_destination(
-                &Url::parse("https://host.example.com:1234/path/to/policy.wasm").unwrap(),
-                &PullDestination::MainStore,
-            )
-            .expect("pull_destination failed"),
-            (
-                Some(Store::default()),
-                store_path("https/host.example.com:1234/path/to/policy.wasm"),
-            ),
+            pull_destination(&Url::parse(url).unwrap(), &PullDestination::MainStore)
+                .expect("pull_destination failed"),
+            (Some(Store::default()), store_path(expected_path),),
         );
     }
 

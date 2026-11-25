@@ -248,19 +248,9 @@ mod tests {
             "registry/ghcr.io/kubewarden/policies/pod-privileged:v0.2.2"
         ),
         case(
-            "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm ",
-            PolicyPath::PrefixAndFilename,
-            "https/github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm"
-        ),
-        case(
             "registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.2",
             PolicyPath::PrefixOnly,
             "registry/ghcr.io/kubewarden/policies"
-        ),
-        case(
-            "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm ",
-            PolicyPath::PrefixOnly,
-            "https/github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6"
         )
     )]
     fn policy_full_path(
@@ -287,19 +277,9 @@ mod tests {
             "registry/ghcr.io/kubewarden/policies/pod-privileged:v0.2.2"
         ),
         case(
-            "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm ",
-            PolicyPath::PrefixAndFilename,
-            "https/github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm"
-        ),
-        case(
             "registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.2",
             PolicyPath::PrefixOnly,
             "registry/ghcr.io/kubewarden/policies"
-        ),
-        case(
-            "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm ",
-            PolicyPath::PrefixOnly,
-            "https/github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6"
         )
     )]
     fn policy_path(

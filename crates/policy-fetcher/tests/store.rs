@@ -12,9 +12,9 @@ fn test_list() {
 
     let mut expected_policies = vec![
         Policy {
-            uri: "https://internal.host.company/some/path/to/1.0.0/wasm-module.wasm".to_owned(),
+            uri: "registry://internal.host.company/some/path/to/wasm-module.wasm:1.0.0".to_owned(),
             local_path: store_root.path().join(path::encode_path(
-                "https/internal.host.company/some/path/to/1.0.0/wasm-module.wasm",
+                "registry/internal.host.company/some/path/to/wasm-module.wasm:1.0.0",
             )),
         },
         Policy {
@@ -57,9 +57,9 @@ fn test_get_policy_by_uri() {
     let store_root = tempdir().unwrap();
 
     let expected_policy = Policy {
-        uri: "https://internal.host.company/some/path/to/1.0.0/wasm-module.wasm".to_owned(),
+        uri: "registry://internal.host.company/some/path/to/wasm-module.wasm:1.0.0".to_owned(),
         local_path: store_root.path().join(path::encode_path(
-            "https/internal.host.company/some/path/to/1.0.0/wasm-module.wasm",
+            "registry/internal.host.company/some/path/to/wasm-module.wasm:1.0.0",
         )),
     };
 
@@ -78,7 +78,9 @@ fn test_get_policy_by_uri_not_found() {
     let store_root = tempdir().unwrap();
     let store = Store::new(store_root.path());
 
-    let result = store.get_policy_by_uri("https://does/not/exist").unwrap();
+    let result = store
+        .get_policy_by_uri("registry://does/not/exist:1.0.0")
+        .unwrap();
 
     assert!(result.is_none());
 }
@@ -88,9 +90,9 @@ fn test_get_policy_by_uri_unknown_scheme() {
     let store_root = tempdir().unwrap();
 
     let policies = vec![Policy {
-        uri: "https://internal.host.company/some/path/to/1.0.0/wasm-module.wasm".to_owned(),
+        uri: "registry://internal.host.company/some/path/to/wasm-module.wasm:1.0.0".to_owned(),
         local_path: store_root.path().join(path::encode_path(
-            "https/internal.host.company/some/path/to/1.0.0/wasm-module.wasm",
+            "registry/internal.host.company/some/path/to/wasm-module.wasm:1.0.0",
         )),
     }];
 
@@ -108,9 +110,9 @@ fn test_get_policy_by_sha_prefix() {
     let store_root = tempdir().unwrap();
 
     let expected_policy = Policy {
-        uri: "https://internal.host.company/some/path/to/1.0.0/wasm-module.wasm".to_owned(),
+        uri: "registry://internal.host.company/some/path/to/wasm-module.wasm:1.0.0".to_owned(),
         local_path: store_root.path().join(path::encode_path(
-            "https/internal.host.company/some/path/to/1.0.0/wasm-module.wasm",
+            "registry/internal.host.company/some/path/to/wasm-module.wasm:1.0.0",
         )),
     };
 
@@ -141,9 +143,9 @@ fn test_get_policy_by_sha_prefix_duplicate() {
 
     let policies = vec![
         Policy {
-            uri: "https://internal.host.company/some/path/to/1.0.0/wasm-module.wasm".to_owned(),
+            uri: "registry://internal.host.company/some/path/to/wasm-module.wasm:1.0.0".to_owned(),
             local_path: store_root.path().join(path::encode_path(
-                "https/internal.host.company/some/path/to/1.0.0/wasm-module.wasm",
+                "registry/internal.host.company/some/path/to/wasm-module.wasm:1.0.0",
             )),
         },
         Policy {
