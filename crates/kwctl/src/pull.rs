@@ -20,7 +20,7 @@ pub(crate) async fn pull(
     pb.set_message(format!("Pulling policy from {}", uri));
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    let result = fetch_policy(uri, destination, sources)
+    let result = fetch_policy(uri, destination, sources, true)
         .await
         .map_err(anyhow::Error::new);
 

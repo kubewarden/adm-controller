@@ -11,6 +11,7 @@ use url::Url;
 
 pub mod errors;
 pub mod fetcher;
+pub mod http_policies;
 mod https;
 pub mod policy;
 pub mod proxy;
@@ -81,8 +82,10 @@ pub async fn fetch_policy(
     url: &str,
     destination: PullDestination,
     sources: Option<&Sources>,
+    enable_http_policies: bool,
 ) -> FetcherResult<Policy> {
     let url = parse_url(url)?;
+    http_policies::check(url.as_str(), url.scheme(), enable_http_policies)?;
     match url.scheme() {
         "file" => {
             // no-op: return early
@@ -96,7 +99,7 @@ pub async fn fetch_policy(
         "registry" | "http" | "https" => Ok(()),
         _ => Err(StoreError::UnknownSchemeError(url.scheme().to_owned())),
     }?;
-    let (store, mut destination) = pull_destination(&url, &destination)?;
+    let (store, mut destination) = pull_destination(&url, &destination, enable_http_policies)?;
     if let Some(store) = store {
         store
             .ensure(&store.policy_full_path(url.as_str(), store::PolicyPath::PrefixOnly)?)
@@ -179,16 +182,17 @@ fn client_protocol(
 fn pull_destination(
     url: &Url,
     destination: &PullDestination,
+    enable_http_policies: bool,
 ) -> FetcherResult<(Option<Store>, PathBuf)> {
     Ok(match destination {
         PullDestination::MainStore => {
-            let store = Store::default();
+            let store = Store::with_default_root(enable_http_policies);
             let policy_path =
                 store.policy_full_path(url.as_str(), store::PolicyPath::PrefixAndFilename)?;
             (Some(store), policy_path)
         }
         PullDestination::Store(root) => {
-            let store = Store::new(root);
+            let store = Store::new(root, enable_http_policies);
             let policy_path =
                 store.policy_full_path(url.as_str(), store::PolicyPath::PrefixAndFilename)?;
             (Some(store), policy_path)
@@ -272,7 +276,7 @@ mod tests {
     }
 
     fn store_path(path: &str) -> PathBuf {
-        Store::default().root.join(store::path::encode_path(path))
+        store::DEFAULT_STORE_ROOT.join(store::path::encode_path(path))
     }
 
     struct UrlParseDetails {
@@ -411,6 +415,7 @@ mod tests {
             pull_destination(
                 &Url::parse("registry://host.example.com:1234/path/to/policy.wasm").unwrap(),
                 &PullDestination::LocalFile(std::env::current_dir().unwrap()),
+                false,
             )
             .expect("pull_destination failed"),
             (None, std::env::current_dir().unwrap().join("policy.wasm"),),
@@ -425,6 +430,7 @@ mod tests {
                 &PullDestination::LocalFile(
                     std::env::current_dir().unwrap().join("named-policy.wasm")
                 ),
+                false,
             )
             .expect("pull_destination failed"),
             (
@@ -453,10 +459,29 @@ mod tests {
     )]
     fn http_policies_store_pull_destination(#[case] url: &str, #[case] expected_path: &str) {
         assert_eq!(
-            pull_destination(&Url::parse(url).unwrap(), &PullDestination::MainStore)
+            pull_destination(&Url::parse(url).unwrap(), &PullDestination::MainStore, true)
                 .expect("pull_destination failed"),
-            (Some(Store::default()), store_path(expected_path),),
+            (
+                Some(Store::with_default_root(true)),
+                store_path(expected_path),
+            ),
         );
+    }
+
+    #[rstest]
+    #[case::http("http://host.example.com/path/to/policy.wasm")]
+    #[case::https("https://host.example.com/path/to/policy.wasm")]
+    fn http_policies_store_pull_destination_disabled(#[case] url: &str) {
+        assert!(matches!(
+            pull_destination(
+                &Url::parse(url).unwrap(),
+                &PullDestination::MainStore,
+                false
+            ),
+            Err(FetcherError::StoreError(StoreError::HttpPoliciesDisabled(
+                _
+            )))
+        ));
     }
 
     #[test]
@@ -465,10 +490,11 @@ mod tests {
             pull_destination(
                 &Url::parse("registry://host.example.com/path/to/policy:tag").unwrap(),
                 &PullDestination::MainStore,
+                false,
             )
             .expect("pull_destination failed"),
             (
-                Some(Store::default()),
+                Some(Store::with_default_root(false)),
                 store_path("registry/host.example.com/path/to/policy:tag"),
             ),
         );
@@ -476,10 +502,11 @@ mod tests {
             pull_destination(
                 &Url::parse("registry://host.example.com/policy:tag").unwrap(),
                 &PullDestination::MainStore,
+                false,
             )
             .expect("pull_destination failed"),
             (
-                Some(Store::default()),
+                Some(Store::with_default_root(false)),
                 store_path("registry/host.example.com/policy:tag"),
             ),
         );
@@ -491,10 +518,11 @@ mod tests {
             pull_destination(
                 &Url::parse("registry://host.example.com:1234/path/to/policy:tag").unwrap(),
                 &PullDestination::MainStore,
+                false,
             )
             .expect("pull_destination failed"),
             (
-                Some(Store::default()),
+                Some(Store::with_default_root(false)),
                 store_path("registry/host.example.com:1234/path/to/policy:tag"),
             ),
         );

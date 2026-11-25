@@ -14,6 +14,10 @@ pub enum StoreError {
     PolicyStoragePathError(#[from] std::path::StripPrefixError),
     #[error("unknown scheme: {0}")]
     UnknownSchemeError(String),
+    #[error(
+        "cannot use {0}: http:// and https:// policy URLs are disabled and deprecated, use --enable-http-policies to enable them"
+    )]
+    HttpPoliciesDisabled(String),
     #[error("multiple policies found with the same prefix: {0}")]
     MultiplePoliciesFoundError(String),
     #[error(transparent)]

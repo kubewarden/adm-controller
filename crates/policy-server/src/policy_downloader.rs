@@ -131,6 +131,7 @@ impl Downloader {
                 policy_url,
                 policy_fetcher::PullDestination::Store(destination.as_ref().to_path_buf()),
                 self.sources.as_ref(),
+                true,
             )
             .await
             {

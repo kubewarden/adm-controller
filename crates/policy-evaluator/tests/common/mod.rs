@@ -27,6 +27,7 @@ pub(crate) async fn fetch_policy(policy_uri: &str, tempdir: PathBuf) -> Policy {
         policy_uri,
         PullDestination::LocalFile(tempdir),
         None,
+        false,
     )
     .await
     .expect("cannot fetch policy")

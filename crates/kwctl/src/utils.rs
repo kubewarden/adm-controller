@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn test_map_path_to_uri_remote_scheme() -> Result<()> {
         let store_root = tempfile::tempdir()?;
-        let store = Store::new(store_root.path());
+        let store = Store::new(store_root.path(), false);
 
         assert_eq!(
             map_path_to_uri(
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn test_map_path_to_uri_local_scheme() -> Result<()> {
         let store_root = tempfile::tempdir()?;
-        let store = Store::new(store_root.path());
+        let store = Store::new(store_root.path(), false);
 
         assert_eq!(
             map_path_to_uri("file:///absolute/directory/some-policy-0.0.1.wasm", &store)?,
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn test_map_path_to_uri_sha_prefix_not_found() {
         let store_root = tempfile::tempdir().expect("cannot create the temporary directory");
-        let store = Store::new(store_root.path());
+        let store = Store::new(store_root.path(), false);
 
         assert!(matches!(
             map_path_to_uri("93a", &store),

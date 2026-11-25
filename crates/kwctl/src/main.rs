@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
 
     match matches.subcommand_name() {
         Some("policies") => {
-            let store = Store::default();
+            let store = Store::with_default_root(true);
             policies::list(&store)
         }
         Some("info") => info::info(),
@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
         Some("push") => {
             if let Some(matches) = matches.subcommand_matches("push") {
                 let sources = remote_server_options(matches)?;
-                let store = Store::default();
+                let store = Store::with_default_root(true);
                 let wasm_uri = crate::utils::map_path_to_uri(
                     matches.get_one::<String>("policy").unwrap(),
                     &store,
@@ -208,7 +208,7 @@ async fn main() -> Result<()> {
             if let Some(matches) = matches.subcommand_matches("rm") {
                 let uri_or_sha_prefix =
                     normalize_uri(matches.get_one::<String>("uri_or_sha_prefix").unwrap());
-                let store = Store::default();
+                let store = Store::with_default_root(true);
                 rm::rm(&uri_or_sha_prefix, &store)?;
             }
             Ok(())
@@ -217,14 +217,14 @@ async fn main() -> Result<()> {
             let run_arg = matches
                 .subcommand_matches("run")
                 .expect("run subcommand not found");
-            let store = Store::default();
+            let store = Store::with_default_root(true);
             cli::run::exec(run_arg, &store).await
         }
         Some("bench") => {
             let bench_arg = matches
                 .subcommand_matches("bench")
                 .expect("bench subcommand not found");
-            let store = Store::default();
+            let store = Store::with_default_root(true);
             cli::bench::exec(bench_arg, &store).await
         }
         Some("annotate") => {
@@ -275,7 +275,7 @@ async fn main() -> Result<()> {
                     .get_one::<bool>("show-signatures")
                     .unwrap_or(&false)
                     .to_owned();
-                let store = Store::default();
+                let store = Store::with_default_root(true);
                 inspect::inspect(
                     &uri_or_sha_prefix,
                     output,
@@ -332,7 +332,7 @@ async fn main() -> Result<()> {
             if let Some(matches) = matches.subcommand_matches("scaffold")
                 && let Some(matches) = matches.subcommand_matches("manifest")
             {
-                let store = Store::default();
+                let store = Store::with_default_root(true);
                 scaffold_manifest_command(matches, &store).await?;
             };
             if let Some(matches) = matches.subcommand_matches("scaffold")
@@ -398,7 +398,7 @@ async fn main() -> Result<()> {
             if let Some(matches) = matches.subcommand_matches("save") {
                 let policies = matches.get_many::<String>("policies").unwrap();
                 let output = matches.get_one::<String>("output").unwrap();
-                let store = Store::default();
+                let store = Store::with_default_root(true);
 
                 save(policies.collect_vec(), output, &store)?;
             }
@@ -407,7 +407,7 @@ async fn main() -> Result<()> {
         Some("load") => {
             if let Some(matches) = matches.subcommand_matches("load") {
                 let input = matches.get_one::<String>("input").unwrap();
-                let store = Store::default();
+                let store = Store::with_default_root(true);
                 load(input, &store)?;
             }
             Ok(())

@@ -2119,6 +2119,7 @@ async fn test_policy_server_with_http_proxy() {
             download_dir.path().join("pod-privileged.wasm"),
         ),
         None,
+        false,
     )
     .await
     .expect("Failed to fetch policy from ghcr.io");
