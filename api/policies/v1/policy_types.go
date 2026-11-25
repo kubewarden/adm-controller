@@ -46,9 +46,11 @@ type PolicySpec struct {
 	Mode PolicyMode `json:"mode,omitempty"`
 
 	// Module is the location of the WASM module to be loaded. Can be a
-	// local file (file://), a remote file served by an HTTP server
-	// (http://, https://), or an artifact served by an OCI-compatible
-	// registry (registry://).
+	// local file (file://), an artifact served by an OCI-compatible
+	// registry (registry://), or a remote file served by an HTTP server
+	// (http://, https://). The http:// and https:// schemes are deprecated.
+	// To use them, set the KUBEWARDEN_ENABLE_HTTP_POLICIES environment
+	// variable to "true" in the env of the PolicyServer.
 	// If prefix is missing, it will default to registry:// and use that
 	// internally.
 	// +kubebuilder:validation:Required
@@ -173,9 +175,11 @@ type PolicyGroupMembers map[string]PolicyGroupMember
 
 type PolicyGroupMember struct {
 	// Module is the location of the WASM module to be loaded. Can be a
-	// local file (file://), a remote file served by an HTTP server
-	// (http://, https://), or an artifact served by an OCI-compatible
-	// registry (registry://).
+	// local file (file://), an artifact served by an OCI-compatible
+	// registry (registry://), or a remote file served by an HTTP server
+	// (http://, https://). The http:// and https:// schemes are deprecated.
+	// To use them, set the KUBEWARDEN_ENABLE_HTTP_POLICIES environment
+	// variable to "true" in the env of the PolicyServer.
 	// If prefix is missing, it will default to registry:// and use that
 	// internally.
 	// +kubebuilder:validation:Required
