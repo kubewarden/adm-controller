@@ -108,12 +108,9 @@ fn test_policies() {
         .stdout(contains("v0.1.13"));
 }
 
-#[rstest]
-#[case::https(
-    "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.2.5/policy.wasm"
-)]
-#[case::registry("registry://ghcr.io/kubewarden/tests/pod-privileged:v0.2.5")]
-fn test_pull(#[case] uri: &str) {
+#[test]
+fn test_pull() {
+    let uri = "registry://ghcr.io/kubewarden/tests/pod-privileged:v0.2.5";
     let tempdir = tempdir().unwrap();
 
     let mut cmd = setup_command(tempdir.path());
@@ -126,6 +123,67 @@ fn test_pull(#[case] uri: &str) {
 
     cmd.assert().success();
     cmd.assert().stdout(contains(uri));
+}
+
+const HTTP_POLICY_URI: &str =
+    "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.2.5/policy.wasm";
+
+#[test]
+fn http_policies_pull() {
+    let tempdir = tempdir().unwrap();
+
+    let mut cmd = setup_command(tempdir.path());
+    cmd.arg("pull")
+        .arg("--enable-http-policies")
+        .arg(HTTP_POLICY_URI);
+
+    cmd.assert()
+        .success()
+        .stderr(contains("--enable-http-policies is deprecated"));
+
+    let mut cmd = setup_command(tempdir.path());
+    cmd.arg("policies").arg("--enable-http-policies");
+
+    cmd.assert().success().stdout(contains(HTTP_POLICY_URI));
+}
+
+#[test]
+fn http_policies_pull_disabled() {
+    let tempdir = tempdir().unwrap();
+
+    let mut cmd = setup_command(tempdir.path());
+    cmd.arg("pull").arg(HTTP_POLICY_URI);
+
+    cmd.assert()
+        .failure()
+        .stderr(contains(HTTP_POLICY_URI).and(contains("--enable-http-policies")));
+}
+
+#[test]
+fn http_policies_hidden_warning() {
+    let tempdir = tempdir().unwrap();
+
+    let mut cmd = setup_command(tempdir.path());
+    cmd.arg("--enable-http-policies")
+        .arg("pull")
+        .arg(HTTP_POLICY_URI);
+    cmd.assert().success();
+
+    let mut cmd = setup_command(tempdir.path());
+    cmd.arg("policies");
+    cmd.assert()
+        .success()
+        .stdout(contains(HTTP_POLICY_URI).not())
+        .stderr(contains(
+            "1 policies from http:// or https:// URLs are hidden",
+        ));
+
+    let mut cmd = setup_command(tempdir.path());
+    cmd.arg("--enable-http-policies").arg("policies");
+    cmd.assert()
+        .success()
+        .stdout(contains(HTTP_POLICY_URI))
+        .stderr(contains("are hidden").not());
 }
 
 #[test]

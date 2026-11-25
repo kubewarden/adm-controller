@@ -12,7 +12,7 @@ use policy_evaluator::policy_fetcher::{
     store::{DEFAULT_ROOT, Store},
 };
 use rustls::crypto::aws_lc_rs::default_provider;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
     fmt,
@@ -119,10 +119,17 @@ async fn main() -> Result<()> {
         tracing::warn!("Failed to install rustls crypto provider: {:?}", e);
     }
 
+    let enable_http_policies = matches.get_flag("enable-http-policies");
+    if enable_http_policies {
+        warn!(
+            "--enable-http-policies is deprecated. Support for http:// and https:// policy URLs will be removed"
+        );
+    }
+
     match matches.subcommand_name() {
         Some("policies") => {
-            let store = Store::with_default_root(true);
-            policies::list(&store)
+            let store = Store::with_default_root(enable_http_policies);
+            policies::list(&store, enable_http_policies)
         }
         Some("info") => info::info(),
         Some("pull") => {
@@ -136,7 +143,7 @@ async fn main() -> Result<()> {
                     Some(destination) => PullDestination::LocalFile(destination),
                     None => PullDestination::MainStore,
                 };
-                pull_command(uri, destination, matches).await?
+                pull_command(uri, destination, matches, enable_http_policies).await?
             };
             Ok(())
         }
@@ -164,7 +171,7 @@ async fn main() -> Result<()> {
         Some("push") => {
             if let Some(matches) = matches.subcommand_matches("push") {
                 let sources = remote_server_options(matches)?;
-                let store = Store::with_default_root(true);
+                let store = Store::with_default_root(enable_http_policies);
                 let wasm_uri = crate::utils::map_path_to_uri(
                     matches.get_one::<String>("policy").unwrap(),
                     &store,
@@ -208,7 +215,7 @@ async fn main() -> Result<()> {
             if let Some(matches) = matches.subcommand_matches("rm") {
                 let uri_or_sha_prefix =
                     normalize_uri(matches.get_one::<String>("uri_or_sha_prefix").unwrap());
-                let store = Store::with_default_root(true);
+                let store = Store::with_default_root(enable_http_policies);
                 rm::rm(&uri_or_sha_prefix, &store)?;
             }
             Ok(())
@@ -217,15 +224,15 @@ async fn main() -> Result<()> {
             let run_arg = matches
                 .subcommand_matches("run")
                 .expect("run subcommand not found");
-            let store = Store::with_default_root(true);
-            cli::run::exec(run_arg, &store).await
+            let store = Store::with_default_root(enable_http_policies);
+            cli::run::exec(run_arg, &store, enable_http_policies).await
         }
         Some("bench") => {
             let bench_arg = matches
                 .subcommand_matches("bench")
                 .expect("bench subcommand not found");
-            let store = Store::with_default_root(true);
-            cli::bench::exec(bench_arg, &store).await
+            let store = Store::with_default_root(enable_http_policies);
+            cli::bench::exec(bench_arg, &store, enable_http_policies).await
         }
         Some("annotate") => {
             if let Some(matches) = matches.subcommand_matches("annotate") {
@@ -275,7 +282,7 @@ async fn main() -> Result<()> {
                     .get_one::<bool>("show-signatures")
                     .unwrap_or(&false)
                     .to_owned();
-                let store = Store::with_default_root(true);
+                let store = Store::with_default_root(enable_http_policies);
                 inspect::inspect(
                     &uri_or_sha_prefix,
                     output,
@@ -332,8 +339,8 @@ async fn main() -> Result<()> {
             if let Some(matches) = matches.subcommand_matches("scaffold")
                 && let Some(matches) = matches.subcommand_matches("manifest")
             {
-                let store = Store::with_default_root(true);
-                scaffold_manifest_command(matches, &store).await?;
+                let store = Store::with_default_root(enable_http_policies);
+                scaffold_manifest_command(matches, &store, enable_http_policies).await?;
             };
             if let Some(matches) = matches.subcommand_matches("scaffold")
                 && let Some(matches) = matches.subcommand_matches("vap")
@@ -398,7 +405,7 @@ async fn main() -> Result<()> {
             if let Some(matches) = matches.subcommand_matches("save") {
                 let policies = matches.get_many::<String>("policies").unwrap();
                 let output = matches.get_one::<String>("output").unwrap();
-                let store = Store::with_default_root(true);
+                let store = Store::with_default_root(enable_http_policies);
 
                 save(policies.collect_vec(), output, &store)?;
             }
@@ -407,7 +414,7 @@ async fn main() -> Result<()> {
         Some("load") => {
             if let Some(matches) = matches.subcommand_matches("load") {
                 let input = matches.get_one::<String>("input").unwrap();
-                let store = Store::with_default_root(true);
+                let store = Store::with_default_root(enable_http_policies);
                 load(input, &store)?;
             }
             Ok(())
@@ -441,6 +448,7 @@ async fn pull_if_needed(
     uri_or_sha_prefix: &str,
     matches: &ArgMatches,
     store: &Store,
+    enable_http_policies: bool,
 ) -> Result<()> {
     match crate::utils::get_wasm_path(uri_or_sha_prefix, store) {
         Err(LookupError::PolicyMissing(uri)) => {
@@ -448,7 +456,13 @@ async fn pull_if_needed(
                 "cannot find policy with uri: {}, trying to pull it from remote registry",
                 uri
             );
-            pull_command(&uri, PullDestination::MainStore, matches).await
+            pull_command(
+                &uri,
+                PullDestination::MainStore,
+                matches,
+                enable_http_policies,
+            )
+            .await
         }
         Err(e) => Err(anyhow!("{}", e)),
         Ok(_path) => Ok(()),
@@ -460,6 +474,7 @@ async fn pull_command(
     uri: &String,
     destination: PullDestination,
     matches: &ArgMatches,
+    enable_http_policies: bool,
 ) -> Result<()> {
     let sources = remote_server_options(matches)?;
 
@@ -482,7 +497,7 @@ async fn pull_command(
         );
     }
 
-    let policy = pull::pull(uri, sources.as_ref(), destination).await?;
+    let policy = pull::pull(uri, sources.as_ref(), destination, enable_http_policies).await?;
 
     if verification_options.is_some() {
         let sigstore_trust_root =
@@ -502,11 +517,15 @@ async fn pull_command(
  * Scaffold a manifest from a policy.
  * This function will pull the policy if it is not already present in the local store.
  */
-async fn scaffold_manifest_command(matches: &ArgMatches, store: &Store) -> Result<()> {
+async fn scaffold_manifest_command(
+    matches: &ArgMatches,
+    store: &Store,
+    enable_http_policies: bool,
+) -> Result<()> {
     let uri_or_sha_prefix = normalize_uri(matches.get_one::<String>("uri_or_sha_prefix").unwrap());
     let uri_or_sha_prefix = uri_or_sha_prefix.as_str();
 
-    pull_if_needed(uri_or_sha_prefix, matches, store).await?;
+    pull_if_needed(uri_or_sha_prefix, matches, store, enable_http_policies).await?;
 
     let resource_type = matches.get_one::<String>("type").unwrap();
     if matches.contains_id("settings-path") && matches.contains_id("settings-json") {

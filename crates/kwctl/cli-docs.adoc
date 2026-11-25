@@ -57,6 +57,7 @@ Tool to manage Kubewarden policies
 
 * `-v`, `--verbose <VERBOSE>` — Increase verbosity
 * `--no-color <NO-COLOR>` — Disable colorful output
+* `--enable-http-policies` — Deprecated. Allow http:// and https:// policy URLs. Disabled by default. Support for these URLs will be removed
 
 
 
@@ -87,7 +88,7 @@ Add Kubewarden metadata to a WebAssembly module
 Benchmarks a Kubewarden policy.
 
 The policy can be specified in the following ways:
-- URI: e.g., `registry://ghcr.io/kubewarden/policies/psp-policy:latest` or `\https://example.com/kubewarden/policies/main/psp-policy/psp-policy.wasm`
+- URI: e.g., `registry://ghcr.io/kubewarden/policies/psp-policy:latest`. Deprecated `https://` URIs need `--enable-http-policies`
 - SHA prefix: e.g., `c3b80a10f9c3` (requires the policy to be already pulled)
 - Local WASM file: e.g., `\file://home/tux/new-policy/psp-policy.wasm`
 - Local YAML file: e.g., `\file://home/tux/cluster-admission-policy.yaml` (contains declarations of Kubewarden Custom Resources like `ClusterAdmissionPolicy`, `AdmissionPolicy`, etc.)
@@ -115,7 +116,7 @@ each policy in the file using the same request during each evaluation.
 
 === *Arguments:*
 
-* `<URI_OR_SHA_PREFIX_OR_YAML_FILE>` — Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.
+* `<URI_OR_SHA_PREFIX_OR_YAML_FILE>` — Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies. If schema is omitted, file:// is assumed, rooted on the current directory.
 
 === *Options:*
 
@@ -228,7 +229,7 @@ Inspect Kubewarden policy
 
 === *Arguments:*
 
-* `<URI_OR_SHA_PREFIX>` — Policy URI or SHA prefix. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.
+* `<URI_OR_SHA_PREFIX>` — Policy URI or SHA prefix. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies. If schema is omitted, file:// is assumed, rooted on the current directory.
 
 === *Options:*
 
@@ -278,7 +279,7 @@ It respects standard proxy environment variables when downloading policies:
 
 === *Arguments:*
 
-* `<URI>` — Policy URI. Supported schemes: registry://, https://, file://
+* `<URI>` — Policy URI. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies
 
 === *Options:*
 
@@ -351,7 +352,7 @@ Removes a Kubewarden policy from the store
 Run one or more Kubewarden policies locally.
 
 The policy can be specified in the following ways:
-- URI: e.g., `registry://ghcr.io/kubewarden/policies/psp-policy:latest` or `\https://example.com/kubewarden/policies/main/psp-policy/psp-policy.wasm`
+- URI: e.g., `registry://ghcr.io/kubewarden/policies/psp-policy:latest`. Deprecated `https://` URIs need `--enable-http-policies`
 - SHA prefix: e.g., `c3b80a10f9c3` (requires the policy to be already pulled)
 - Local WASM file: e.g., `\file://home/tux/new-policy/psp-policy.wasm`
 - Local YAML file: e.g., `\file://home/tux/cluster-admission-policy.yaml` (contains declarations of Kubewarden Custom Resources like `ClusterAdmissionPolicy`, `AdmissionPolicy`, etc.)
@@ -384,7 +385,7 @@ It respects standard proxy environment variables when downloading policies:
 
 === *Arguments:*
 
-* `<URI_OR_SHA_PREFIX_OR_YAML_FILE>` — Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.
+* `<URI_OR_SHA_PREFIX_OR_YAML_FILE>` — Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies. If schema is omitted, file:// is assumed, rooted on the current directory.
 
 === *Options:*
 
@@ -504,7 +505,7 @@ Output a Kubernetes resource manifest
 
 === *Arguments:*
 
-* `<URI_OR_SHA_PREFIX>` — Policy URI or SHA prefix. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.
+* `<URI_OR_SHA_PREFIX>` — Policy URI or SHA prefix. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies. If schema is omitted, file:// is assumed, rooted on the current directory.
 
 === *Options:*
 

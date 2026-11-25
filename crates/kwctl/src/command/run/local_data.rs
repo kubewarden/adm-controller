@@ -55,7 +55,13 @@ async fn pull_all(
             if local_paths.contains_key(&uri) {
                 continue;
             }
-            let policy = pull::pull(&uri, sources, PullDestination::MainStore).await?;
+            let policy = pull::pull(
+                &uri,
+                sources,
+                PullDestination::MainStore,
+                cfg.enable_http_policies,
+            )
+            .await?;
 
             if let Some(digests) = cfg.verified_manifest_digests.as_ref() {
                 let digest = digests

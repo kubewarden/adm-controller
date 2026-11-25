@@ -10,6 +10,7 @@ pub(crate) async fn pull(
     uri: &str,
     sources: Option<&Sources>,
     destination: PullDestination,
+    enable_http_policies: bool,
 ) -> Result<Policy> {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
@@ -20,7 +21,7 @@ pub(crate) async fn pull(
     pb.set_message(format!("Pulling policy from {}", uri));
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    let result = fetch_policy(uri, destination, sources, true)
+    let result = fetch_policy(uri, destination, sources, enable_http_policies)
         .await
         .map_err(anyhow::Error::new);
 

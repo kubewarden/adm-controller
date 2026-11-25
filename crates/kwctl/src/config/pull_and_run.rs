@@ -42,6 +42,7 @@ pub(crate) struct PullAndRunSettings {
     /// `None` means the memory limit is disabled.
     pub policy_memory_limit_bytes: Option<usize>,
     pub host_capabilities_mode: HostCapabilitiesMode,
+    pub enable_http_policies: bool,
 }
 
 pub(crate) fn parse_policy_definitions(
@@ -81,6 +82,7 @@ pub(crate) fn parse_policy_definitions(
 pub(crate) async fn parse_pull_and_run_settings(
     matches: &ArgMatches,
     policy_definitions: &[PolicyDefinition],
+    enable_http_policies: bool,
 ) -> Result<PullAndRunSettings> {
     let request_raw = match matches
         .get_one::<String>("request-path")
@@ -183,6 +185,7 @@ pub(crate) async fn parse_pull_and_run_settings(
         enable_wasmtime_cache,
         policy_memory_limit_bytes,
         host_capabilities_mode,
+        enable_http_policies,
     })
 }
 
