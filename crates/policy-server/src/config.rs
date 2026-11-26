@@ -59,6 +59,7 @@ pub struct Config {
     pub daemon_stdout_file: Option<String>,
     pub daemon_stderr_file: Option<String>,
     pub continue_on_errors: bool,
+    pub enable_http_policies: bool,
 }
 
 pub struct TlsConfig {
@@ -172,6 +173,11 @@ impl Config {
             .expect("clap should have assigned a default value")
             .to_owned();
 
+        let enable_http_policies = matches
+            .get_one::<bool>("enable-http-policies")
+            .expect("clap should have assigned a default value")
+            .to_owned();
+
         Ok(Self {
             addr,
             readiness_probe_addr,
@@ -197,6 +203,7 @@ impl Config {
             daemon_stderr_file,
             enable_pprof,
             continue_on_errors,
+            enable_http_policies,
         })
     }
 }
@@ -674,6 +681,7 @@ example:
             "--log-no-color",
             "--daemon",
             "--enable-metrics",
+            "--enable-http-policies",
         ];
 
         for provide_flag in [true, false] {
@@ -690,7 +698,22 @@ example:
             assert_eq!(provide_flag, config.log_no_color);
             assert_eq!(provide_flag, config.daemon);
             assert_eq!(provide_flag, config.metrics_enabled);
+            assert_eq!(provide_flag, config.enable_http_policies);
         }
+    }
+
+    #[test]
+    fn http_policies_env() {
+        let cli = cli::build_cli();
+        let arg = cli
+            .get_arguments()
+            .find(|arg| arg.get_id() == "enable-http-policies")
+            .expect("the enable-http-policies flag must exist");
+
+        assert_eq!(
+            arg.get_env(),
+            Some(std::ffi::OsStr::new("KUBEWARDEN_ENABLE_HTTP_POLICIES"))
+        );
     }
 
     fn config_with_policies_and_args(extra_args: &[&str]) -> Result<Config> {

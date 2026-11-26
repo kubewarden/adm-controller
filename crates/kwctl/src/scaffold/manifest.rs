@@ -12,6 +12,7 @@ use policy_evaluator::{
         KUBEWARDEN_ANNOTATION_POLICY_CATEGORY, KUBEWARDEN_ANNOTATION_POLICY_SEVERITY,
         KUBEWARDEN_ANNOTATION_POLICY_TITLE,
     },
+    policy_fetcher::store::Store,
     policy_metadata::Metadata,
     validator::Validate,
 };
@@ -141,9 +142,10 @@ pub(crate) fn manifest(
     settings: Option<&str>,
     policy_title: Option<&str>,
     allow_context_aware_resources: bool,
+    store: &Store,
 ) -> Result<()> {
-    let uri = crate::utils::get_uri(&uri_or_sha_prefix.to_owned())?;
-    let wasm_path = crate::utils::wasm_path(&uri)?;
+    let uri = crate::utils::get_uri(&uri_or_sha_prefix.to_owned(), store)?;
+    let wasm_path = crate::utils::wasm_path(&uri, store)?;
 
     let metadata = Metadata::from_path(&wasm_path)?
         .ok_or_else(||

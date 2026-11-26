@@ -79,9 +79,13 @@ Policies can be downloaded using the `pull` command.
 The name of the policy must be expressed as a url with one of the
 following protocols:
 
-- `http://`: pull from a HTTP server
-- `https://`: pull from a HTTPS server
 - `registry://`: pull from an OCI registry
+- `http://`: pull from a HTTP server. Deprecated, needs `--enable-http-policies`
+- `https://`: pull from a HTTPS server. Deprecated, needs `--enable-http-policies`
+
+The support for `http://` and `https://` is deprecated and will be removed.
+The store keys these policies by the URL path only. Thus two URLs that differ
+only in the query share one store entry.
 
 Pulling from a registry, by tag:
 

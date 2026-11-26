@@ -8,7 +8,7 @@ use url::Url;
 use walkdir::WalkDir;
 
 use self::errors::StoreResult;
-use crate::policy::Policy;
+use crate::{http_policies, policy::Policy};
 
 pub mod errors;
 pub mod path;
@@ -43,19 +43,21 @@ pub enum PolicyPath {
 /// The structure of the folder would look like the following:
 ///
 /// <root>
+///     <https is deprecated>
 ///     - https
 ///         - internal.host.company
 ///             - some
 ///                 - path
-///                     - 1.0.0        
-///                         - to
+///                     - to
+///                         - 1.0.0
 ///                             - wasm-module.wasm
 ///     - registry
 ///         - ghcr.io
-///             - some
-///                 - path
-///                     - to
-///                         - wasm-module.wasm:1.0.0
+///             - some-org
+///                 - some
+///                     - path
+///                         - to
+///                             - wasm-module.wasm:1.0.0
 ///         - internal.host.company:5000
 ///             - some
 ///                 - path
@@ -64,13 +66,37 @@ pub enum PolicyPath {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Store {
     pub root: PathBuf,
+    enable_http_policies: bool,
 }
 
 impl Store {
-    pub fn new(root: &Path) -> Self {
+    pub fn new(root: &Path, enable_http_policies: bool) -> Self {
         Store {
             root: root.to_path_buf(),
+            enable_http_policies,
         }
+    }
+
+    /// Creates a store rooted at `DEFAULT_STORE_ROOT`.
+    ///
+    /// `Store` does not implement `Default` on purpose. Each caller must give
+    /// `enable_http_policies`, so the compiler finds a caller that does not
+    /// pass on the choice of the user. This simplifies refactor when the
+    /// deprecated http policies is removed.
+    pub fn with_default_root(enable_http_policies: bool) -> Self {
+        Self::new(&DEFAULT_STORE_ROOT, enable_http_policies)
+    }
+
+    /// Returns an error if this store does not accept policies with the
+    /// given scheme. `policy` identifies the policy in the error.
+    pub fn check_scheme(&self, policy: &str, scheme: &str) -> StoreResult<()> {
+        if http_policies::is_http_scheme(scheme) {
+            return http_policies::check(policy, scheme, self.enable_http_policies);
+        }
+        if !scheme::is_known_remote_scheme(scheme) {
+            return Err(StoreError::UnknownSchemeError(scheme.to_owned()));
+        }
+        Ok(())
     }
 
     /// Creates all directories provided in `path` starting from the
@@ -95,6 +121,7 @@ impl Store {
     /// included.
     pub fn policy_path(&self, url: &str, policy_path: PolicyPath) -> StoreResult<PathBuf> {
         let url = Url::parse(url)?;
+        http_policies::check(url.as_str(), url.scheme(), self.enable_http_policies)?;
         let filename = policy_file_name(&url);
         let policy_prefix = self.policy_prefix(&url);
 
@@ -134,8 +161,8 @@ impl Store {
         for scheme in store_root_path {
             let scheme = scheme?;
             match scheme.file_name().to_str() {
-                Some(scheme) => {
-                    if !scheme::is_known_remote_scheme(scheme) {
+                Some(scheme_name) => {
+                    if self.check_scheme(scheme_name, scheme_name).is_err() {
                         continue;
                     }
                 }
@@ -170,9 +197,7 @@ impl Store {
     pub fn get_policy_by_uri(&self, uri: &str) -> StoreResult<Option<Policy>> {
         let uri = Url::parse(uri)?;
 
-        if !scheme::is_known_remote_scheme(uri.scheme()) {
-            return Err(StoreError::UnknownSchemeError(uri.scheme().to_owned()));
-        }
+        self.check_scheme(uri.as_str(), uri.scheme())?;
 
         let policy_path = self.policy_full_path(uri.as_str(), PolicyPath::PrefixAndFilename)?;
         if policy_path.exists() {
@@ -200,14 +225,6 @@ impl Store {
                 Ok(Some(policy))
             }
         })
-    }
-}
-
-impl Default for Store {
-    fn default() -> Self {
-        Self {
-            root: DEFAULT_STORE_ROOT.clone(),
-        }
     }
 }
 
@@ -248,19 +265,9 @@ mod tests {
             "registry/ghcr.io/kubewarden/policies/pod-privileged:v0.2.2"
         ),
         case(
-            "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm ",
-            PolicyPath::PrefixAndFilename,
-            "https/github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm"
-        ),
-        case(
             "registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.2",
             PolicyPath::PrefixOnly,
             "registry/ghcr.io/kubewarden/policies"
-        ),
-        case(
-            "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm ",
-            PolicyPath::PrefixOnly,
-            "https/github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6"
         )
     )]
     fn policy_full_path(
@@ -268,7 +275,7 @@ mod tests {
         input_policy_path: PolicyPath,
         expected_relative_path: &str,
     ) {
-        let default = Store::default();
+        let default = Store::with_default_root(false);
         let path = default.policy_full_path(input_url, input_policy_path);
         assert!(path.is_ok());
         assert_eq!(
@@ -287,19 +294,9 @@ mod tests {
             "registry/ghcr.io/kubewarden/policies/pod-privileged:v0.2.2"
         ),
         case(
-            "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm ",
-            PolicyPath::PrefixAndFilename,
-            "https/github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm"
-        ),
-        case(
             "registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.2",
             PolicyPath::PrefixOnly,
             "registry/ghcr.io/kubewarden/policies"
-        ),
-        case(
-            "https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm ",
-            PolicyPath::PrefixOnly,
-            "https/github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6"
         )
     )]
     fn policy_path(
@@ -307,10 +304,28 @@ mod tests {
         input_policy_path: PolicyPath,
         expected_path: &str,
     ) -> StoreResult<()> {
-        let default = Store::default();
+        let default = Store::with_default_root(false);
         let path = default.policy_path(input_url, input_policy_path)?;
         assert_eq!(path::encode_path(expected_path), path);
 
         Ok(())
+    }
+
+    #[rstest]
+    #[case::registry("registry", true)]
+    #[case::file("file", false)]
+    #[case::ftp("ftp", false)]
+    fn check_scheme(#[case] scheme: &str, #[case] accepted: bool) {
+        let store = Store::with_default_root(false);
+
+        let result = store.check_scheme("some-policy", scheme);
+
+        assert_eq!(result.is_ok(), accepted);
+        if !accepted {
+            assert!(matches!(
+                result,
+                Err(StoreError::UnknownSchemeError(s)) if s == scheme
+            ));
+        }
     }
 }

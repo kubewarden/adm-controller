@@ -23,7 +23,7 @@ Use the `info` command to display system information.
 
 static RUN_AND_BENCH_COMMON_LONG_ABOUT: &str = color_print::cstr!(
     r#"The policy can be specified in the following ways:
-- <i>URI</i>: e.g., `registry://ghcr.io/kubewarden/policies/psp-policy:latest` or `https://example.com/kubewarden/policies/main/psp-policy/psp-policy.wasm`
+- <i>URI</i>: e.g., `registry://ghcr.io/kubewarden/policies/psp-policy:latest`. Deprecated `https://` URIs need `--enable-http-policies`
 - <i>SHA prefix</i>: e.g., `c3b80a10f9c3` (requires the policy to be already pulled)
 - <i>Local WASM file</i>: e.g., `file://home/tux/new-policy/psp-policy.wasm`
 - <i>Local YAML file</i>: e.g., `file://home/tux/cluster-admission-policy.yaml` (contains declarations of Kubewarden Custom Resources like `ClusterAdmissionPolicy`, `AdmissionPolicy`, etc.)
@@ -122,7 +122,7 @@ fn subcommand_pull() -> Command {
         Arg::new("uri")
             .required(true)
             .index(1)
-            .help("Policy URI. Supported schemes: registry://, https://, file://"),
+            .help("Policy URI. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies"),
     );
 
     Command::new("pull")
@@ -375,7 +375,7 @@ fn subcommand_run() -> Command {
         Arg::new("uri_or_sha_prefix_or_yaml_file")
             .required(true)
             .index(1)
-            .help("Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.")
+            .help("Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies. If schema is omitted, file:// is assumed, rooted on the current directory.")
     );
 
     Command::new("run")
@@ -478,7 +478,7 @@ fn subcommand_inspect() -> Command {
         Arg::new("uri_or_sha_prefix")
             .required(true)
             .index(1)
-            .help("Policy URI or SHA prefix. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory."),
+            .help("Policy URI or SHA prefix. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies. If schema is omitted, file:// is assumed, rooted on the current directory."),
     );
 
     Command::new("inspect")
@@ -546,7 +546,7 @@ fn subcommand_scaffold() -> Command {
         Arg::new("uri_or_sha_prefix")
             .required(true)
             .index(1)
-            .help("Policy URI or SHA prefix. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory."),
+            .help("Policy URI or SHA prefix. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies. If schema is omitted, file:// is assumed, rooted on the current directory."),
     );
 
     let mut vap_args = vec![
@@ -678,7 +678,7 @@ fn subcommand_bench() -> Command {
         Arg::new("uri_or_sha_prefix_or_yaml_file")
             .required(true)
             .index(1)
-            .help("Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, https://, file://. If schema is omitted, file:// is assumed, rooted on the current directory.")
+            .help("Policy URI, SHA prefix or YAML file containing Kubewarden policy resources. Supported schemes: registry://, file://. The deprecated https:// scheme needs --enable-http-policies. If schema is omitted, file:// is assumed, rooted on the current directory.")
     );
 
     Command::new("bench")
@@ -799,8 +799,38 @@ pub fn build_cli() -> Command {
                 .num_args(0)
                 .help("Disable colorful output"),
         )
+        .arg(
+            Arg::new("enable-http-policies")
+                .long("enable-http-policies")
+                .global(true)
+                .action(ArgAction::SetTrue)
+                .help("Deprecated. Allow http:// and https:// policy URLs. Disabled by default. Support for these URLs will be removed"),
+        )
         .subcommands(subcommands)
         .long_version(VERSION_AND_BUILTINS.as_str())
         .subcommand_required(true)
         .arg_required_else_help(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::not_set(&["kwctl", "policies"], false)]
+    #[case::before_subcommand(&["kwctl", "--enable-http-policies", "policies"], true)]
+    #[case::after_subcommand(&["kwctl", "policies", "--enable-http-policies"], true)]
+    #[case::nested_subcommand(
+        &["kwctl", "scaffold", "manifest", "--type", "ClusterAdmissionPolicy", "--enable-http-policies", "policy.wasm"],
+        true
+    )]
+    fn http_policies_flag(#[case] args: &[&str], #[case] expected: bool) {
+        let matches = build_cli()
+            .try_get_matches_from(args)
+            .expect("cannot parse the CLI arguments");
+
+        assert_eq!(matches.get_flag("enable-http-policies"), expected);
+    }
 }

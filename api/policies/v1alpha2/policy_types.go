@@ -31,9 +31,11 @@ type PolicySpec struct {
 	PolicyServer string `json:"policyServer"`
 
 	// Module is the location of the WASM module to be loaded. Can be a
-	// local file (file://), a remote file served by an HTTP server
-	// (http://, https://), or an artifact served by an OCI-compatible
-	// registry (registry://).
+	// local file (file://), an artifact served by an OCI-compatible
+	// registry (registry://), or a remote file served by an HTTP server
+	// (http://, https://). The http:// and https:// schemes are deprecated.
+	// To use them, set the KUBEWARDEN_ENABLE_HTTP_POLICIES environment
+	// variable to "true" in the env of the PolicyServer.
 	// +kubebuilder:validation:Required
 	Module string `json:"module"`
 

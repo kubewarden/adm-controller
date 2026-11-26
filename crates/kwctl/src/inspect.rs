@@ -22,6 +22,7 @@ use policy_evaluator::{
             registry::{Auth, ClientConfig, oci_reference::OciReference},
         },
         sources::Sources,
+        store::Store,
     },
     policy_metadata::Metadata,
 };
@@ -34,9 +35,10 @@ pub(crate) async fn inspect(
     sources: Option<Sources>,
     no_color: bool,
     no_signatures: bool,
+    store: &Store,
 ) -> Result<()> {
-    let uri = crate::utils::map_path_to_uri(uri_or_sha_prefix)?;
-    let wasm_path = crate::utils::wasm_path(&uri)?;
+    let uri = crate::utils::map_path_to_uri(uri_or_sha_prefix, store)?;
+    let wasm_path = crate::utils::wasm_path(&uri, store)?;
     let metadata_printer = MetadataPrinter::from(&output);
 
     let metadata = Metadata::from_path(&wasm_path)

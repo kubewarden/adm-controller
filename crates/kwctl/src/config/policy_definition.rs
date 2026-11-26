@@ -14,6 +14,7 @@ use policy_evaluator::{
         AdmissionPolicy, AdmissionPolicyGroup, ClusterAdmissionPolicy, ClusterAdmissionPolicyGroup,
     },
     policy_evaluator::{PolicyExecutionMode, PolicySettings},
+    policy_fetcher::store::Store,
     policy_group_evaluator::PolicyGroupMemberSettings,
     policy_metadata::ContextAwareResource,
 };
@@ -366,12 +367,12 @@ impl PolicyDefinition {
     /// Creates a PolicyDefinition from CLI arguments.
     ///
     /// This will always create an individual PolicyDefinition
-    pub fn from_cli(matches: &ArgMatches) -> Result<PolicyDefinition> {
+    pub fn from_cli(matches: &ArgMatches, store: &Store) -> Result<PolicyDefinition> {
         let uri = matches
             .get_one::<String>("uri_or_sha_prefix_or_yaml_file")
             .map(
                 |uri_or_sha_prefix| -> std::result::Result<String, crate::utils::LookupError> {
-                    crate::utils::map_path_to_uri(uri_or_sha_prefix)
+                    crate::utils::map_path_to_uri(uri_or_sha_prefix, store)
                 },
             )
             .transpose()?

@@ -34,6 +34,7 @@ fn test_airgap() {
         .arg(project_root.join("tests/data/airgap/policies.txt"))
         .arg("--policies")
         .arg(tempdir.path().join("policies.tar.gz"))
+        .arg("--enable-http-policies")
         .assert()
         .success();
 
@@ -47,6 +48,7 @@ fn test_airgap() {
 
     let mut kwctl = common::setup_command(tempdir.path());
     kwctl
+        .arg("--enable-http-policies")
         .arg("rm")
         .arg("https://github.com/kubewarden/pod-privileged-policy/releases/download/v0.1.6/policy.wasm")
         .assert()
@@ -79,6 +81,7 @@ fn test_airgap() {
         .arg(format!("localhost:{}", port))
         .arg("--sources-path")
         .arg(tempdir.path().join("sources.yml"))
+        .arg("--enable-http-policies")
         .assert()
         .success();
 

@@ -226,6 +226,12 @@ pub(crate) fn build_cli() -> Command {
             .action(ArgAction::SetTrue)
             .help("Enable pprof profiling"),
 
+        Arg::new("enable-http-policies")
+            .long("enable-http-policies")
+            .env("KUBEWARDEN_ENABLE_HTTP_POLICIES")
+            .action(ArgAction::SetTrue)
+            .help("Deprecated. Allow downloading policies from http:// and https:// URLs. Disabled by default. Support for these URLs will be removed"),
+
         Arg::new("continue-on-errors")
             .long("continue-on-errors")
             .env("KUBEWARDEN_CONTINUE_ON_ERRORS")

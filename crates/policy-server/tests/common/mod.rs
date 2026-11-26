@@ -249,6 +249,7 @@ fn default_config() -> Config {
         daemon_stderr_file: None,
         enable_pprof: false,
         continue_on_errors: false,
+        enable_http_policies: false,
     }
 }
 

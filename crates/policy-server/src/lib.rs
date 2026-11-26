@@ -159,8 +159,18 @@ impl PolicyServer {
         } else {
             None
         };
-        let mut downloader =
-            Downloader::new(config.sources.clone(), downloader_sigstore_trust_root).await?;
+        if config.enable_http_policies {
+            warn!(
+                "--enable-http-policies is deprecated. Support for http:// and https:// policy \
+                 URLs will be removed"
+            );
+        }
+        let mut downloader = Downloader::new(
+            config.sources.clone(),
+            downloader_sigstore_trust_root,
+            config.enable_http_policies,
+        )
+        .await?;
 
         let fetched_policies = downloader
             .download_policies(
