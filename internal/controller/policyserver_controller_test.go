@@ -659,6 +659,49 @@ var _ = Describe("PolicyServer controller", func() {
 			})))
 		})
 
+		It("should deny all host capabilities to namespaced admission policies when PolicyServer has an empty NamespacedPoliciesCapabilities list", func() {
+			policyServer := policiesv1.NewPolicyServerFactory().
+				WithName(policyServerName).
+				WithNamespacedPoliciesCapabilities([]string{}). // empty list, must stay
+				Build()
+			createPolicyServerAndWaitForItsService(ctx, policyServer)
+
+			// The reconciler adds its finalizer with a write of the full
+			// PolicyServer. That write must keep the empty list.
+			Eventually(func() (*policiesv1.PolicyServer, error) {
+				return getTestPolicyServer(ctx, policyServerName)
+			}, timeout, pollInterval).Should(PointTo(MatchFields(IgnoreExtras, Fields{
+				"ObjectMeta": MatchFields(IgnoreExtras, Fields{
+					"Finalizers": ContainElement(constants.KubewardenFinalizer),
+				}),
+				"Spec": MatchFields(IgnoreExtras, Fields{
+					"NamespacedPoliciesCapabilities": And(Not(BeNil()), BeEmpty()),
+				}),
+			})))
+
+			admissionPolicy := policiesv1.NewAdmissionPolicyFactory().
+				WithPolicyServer(policyServerName).
+				Build()
+			Expect(k8sClient.Create(ctx, admissionPolicy)).To(Succeed())
+
+			clusterAdmissionPolicy := policiesv1.NewClusterAdmissionPolicyFactory().
+				WithPolicyServer(policyServerName).
+				Build()
+			Expect(k8sClient.Create(ctx, clusterAdmissionPolicy)).To(Succeed())
+
+			Eventually(func() *corev1.ConfigMap {
+				configMap, _ := getTestPolicyServerConfigMap(ctx, policyServerName)
+				return configMap
+			}, timeout, pollInterval).Should(PointTo(MatchFields(IgnoreExtras, Fields{
+				"Data": MatchAllKeys(Keys{
+					constants.PolicyServerConfigPoliciesEntry: And(
+						admissionPolicyHostCapabilitiesMatcher(admissionPolicy, clusterAdmissionPolicy, And(Not(BeNil()), BeEmpty()), ConsistOf("*")),
+					),
+					constants.PolicyServerConfigSourcesEntry: Equal("{}"),
+				}),
+			})))
+		})
+
 		It("should create the policy server configmap with the sources authorities", func() {
 			policyServer := policiesv1.NewPolicyServerFactory().WithName(policyServerName).Build()
 			policyServer.Spec.InsecureSources = []string{"localhost:5000"}
