@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Check that NamespacecPoliciesCapabilities is correctly marshalled: an empty
+// Check that NamespacedPoliciesCapabilities is correctly marshalled: an empty
 // list denies all host capabilities, and a nil list allows all of them.
 //
 // The encoder must keep this difference, done with omitzero. With omitempty
