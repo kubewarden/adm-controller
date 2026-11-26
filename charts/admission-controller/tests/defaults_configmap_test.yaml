@@ -248,3 +248,40 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: "PolicyServer should allow all host capabilities to namespaced policies by default"
+    set:
+      policyServer.enabled: true
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'namespacedPoliciesCapabilities: \["\*"\]\n'
+
+  - it: "PolicyServer should render an empty namespacedPoliciesCapabilities list as [] to deny all host capabilities"
+    set:
+      policyServer.enabled: true
+      policyServer.namespacedPoliciesCapabilities: []
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'namespacedPoliciesCapabilities: \[\]\n'
+
+  - it: "PolicyServer should render the listed namespacedPoliciesCapabilities"
+    set:
+      policyServer.enabled: true
+      policyServer.namespacedPoliciesCapabilities:
+        - "oci/*"
+        - "net/v1/dns_lookup_host"
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'namespacedPoliciesCapabilities: \["oci/\*","net/v1/dns_lookup_host"\]\n'
+
+  - it: "PolicyServer should not render namespacedPoliciesCapabilities when it is null, to allow all host capabilities"
+    set:
+      policyServer.enabled: true
+      policyServer.namespacedPoliciesCapabilities: null
+    asserts:
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: "namespacedPoliciesCapabilities"

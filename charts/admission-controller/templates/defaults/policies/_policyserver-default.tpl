@@ -76,11 +76,10 @@ spec:
   {{- end }}
   {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.namespacedPoliciesCapabilities }}
-  namespacedPoliciesCapabilities:
-  {{- range .Values.policyServer.namespacedPoliciesCapabilities }}
-    - {{ . | quote }}
-  {{- end }}
+  {{- /* Not set (null): leave the field out to allow all host capabilities. */}}
+  {{- /* Empty list: denies all, so keep it. */}}
+  {{- if ne .Values.policyServer.namespacedPoliciesCapabilities nil }}
+  namespacedPoliciesCapabilities: {{ toJson .Values.policyServer.namespacedPoliciesCapabilities }}
   {{- end }}
   {{- if .Values.policyServer.securityContexts }}
   securityContexts: {{ toYaml .Values.policyServer.securityContexts | nindent 4 }}
