@@ -431,3 +431,115 @@ func TestValidatePolicyGroupTimeoutSeconds(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePolicyGroupMembersModule(t *testing.T) {
+	message := "the module URL is not valid. An http or https module URL must have only " +
+		"the host, an optional port, and the full path to the file."
+	members := PolicyGroupMembersWithContext{
+		"good": {
+			PolicyGroupMember: PolicyGroupMember{Module: "https://example.com/good.wasm"},
+		},
+		"bad": {
+			PolicyGroupMember: PolicyGroupMember{Module: "https://example.com/bad.wasm#a"},
+		},
+	}
+	policyGroup := NewClusterAdmissionPolicyGroupFactory().WithMembers(members).Build()
+	policyGroup.Spec.Expression = "good() && bad()"
+
+	t.Run("create reports only the bad member", func(t *testing.T) {
+		errs := validatePolicyGroupCreate(policyGroup)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[bad].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("update with an unchanged bad member passes", func(t *testing.T) {
+		newGroup := policyGroup.DeepCopy()
+		newGroup.Finalizers = nil
+		newGroup.Spec.Expression = "good() || bad()"
+
+		require.Empty(t, validatePolicyGroupUpdate(policyGroup, newGroup))
+	})
+
+	t.Run("update that adds a bad member is rejected", func(t *testing.T) {
+		newGroup := policyGroup.DeepCopy()
+		newGroup.Spec.Policies["added"] = PolicyGroupMemberWithContext{
+			PolicyGroupMember: PolicyGroupMember{Module: "https://example.com/added.wasm?x=1"},
+		}
+		newGroup.Spec.Expression = "good() && bad() && added()"
+
+		errs := validatePolicyGroupUpdate(policyGroup, newGroup)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[added].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("update that changes a member to a bad module is rejected", func(t *testing.T) {
+		newGroup := policyGroup.DeepCopy()
+		newGroup.Spec.Policies["good"] = PolicyGroupMemberWithContext{
+			PolicyGroupMember: PolicyGroupMember{Module: "https://example.com/good.wasm?x=1"},
+		}
+
+		errs := validatePolicyGroupUpdate(policyGroup, newGroup)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[good].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("update from a bad module to another bad module is rejected", func(t *testing.T) {
+		newGroup := policyGroup.DeepCopy()
+		newGroup.Spec.Policies["bad"] = PolicyGroupMemberWithContext{
+			PolicyGroupMember: PolicyGroupMember{Module: "https://example.com/bad2.wasm#b"},
+		}
+
+		errs := validatePolicyGroupUpdate(policyGroup, newGroup)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[bad].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("update that renames a bad member is rejected", func(t *testing.T) {
+		newGroup := policyGroup.DeepCopy()
+		newGroup.Spec.Policies["bad2"] = newGroup.Spec.Policies["bad"]
+		delete(newGroup.Spec.Policies, "bad")
+		newGroup.Spec.Expression = "good() && bad2()"
+
+		errs := validatePolicyGroupUpdate(policyGroup, newGroup)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[bad2].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("namespaced group reports only the bad member", func(t *testing.T) {
+		namespacedGroup := NewAdmissionPolicyGroupFactory().Build()
+		namespacedGroup.Spec.Expression = "good() && bad()"
+		namespacedGroup.Spec.Policies = PolicyGroupMembers{
+			"good": {Module: "https://example.com/good.wasm"},
+			"bad":  {Module: "https://example.com/bad.wasm#a"},
+		}
+
+		errs := validatePolicyGroupCreate(namespacedGroup)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[bad].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+
+		unchanged := namespacedGroup.DeepCopy()
+		unchanged.Finalizers = nil
+		unchanged.Spec.Expression = "good() || bad()"
+		require.Empty(t, validatePolicyGroupUpdate(namespacedGroup, unchanged))
+
+		added := namespacedGroup.DeepCopy()
+		added.Spec.Policies["added"] = PolicyGroupMember{Module: "https://example.com/added.wasm?x=1"}
+		added.Spec.Expression = "good() && bad() && added()"
+		errs = validatePolicyGroupUpdate(namespacedGroup, added)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[added].module", errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+
+		changed := namespacedGroup.DeepCopy()
+		changed.Spec.Policies["good"] = PolicyGroupMember{Module: "https://example.com/good.wasm?x=1"}
+		errs = validatePolicyGroupUpdate(namespacedGroup, changed)
+		require.Len(t, errs, 1)
+		require.Equal(t, "spec.policies[good].module", errs[0].Field)
+	})
+}

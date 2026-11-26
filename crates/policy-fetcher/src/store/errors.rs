@@ -18,6 +18,11 @@ pub enum StoreError {
     MultiplePoliciesFoundError(String),
     #[error(transparent)]
     DigestError(#[from] crate::policy::DigestError),
+    #[error(
+        "the module URL is not valid. An http or https module URL must have only the host, \
+         an optional port, and the full path to the file."
+    )]
+    InvalidHttpModuleUrl,
     #[error(transparent)]
     DecoderError(#[from] base64::DecodeError),
 }

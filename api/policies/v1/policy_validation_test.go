@@ -775,3 +775,82 @@ func TestValidateUniqueNameLength(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePolicyModule(t *testing.T) {
+	badModule := "https://example.com/policy.wasm?id=1"
+	goodModule := "https://example.com/policy.wasm"
+	modulePath := "spec.module"
+	message := "the module URL is not valid. An http or https module URL must have only " +
+		"the host, an optional port, and the full path to the file."
+
+	t.Run("create rejects a bad module", func(t *testing.T) {
+		policy := NewClusterAdmissionPolicyFactory().Build()
+		policy.Spec.Module = badModule
+
+		errs := validatePolicyCreate(policy)
+		require.Len(t, errs, 1)
+		require.Equal(t, modulePath, errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("create accepts a good module", func(t *testing.T) {
+		policy := NewClusterAdmissionPolicyFactory().Build()
+		policy.Spec.Module = goodModule
+
+		require.Empty(t, validatePolicyCreate(policy))
+	})
+
+	t.Run("update with the same bad module passes", func(t *testing.T) {
+		oldPolicy := NewClusterAdmissionPolicyFactory().Build()
+		oldPolicy.Spec.Module = badModule
+		newPolicy := oldPolicy.DeepCopy()
+		newPolicy.Finalizers = nil
+		newPolicy.Labels = map[string]string{"changed": "true"}
+
+		require.Empty(t, validatePolicyUpdate(oldPolicy, newPolicy))
+	})
+
+	t.Run("update to a bad module is rejected", func(t *testing.T) {
+		oldPolicy := NewClusterAdmissionPolicyFactory().Build()
+		oldPolicy.Spec.Module = goodModule
+		newPolicy := oldPolicy.DeepCopy()
+		newPolicy.Spec.Module = badModule
+
+		errs := validatePolicyUpdate(oldPolicy, newPolicy)
+		require.Len(t, errs, 1)
+		require.Equal(t, modulePath, errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+
+	t.Run("update from a bad module to another bad module is rejected", func(t *testing.T) {
+		oldPolicy := NewClusterAdmissionPolicyFactory().Build()
+		oldPolicy.Spec.Module = badModule
+		newPolicy := oldPolicy.DeepCopy()
+		newPolicy.Spec.Module = badModule + "2"
+
+		errs := validatePolicyUpdate(oldPolicy, newPolicy)
+		require.Len(t, errs, 1)
+		require.Equal(t, modulePath, errs[0].Field)
+	})
+
+	t.Run("namespaced policy rejects a bad module", func(t *testing.T) {
+		policy := NewAdmissionPolicyFactory().Build()
+		policy.Spec.Module = badModule
+
+		errs := validatePolicyCreate(policy)
+		require.Len(t, errs, 1)
+		require.Equal(t, modulePath, errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+
+		unchanged := policy.DeepCopy()
+		unchanged.Labels = map[string]string{"changed": "true"}
+		require.Empty(t, validatePolicyUpdate(policy, unchanged))
+
+		goodPolicy := NewAdmissionPolicyFactory().Build()
+		goodPolicy.Spec.Module = goodModule
+		errs = validatePolicyUpdate(goodPolicy, policy)
+		require.Len(t, errs, 1)
+		require.Equal(t, modulePath, errs[0].Field)
+		require.Equal(t, message, errs[0].Detail)
+	})
+}
