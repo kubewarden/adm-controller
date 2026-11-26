@@ -537,8 +537,14 @@ policyServer:
   sourceAuthorities: []
   # namespacedPoliciesCapabilities lists host capability API calls allowed
   # for namespaced policies running on this PolicyServer.
-  # Supported patterns: [] (none), "*" (all), "category/*",
-  # "category/version/*", or specific paths.
+  # Supported patterns:
+  #   null (allow all, for backwards compatibility),
+  #   ["*"] (allow all),
+  #   ["category/*", "category/version/*"] (allow specific paths),
+  #   [] (deny all),
+  # In command line, set [] with --set-json 'policyServer.namespacedPoliciesCapabilities=[]'.
+  # Do not use --set '...={}', because Helm makes it into [""] (list with 1 empty element)
+  # instead of the empty list [].
   # Example:
   # namespacedPoliciesCapabilities:
   #   - "oci/*"

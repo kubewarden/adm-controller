@@ -148,15 +148,17 @@ type PolicyServerSpec struct {
 	PriorityClassName string `json:"priorityClassName,omitempty"`
 
 	// NamespacedPoliciesCapabilities lists host capability API calls allowed
-	// for namespaced policies running on this PolicyServer. When not set,
-	// all host capabilities are granted to namespaced policies.
+	// for namespaced policies running on this PolicyServer.
+	// When not set (null), all host capabilities are granted to namespaced
+	// policies. An empty list ([]) denies all host capabilities to namespaced
+	// policies.
 	// Supported wildcard patterns:
 	// - "*": allow all host capabilities
 	// - "category/*": allow all capabilities in a category (e.g. "oci/*")
 	// - "category/version/*": allow all capabilities of a specific version (e.g. "oci/v1/*")
 	// - Specific capability paths (e.g. "oci/v1/verify", "net/v1/dns_lookup_host")
 	// +optional
-	NamespacedPoliciesCapabilities []string `json:"namespacedPoliciesCapabilities,omitempty"`
+	NamespacedPoliciesCapabilities []string `json:"namespacedPoliciesCapabilities,omitzero"`
 
 	// Port where the policy server listens for incoming webhook requests.
 	// When unset, defaults to 8443. This is the port the Kubernetes API server

@@ -1152,8 +1152,10 @@ remain unchanged, but new pods that reference it cannot be created.
 
 | *`namespacedPoliciesCapabilities`* __string array__
 a| NamespacedPoliciesCapabilities lists host capability API calls allowed
-for namespaced policies running on this PolicyServer. When not set,
-all host capabilities are granted to namespaced policies.
+for namespaced policies running on this PolicyServer.
+When not set (null), all host capabilities are granted to namespaced
+policies. An empty list ([]) denies all host capabilities to namespaced
+policies.
 Supported wildcard patterns:
 - "*": allow all host capabilities
 - "category/*": allow all capabilities in a category (e.g. "oci/*")
