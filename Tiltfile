@@ -22,7 +22,11 @@ kubewarden_yaml = helm(
     name="kubewarden",
     namespace="kubewarden",
     set=[
-        "global.cattle.systemDefaultRegistry=null",
+        # The image references below already contain the registry,
+        # so the chart must not add its own registry.
+        "controller.image.registry=",
+        "auditScanner.image.registry=",
+        "policyServer.image.registry=",
         "controller.image.repository=" + registry + "/" + controller_image,
         "replicas=1",
         "logLevel=debug",

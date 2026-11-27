@@ -1,3 +1,4 @@
+{{- $ctx := dict "root" $ "workload" "auditScanner" "component" "audit-scanner" }}
 {{- if .Values.auditScanner.enable }}
 apiVersion: batch/v1
 kind: CronJob
@@ -56,7 +57,7 @@ spec:
           {{- end }}
           containers:
           - name: audit-scanner
-            image: '{{ template "system_default_registry" . }}{{ .Values.auditScanner.image.repository }}:{{ .Values.auditScanner.image.tag }}'
+            image: '{{ template "system_default_registry" $ctx }}{{ .Values.auditScanner.image.repository }}:{{ .Values.auditScanner.image.tag }}'
             imagePullPolicy: {{ .Values.auditScanner.image.pullPolicy }}
             command:
               {{- include "audit-scanner.command" . | nindent 14 }}

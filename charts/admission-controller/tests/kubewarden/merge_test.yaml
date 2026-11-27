@@ -1,0 +1,117 @@
+suite: "Values contract: resolution rules"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/defaults/defaults-configmap.yaml"
+  - "templates/controller/controller-serviceaccount.yaml"
+  - "templates/controller/service.yaml"
+release:
+  name: rel
+  namespace: kw
+tests:
+  - it: "should prefer global.imageRegistry over the image.registry of every workload"
+    set:
+      telemetry:
+        metrics: true
+      recommendedPolicies:
+        enabled: true
+      global:
+        imageRegistry: global.example.com
+      controller:
+        image:
+          registry: mirror.example.com
+      auditScanner:
+        image:
+          registry: mirror.example.com
+      postInstallJob:
+        image:
+          registry: mirror.example.com
+      policyServer:
+        image:
+          registry: mirror.example.com
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^global\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^global\.example\.com/kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^global\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^global\.example\.com/rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: global\.example\.com/kubewarden/adm-controller/policy-server:'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["user-group.yaml"]', pattern: '(?m)^  module: global\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The pre-delete Job runs the controller image, so it uses
+  # controller.image.registry.
+  - it: "should use the image.registry of each workload when global.imageRegistry is empty"
+    set:
+      telemetry:
+        metrics: true
+      controller:
+        image:
+          registry: controller.example.com
+      auditScanner:
+        image:
+          registry: audit.example.com
+      postInstallJob:
+        image:
+          registry: kubectl.example.com
+      policyServer:
+        image:
+          registry: policy-server.example.com
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^controller\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^audit\.example\.com/kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^controller\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubectl\.example\.com/rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: policy-server\.example\.com/kubewarden/adm-controller/policy-server:'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render no registry prefix when image.registry is empty and global.imageRegistry is empty"
+    set:
+      telemetry:
+        metrics: true
+      controller:
+        image:
+          registry: ""
+      auditScanner:
+        image:
+          registry: ""
+      postInstallJob:
+        image:
+          registry: ""
+      policyServer:
+        image:
+          registry: ""
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: kubewarden/adm-controller/policy-server:'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should prefer recommendedPolicies.defaultPoliciesRegistry over global.imageRegistry for the policies"
+    set:
+      recommendedPolicies:
+        enabled: true
+        defaultPoliciesRegistry: policies.example.com
+      global:
+        imageRegistry: global.example.com
+    asserts:
+      - matchRegex: {path: 'data["pod-privileged.yaml"]', pattern: '(?m)^  module: policies\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: global\.example\.com/'}
+        template: "templates/defaults/defaults-configmap.yaml"

@@ -22,7 +22,7 @@
     },
     {
       "customType": "regex",
-      "description": "Update policy modules and kuberlr-kubectl image in values.yaml. The registry is global.cattle.systemDefaultRegistry",
+      "description": "Update policy modules and kuberlr-kubectl image in values.yaml. The registry is global.imageRegistry, else the image.registry of the workload block",
       "managerFilePatterns": [
         "/^charts/admission-controller/values\\.yaml$/"
       ],
@@ -62,7 +62,7 @@
   },
   "packageRules": [
     {
-      "description": "helm-values looks up the images on DockerHub, but the chart pulls them from global.cattle.systemDefaultRegistry. A custom manager updates the third-party images, and the release updates the Kubewarden images",
+      "description": "helm-values looks up the images on DockerHub, but the chart pulls them from global.imageRegistry or the image.registry of each workload block. A custom manager updates the third-party images, and the release updates the Kubewarden images",
       "matchManagers": [
         "helm-values"
       ],

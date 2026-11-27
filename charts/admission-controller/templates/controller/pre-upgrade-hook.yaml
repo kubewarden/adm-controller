@@ -25,6 +25,7 @@ than 63 characters. So the full name is cut at 51 characters.
 */}}
 {{- $name := printf "%s-pre-upgrade" (include "admission-controller.fullname" . | trunc 51 | trimSuffix "-") }}
 {{- $namespace := include "admission-controller.namespace" . }}
+{{- $controllerCtx := dict "root" $ "workload" "controller" "component" "controller" }}
 {{- $legacyImage := .Values.image | default dict }}
 {{- $controllerImage := (.Values.controller | default dict).image | default dict }}
 apiVersion: v1
@@ -177,7 +178,7 @@ spec:
       {{- end }}
       containers:
         - name: kubewarden-pre-upgrade
-          image: '{{ template "system_default_registry" . }}{{ $legacyImage.repository | default $controllerImage.repository }}:{{ $legacyImage.tag | default $controllerImage.tag }}'
+          image: '{{ template "system_default_registry" $controllerCtx }}{{ $legacyImage.repository | default $controllerImage.repository }}:{{ $legacyImage.tag | default $controllerImage.tag }}'
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - /controller

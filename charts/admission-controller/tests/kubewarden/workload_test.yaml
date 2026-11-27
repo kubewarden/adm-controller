@@ -1,0 +1,57 @@
+suite: "Values contract: workload-only keys"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/pre-upgrade-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/defaults/defaults-configmap.yaml"
+# The post-install Job renders only with the deprecated telemetry sidecar mode.
+set:
+  telemetry:
+    metrics: true
+tests:
+  - it: "should use ghcr.io when the workload image has no registry key"
+    # helm upgrade --reuse-values from a chart version without image.registry
+    # gives images without a registry key.
+    set:
+      controller:
+        image:
+          registry: null
+      auditScanner:
+        image:
+          registry: null
+      policyServer:
+        image:
+          registry: null
+      postInstallJob:
+        image:
+          registry: null
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.template.spec.initContainers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: ghcr\.io/kubewarden/adm-controller/policy-server:'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should use no registry prefix when the workload image registry is empty"
+    set:
+      controller:
+        image:
+          registry: ""
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}

@@ -49,6 +49,9 @@
                         "pullPolicy": {
                             "type": "string"
                         },
+                        "registry": {
+                            "type": "string"
+                        },
                         "repository": {
                             "type": "string"
                         },
@@ -117,6 +120,9 @@
                 "image": {
                     "type": "object",
                     "properties": {
+                        "registry": {
+                            "type": "string"
+                        },
                         "repository": {
                             "type": "string"
                         },
@@ -139,13 +145,8 @@
                 "affinity": {
                     "type": "object"
                 },
-                "cattle": {
-                    "type": "object",
-                    "properties": {
-                        "systemDefaultRegistry": {
-                            "type": "string"
-                        }
-                    }
+                "imageRegistry": {
+                    "type": "string"
                 },
                 "skipNamespaces": {
                     "type": "array",
@@ -332,6 +333,9 @@
                 "image": {
                     "type": "object",
                     "properties": {
+                        "registry": {
+                            "type": "string"
+                        },
                         "repository": {
                             "type": "string"
                         },
@@ -445,6 +449,9 @@
                 "image": {
                     "type": "object",
                     "properties": {
+                        "registry": {
+                            "type": "string"
+                        },
                         "repository": {
                             "type": "string"
                         },

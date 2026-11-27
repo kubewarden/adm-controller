@@ -14,6 +14,9 @@ namespaceOverride: ""
 # by more than one chart and they ideally need to match during the
 # installation of the charts consuming this values.
 global:
+  # Registry for all chart images and for the recommended policies.
+  # If you set it, it replaces the image.registry of every workload block.
+  imageRegistry: ""
   # affinity:
   #   podAffinity:
   #     requiredDuringSchedulingIgnoredDuringExecution:
@@ -70,8 +73,6 @@ global:
   #     effect: "NoExecute"
   tolerations: []
   # priorityClassName: ""
-  cattle:
-    systemDefaultRegistry: ghcr.io
   skipNamespaces:
     - calico-apiserver
     - calico-system
@@ -121,11 +122,12 @@ controller:
   # The init container of the controller pod, and the pre-delete and
   # pre-upgrade Jobs, run this image too.
   image:
-    # The registry is defined in the global.cattle.systemDefaultRegistry value
     # controller image to be used
     repository: "kubewarden/adm-controller/controller"
     # image tag
     tag: v1.39.0
+    # Registry for the image. global.imageRegistry replaces it when set.
+    registry: ghcr.io
 
 # Secrets to pull container images from private registries
 imagePullSecrets: []
@@ -332,10 +334,11 @@ preDeleteJob:
     tag: "" # @schema deprecated:true
 postInstallJob:
   image:
-    # The registry is defined in the global.cattle.systemDefaultRegistry value
     # kuberlr-kubectl image to be used
     repository: "rancher/kuberlr-kubectl"
     tag: v9.0.2
+    # Registry for the image. global.imageRegistry replaces it when set.
+    registry: ghcr.io
 podAnnotations: {}
 nodeSelector: {}
 # additionalEnvironmentVariables is a list of additional environment variables
@@ -406,10 +409,11 @@ auditScanner:
   #   and Reports
   serviceAccountName: audit-scanner
   image:
-    # The registry is defined in the common.cattle.systemDefaultRegistry value
-    # kubectl image to be used in the pre-delete helm hook
+    # audit-scanner image to be used
     repository: "kubewarden/adm-controller/audit-scanner"
     tag: v1.39.0
+    # Registry for the image. global.imageRegistry replaces it when set.
+    registry: ghcr.io
     pullPolicy: IfNotPresent
   cronJob:
     schedule: "0 * * * *" # every 60 minutes
@@ -489,9 +493,10 @@ policyServer:
   # minAvailable: 30%
   # maxUnavailable: 1
   image:
-    # The registry is defined in the global.cattle.systemDefaultRegistry value
     repository: "kubewarden/adm-controller/policy-server"
     tag: v1.39.0
+    # Registry for the image. global.imageRegistry replaces it when set.
+    registry: ghcr.io
   serviceAccountName: policy-server
   # Configmap containing a Sigstore verification configuration under a key
   # named `verification-config`. Must be on the same ns as the PolicyServer.
@@ -604,7 +609,8 @@ recommendedPolicies:
   # Used to define the registry where the Kubewarden policies are mirrored.
   # This can be useful if the registry used to mirror container images does
   # not support OCI artifacts.
-  # If this field is not defined, the systemDefaultRegistry is used by default.
+  # If this field is not defined, global.imageRegistry is used, or ghcr.io
+  # when global.imageRegistry is empty.
   defaultPoliciesRegistry: ""
   # Additional namespaces that recommended policies will not apply to:
   skipAdditionalNamespaces: []

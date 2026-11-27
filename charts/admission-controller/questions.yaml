@@ -1,6 +1,16 @@
 # This is a Rancher questions file
 ---
 questions:
+  # Global settings:
+  - variable: "global.imageRegistry"
+    type: string
+    default: ""
+    required: false
+    label: Container image registry
+    description: |
+      Registry for all chart images and for the recommended policies.
+      Leave it empty to use the default registry of each image.
+    group: "Global settings"
   # Audit checks:
   - variable: "auditScanner.enable"
     type: boolean

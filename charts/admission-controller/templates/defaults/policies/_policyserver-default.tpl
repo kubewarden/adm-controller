@@ -1,4 +1,6 @@
 {{- define "kubewarden.defaults.policyserverDefault" -}}
+{{- $ctx := dict "root" $ "workload" "policyServer" "component" "policy-server" -}}
+{{- $ps := .Values.policyServer -}}
 apiVersion: {{ $.Values.crdVersion }}
 kind: PolicyServer
 metadata:
@@ -12,14 +14,14 @@ metadata:
   finalizers:
     - kubewarden.io/finalizer
 spec:
-  image: {{ template "system_default_registry" . }}{{ .Values.policyServer.image.repository }}:{{ .Values.policyServer.image.tag }}
-  serviceAccountName: {{ .Values.policyServer.serviceAccountName }}
-  replicas: {{ .Values.policyServer.replicaCount | default 1 }}
-  {{- if .Values.policyServer.minAvailable }}
-  minAvailable: {{ .Values.policyServer.minAvailable }}
+  image: {{ template "system_default_registry" $ctx }}{{ $ps.image.repository }}:{{ $ps.image.tag }}
+  serviceAccountName: {{ $ps.serviceAccountName }}
+  replicas: {{ $ps.replicaCount | default 1 }}
+  {{- if $ps.minAvailable }}
+  minAvailable: {{ $ps.minAvailable }}
   {{- end }}
-  {{- if .Values.policyServer.maxUnavailable }}
-  maxUnavailable: {{ .Values.policyServer.maxUnavailable }}
+  {{- if $ps.maxUnavailable }}
+  maxUnavailable: {{ $ps.maxUnavailable }}
   {{- end }}
   {{- $affinity := include "admission-controller.defaults.effectiveAffinity" . -}}
   {{- if $affinity }}
@@ -31,43 +33,43 @@ spec:
   {{- if .Values.global.priorityClassName }}
   priorityClassName: {{ .Values.global.priorityClassName | toYaml | nindent 4 }}
   {{- end }}
-  {{- if .Values.policyServer.limits }}
-  limits: {{ .Values.policyServer.limits | toYaml | nindent 4 }}
+  {{- if $ps.limits }}
+  limits: {{ $ps.limits | toYaml | nindent 4 }}
   {{- end }}
-  {{- if .Values.policyServer.requests }}
-  requests: {{ .Values.policyServer.requests | toYaml | nindent 4 }}
+  {{- if $ps.requests }}
+  requests: {{ $ps.requests | toYaml | nindent 4 }}
   {{- end }}
-  {{- if .Values.policyServer.verificationConfig }}
-  verificationConfig: {{ .Values.policyServer.verificationConfig }}
+  {{- if $ps.verificationConfig }}
+  verificationConfig: {{ $ps.verificationConfig }}
   {{- end }}
-  {{- if .Values.policyServer.sigstoreTrustConfig }}
-  sigstoreTrustConfig: {{ .Values.policyServer.sigstoreTrustConfig }}
+  {{- if $ps.sigstoreTrustConfig }}
+  sigstoreTrustConfig: {{ $ps.sigstoreTrustConfig }}
   {{- end }}
-  {{- if .Values.policyServer.annotations }}
+  {{- if $ps.annotations }}
   annotations:
-    {{- range $key, $value := .Values.policyServer.annotations }}
+    {{- range $key, $value := $ps.annotations }}
     {{ $key | quote }}: {{ $value | quote }}
     {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.env }}
+  {{- if $ps.env }}
   env:
-    {{- range .Values.policyServer.env }}
+    {{- range $ps.env }}
     - name: {{ .name | quote }}
       value: {{ .value | quote }}
     {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.imagePullSecret }}
-  imagePullSecret: {{ .Values.policyServer.imagePullSecret | quote }}
+  {{- if $ps.imagePullSecret }}
+  imagePullSecret: {{ $ps.imagePullSecret | quote }}
   {{- end }}
-  {{- if .Values.policyServer.insecureSources }}
+  {{- if $ps.insecureSources }}
   insecureSources:
-  {{- range $source := .Values.policyServer.insecureSources }}
+  {{- range $source := $ps.insecureSources }}
     - {{ $source | quote }}
   {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.sourceAuthorities }}
+  {{- if $ps.sourceAuthorities }}
   sourceAuthorities:
-  {{- range .Values.policyServer.sourceAuthorities }}
+  {{- range $ps.sourceAuthorities }}
   {{- if .certs }}
     {{ .uri }}:
   {{- range .certs }}
@@ -76,22 +78,22 @@ spec:
   {{- end }}
   {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.namespacedPoliciesCapabilities }}
+  {{- if $ps.namespacedPoliciesCapabilities }}
   namespacedPoliciesCapabilities:
-  {{- range .Values.policyServer.namespacedPoliciesCapabilities }}
+  {{- range $ps.namespacedPoliciesCapabilities }}
     - {{ . | quote }}
   {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.securityContexts }}
-  securityContexts: {{ toYaml .Values.policyServer.securityContexts | nindent 4 }}
+  {{- if $ps.securityContexts }}
+  securityContexts: {{ toYaml $ps.securityContexts | nindent 4 }}
   {{- end }}
-  {{- if .Values.policyServer.webhookPort }}
-  webhookPort: {{ .Values.policyServer.webhookPort }}
+  {{- if $ps.webhookPort }}
+  webhookPort: {{ $ps.webhookPort }}
   {{- end }}
-  {{- if .Values.policyServer.readinessProbePort }}
-  readinessProbePort: {{ .Values.policyServer.readinessProbePort }}
+  {{- if $ps.readinessProbePort }}
+  readinessProbePort: {{ $ps.readinessProbePort }}
   {{- end }}
-  {{- if .Values.policyServer.metricsPort }}
-  metricsPort: {{ .Values.policyServer.metricsPort }}
+  {{- if $ps.metricsPort }}
+  metricsPort: {{ $ps.metricsPort }}
   {{- end }}
 {{- end -}}

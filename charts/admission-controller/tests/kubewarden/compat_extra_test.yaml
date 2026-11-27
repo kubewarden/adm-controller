@@ -1,0 +1,47 @@
+# Extra compatibility cases of the new values contract.
+suite: compat - extra cases
+templates:
+  - controller/deployment.yaml
+  - controller/audit-scanner.yaml
+  - controller/pre-delete-hook.yaml
+  - controller/pre-upgrade-hook.yaml
+  - controller/post-install-hook.yaml
+  - controller/service.yaml
+  - defaults/defaults-configmap.yaml
+  - NOTES.txt
+release:
+  name: t
+  namespace: kw
+tests:
+  # The controller Service selector does not select the pods of the other workloads.
+  # NOTES.txt and the defaults ConfigMap use the same policy registry.
+  - it: "NOTES.txt lists the recommended policies from global.imageRegistry, as the defaults ConfigMap"
+    set:
+      recommendedPolicies.enabled: true
+      global.imageRegistry: reg.example.com
+    asserts:
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/allow-privilege-escalation-psp:v1.0.16'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/host-namespaces-psp:'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/pod-privileged:'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/user-group-psp:'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/hostpaths-psp:'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/capabilities-psp:'
+        template: NOTES.txt
+      - notMatchRegexRaw:
+          pattern: 'ghcr.io'
+        template: NOTES.txt
+      - matchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: 'module: reg.example.com/kubewarden/policies/allow-privilege-escalation-psp:v1.0.16'
+        template: defaults/defaults-configmap.yaml

@@ -183,12 +183,35 @@ limit fullname to 47 chars to stay under the 63 char limit.
 {{- end }}
 {{- end }}
 
+{{/*
+Registry prefix for the chart images, with a trailing "/".
+global.imageRegistry wins over the image.registry of the workload block.
+It takes the workload context dict.
+An empty registry gives no prefix.
+When the image has no registry key, the registry is ghcr.io.
+This happens with helm upgrade --reuse-values from a chart version
+that had no image.registry keys.
+*/}}
 {{- define "system_default_registry" -}}
-{{- if .Values.global.cattle.systemDefaultRegistry -}}
-{{- printf "%s/" .Values.global.cattle.systemDefaultRegistry -}}
-{{- else -}}
-{{- "" -}}
+{{- $global := .root.Values.global | default dict -}}
+{{- $image := include "admission-controller._image" . | fromYaml -}}
+{{- $registry := "ghcr.io" -}}
+{{- if hasKey $image "registry" -}}
+{{- $registry = $image.registry -}}
 {{- end -}}
+{{- with $global.imageRegistry | default $registry -}}
+{{- printf "%s/" . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller._image renders the image map of the workload block as YAML,
+or an empty map when the block has no image.
+It takes the context dict of the workload helpers.
+*/}}
+{{- define "admission-controller._image" -}}
+{{- $block := index .root.Values .workload | default dict -}}
+{{- toYaml ($block.image | default dict) -}}
 {{- end -}}
 
 {{/*
@@ -287,12 +310,14 @@ Annotations for defaults resources.
 {{- end }}
 {{- end }}
 
+{{/*
+Registry prefix for the recommended policies, with a trailing "/".
+It is recommendedPolicies.defaultPoliciesRegistry, else global.imageRegistry,
+else ghcr.io.
+*/}}
 {{- define "policy_default_registry" -}}
-{{- if .Values.recommendedPolicies.defaultPoliciesRegistry -}}
-{{- printf "%s/" .Values.recommendedPolicies.defaultPoliciesRegistry -}}
-{{- else -}}
-{{- printf "%s/" .Values.global.cattle.systemDefaultRegistry -}}
-{{- end -}}
+{{- $global := .Values.global | default dict -}}
+{{- printf "%s/" (.Values.recommendedPolicies.defaultPoliciesRegistry | default $global.imageRegistry | default "ghcr.io") -}}
 {{- end -}}
 
 {{- define "policy_failure_policy" -}}
