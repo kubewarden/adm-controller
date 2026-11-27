@@ -80,7 +80,7 @@ metadata:
   annotations:
     {{- include "admission-controller.annotations" . | nindent 4 }}
   name: kubewarden-controller-manager
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" . | quote }}
 rules:
 - apiGroups:
   - ""

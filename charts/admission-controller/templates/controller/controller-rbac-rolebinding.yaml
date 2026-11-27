@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: kubewarden-controller-manager
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" $ | quote }}
   labels:
     {{- include "admission-controller.labels" . | nindent 4 }}
   annotations:
@@ -15,7 +15,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ include "admission-controller.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" $ | quote }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -32,4 +32,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ include "admission-controller.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" $ | quote }}

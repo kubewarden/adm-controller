@@ -36,7 +36,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: "{{ .Release.Name }}"
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" . | quote }}
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
   annotations:
@@ -78,7 +78,7 @@ spec:
             - /controller
           args:
             - --mode=cleanup
-            - --deployments-namespace={{ .Release.Namespace }}
+            - --deployments-namespace={{ include "admission-controller.namespace" . }}
             - --controller-deployment-name={{ include "admission-controller.fullname" . }}
             - --zap-log-level={{ .Values.logLevel }}
           {{- with .Values.additionalEnvironmentVariables }}

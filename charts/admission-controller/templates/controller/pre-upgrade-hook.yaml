@@ -24,11 +24,12 @@ name of the Job into a label of its pods, and a label value cannot be longer
 than 63 characters. So the full name is cut at 51 characters.
 */}}
 {{- $name := printf "%s-pre-upgrade" (include "admission-controller.fullname" . | trunc 51 | trimSuffix "-") }}
+{{- $namespace := include "admission-controller.namespace" . }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $namespace | quote }}
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
   annotations:
@@ -41,7 +42,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $namespace | quote }}
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
   annotations:
@@ -66,7 +67,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $namespace | quote }}
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
   annotations:
@@ -81,7 +82,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ $name }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ $namespace | quote }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -132,13 +133,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ $name }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ $namespace | quote }}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $namespace | quote }}
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
   annotations:
@@ -180,7 +181,7 @@ spec:
             - /controller
           args:
             - --mode=pre-upgrade
-            - --deployments-namespace={{ .Release.Namespace }}
+            - --deployments-namespace={{ $namespace }}
             - --zap-log-level={{ .Values.logLevel }}
           {{- with .Values.additionalEnvironmentVariables }}
           env:

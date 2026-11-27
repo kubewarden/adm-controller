@@ -3,7 +3,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: {{ include "audit-scanner.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" . | quote }}
   labels:
     {{- include "admission-controller.labels" . | nindent 4 }}
   annotations:

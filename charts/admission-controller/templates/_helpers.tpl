@@ -49,6 +49,24 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
+Namespace for all namespaced resources of the chart.
+It is namespaceOverride, or the release namespace when namespaceOverride is empty.
+Helm does not give the computed namespace to the policy-reporter subchart.
+So when namespaceOverride is set and policy-reporter is enabled,
+policy-reporter.namespaceOverride must have the same value.
+*/}}
+{{- define "admission-controller.namespace" -}}
+{{- $override := .Values.namespaceOverride | default "" -}}
+{{- if and $override (.Values.auditScanner | default dict).policyReporter -}}
+{{- $reporterOverride := (index .Values "policy-reporter" | default dict).namespaceOverride | default "" -}}
+{{- if ne $override $reporterOverride -}}
+{{- fail (printf "namespaceOverride (%q) and policy-reporter.namespaceOverride (%q) must have the same value when auditScanner.policyReporter is true" $override $reporterOverride) -}}
+{{- end -}}
+{{- end -}}
+{{- $override | default .Release.Namespace -}}
+{{- end -}}
+
+{{/*
 Base labels shared by every resource in the chart.
 Does not include managed-by (varies: Helm vs kubewarden-controller)
 or component (varies per resource type).
@@ -198,7 +216,7 @@ are configured.
 {{- $pageSize := .Values.auditScanner.pageSize| int -}}
 - /audit-scanner
 - --kubewarden-namespace
-- {{ .Release.Namespace }}
+- {{ include "admission-controller.namespace" . | quote }}
 - --loglevel
 - {{ .Values.auditScanner.logLevel }}
 {{- if gt $parallelNamespaces 0 }}

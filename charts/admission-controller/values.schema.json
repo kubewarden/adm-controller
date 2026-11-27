@@ -186,6 +186,9 @@
         "nameOverride": {
             "type": "string"
         },
+        "namespaceOverride": {
+            "type": "string"
+        },
         "namespacedPoliciesAllowedResources": {
             "type": [
                 "array",

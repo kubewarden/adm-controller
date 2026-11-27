@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "admission-controller.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" . | quote }}
   labels:
     {{- include "admission-controller.labels" . | nindent 4 }}
   annotations:
@@ -64,7 +64,7 @@ spec:
         - /controller
         args:
         - --mode=init
-        - --deployments-namespace={{ .Release.Namespace }}
+        - --deployments-namespace={{ include "admission-controller.namespace" . }}
         - --webhook-service-name={{ include "admission-controller.webhookServiceName" . }}
         - --zap-log-level={{ .Values.logLevel }}
         {{- with .Values.additionalEnvironmentVariables }}
@@ -87,7 +87,7 @@ spec:
       - name: controller
         args:
         - --leader-elect
-        - --deployments-namespace={{ .Release.Namespace }}
+        - --deployments-namespace={{ include "admission-controller.namespace" . }}
         - --webhook-service-name={{ include "admission-controller.webhookServiceName" . }}
         - --webhook-server-port={{ .Values.ports.webhook }}
         - --health-probe-bind-address=:{{ .Values.ports.healthProbe }}
