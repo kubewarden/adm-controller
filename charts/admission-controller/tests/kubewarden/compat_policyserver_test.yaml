@@ -53,6 +53,30 @@ tests:
           path: data["policyserver-default.yaml"]
           pattern: '(?m)^  replicas: 1$'
 
+  # policyServer.env
+  - it: "policyServer.env alone renders its entries as on main, after the log level entry"
+    set:
+      policyServer.env:
+        - name: A
+          value: b
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "A"\n      value: "b"$'
+
+  - it: "policyServer.env with KUBEWARDEN_LOG_LEVEL renders that entry once, as on main"
+    set:
+      policyServer.env:
+        - name: KUBEWARDEN_LOG_LEVEL
+          value: debug
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "debug"$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'value: "info"'
+
   # policyServer.limits and policyServer.requests
   - it: "policyServer.limits and policyServer.requests alone render as on main"
     set:

@@ -57,7 +57,7 @@ func TestMain(m *testing.M) {
 					"--set", "controller.image.tag=dev",
 					"--set", "auditScanner.image.tag=dev",
 					"--set", "policyServer.image.tag=dev",
-					"--set", "logLevel=debug",
+					"--set", "controller.logLevel=debug",
 					"--set", "auditScanner.logLevel=debug",
 				),
 			)

@@ -80,7 +80,9 @@ spec:
             - --mode=cleanup
             - --deployments-namespace={{ include "admission-controller.namespace" . }}
             - --controller-deployment-name={{ include "admission-controller.fullname" . }}
-            - --zap-log-level={{ .Values.logLevel }}
+            {{- with include "admission-controller.logLevel" $ctx }}
+            - --zap-log-level={{ . }}
+            {{- end }}
           {{- with .Values.additionalEnvironmentVariables }}
           env:
           {{- toYaml . | nindent 12 }}

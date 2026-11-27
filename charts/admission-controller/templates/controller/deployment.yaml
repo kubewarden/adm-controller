@@ -67,7 +67,9 @@ spec:
         - --mode=init
         - --deployments-namespace={{ include "admission-controller.namespace" . }}
         - --webhook-service-name={{ include "admission-controller.webhookServiceName" . }}
-        - --zap-log-level={{ .Values.logLevel }}
+        {{- with include "admission-controller.logLevel" $ctx }}
+        - --zap-log-level={{ . }}
+        {{- end }}
         {{- with .Values.additionalEnvironmentVariables }}
         env:
         {{- toYaml . | nindent 10 }}
@@ -95,7 +97,9 @@ spec:
         {{- if .Values.alwaysAcceptAdmissionReviewsOnDeploymentsNamespace }}
         - --always-accept-admission-reviews-on-deployments-namespace
         {{- end }}
-        - --zap-log-level={{ .Values.logLevel }}
+        {{- with include "admission-controller.logLevel" $ctx }}
+        - --zap-log-level={{ . }}
+        {{- end }}
        {{- if .Values.mTLS.enable }}
         - --client-ca-configmap-name={{ .Values.mTLS.configMapName }}
        {{- end }}

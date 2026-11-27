@@ -89,9 +89,6 @@
                         }
                     }
                 },
-                "logLevel": {
-                    "type": "string"
-                },
                 "outputScan": {
                     "type": "boolean"
                 },
@@ -279,6 +276,9 @@
                 "imageRegistry": {
                     "type": "string"
                 },
+                "logLevel": {
+                    "type": "string"
+                },
                 "skipNamespaces": {
                     "type": "array",
                     "items": {
@@ -323,6 +323,7 @@
             "type": "boolean"
         },
         "logLevel": {
+            "deprecated": true,
             "type": "string"
         },
         "mTLS": {
@@ -442,18 +443,7 @@
                     "type": "boolean"
                 },
                 "env": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string"
-                            },
-                            "value": {
-                                "type": "string"
-                            }
-                        }
-                    }
+                    "type": "array"
                 },
                 "image": {
                     "type": "object",

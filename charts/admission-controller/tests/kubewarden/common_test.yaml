@@ -33,6 +33,29 @@ tests:
       - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
         template: "templates/controller/post-install-hook.yaml"
 
+  - it: "should render common.logLevel on every workload"
+    set:
+      common:
+        logLevel: warn
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[3]", value: "--loglevel"}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: warn}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "warn"\n'
+        template: "templates/defaults/defaults-configmap.yaml"
+
   - it: "should render common.imagePullSecrets on every workload"
     set:
       common:

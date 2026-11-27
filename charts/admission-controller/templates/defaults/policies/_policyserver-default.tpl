@@ -57,9 +57,22 @@ spec:
     {{ $key | quote }}: {{ $value | quote }}
     {{- end }}
   {{- end }}
-  {{- if $ps.env }}
+  {{- $userEnv := $ps.env | default list }}
+  {{- $env := list }}
+  {{- $logLevel := include "admission-controller.logLevel" $ctx }}
+  {{- $hasLogLevel := false }}
+  {{- range $userEnv }}
+  {{- if eq (toString .name) "KUBEWARDEN_LOG_LEVEL" }}
+  {{- $hasLogLevel = true }}
+  {{- end }}
+  {{- end }}
+  {{- if and $logLevel (not $hasLogLevel) }}
+  {{- $env = append $env (dict "name" "KUBEWARDEN_LOG_LEVEL" "value" $logLevel) }}
+  {{- end }}
+  {{- $env = concat $env $userEnv }}
+  {{- if $env }}
   env:
-    {{- range $ps.env }}
+    {{- range $env }}
     - name: {{ .name | quote }}
       value: {{ .value | quote }}
     {{- end }}

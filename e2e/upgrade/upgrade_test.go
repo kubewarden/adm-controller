@@ -108,7 +108,7 @@ func TestUpgradeKeepsTheControllerObjects(t *testing.T) {
 					"--set", "controller.image.tag=dev",
 					"--set", "auditScanner.image.tag=dev",
 					"--set", "policyServer.image.tag=dev",
-					"--set", "logLevel=debug",
+					"--set", "controller.logLevel=debug",
 				),
 			)
 			require.NoError(t, err, "failed to upgrade to the chart of this repository")

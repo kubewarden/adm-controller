@@ -199,6 +199,7 @@ It takes the context dict of the workload helpers.
 {{- end -}}
 
 {{- define "audit-scanner.command" -}}
+{{- $ctx := dict "root" . "workload" "auditScanner" "component" "audit-scanner" -}}
 {{- $parallelNamespaces := .Values.auditScanner.parallelNamespaces | int -}}
 {{- $parallelResources := .Values.auditScanner.parallelResources | int -}}
 {{- $parallelPolicies := .Values.auditScanner.parallelPolicies | int -}}
@@ -206,8 +207,10 @@ It takes the context dict of the workload helpers.
 - /audit-scanner
 - --kubewarden-namespace
 - {{ include "admission-controller.namespace" . | quote }}
+{{- with include "admission-controller.logLevel" $ctx }}
 - --loglevel
-- {{ .Values.auditScanner.logLevel }}
+- {{ . }}
+{{- end }}
 {{- if gt $parallelNamespaces 0 }}
 - --parallel-namespaces
 - "{{ $parallelNamespaces }}"
@@ -340,6 +343,9 @@ Each public helper takes a context dict:
 A template builds the context dict once:
   {{- $ctx := dict "root" $ "workload" "controller" "component" "controller" }}
 
+Each public helper reads one key with one private helper. The private helper sets the rule:
+  admission-controller._scalar: the workload value, else the common value, else the global value.
+An empty value ("", [] or {}) counts as unset.
 The image registry and the pull policy of a workload are in its image map:
   system_default_registry (above): global.imageRegistry, else the workload image.registry, else ghcr.io when the image has no registry key.
   admission-controller.imagePullPolicy: the workload image.pullPolicy, else common.imagePullPolicy,
@@ -371,6 +377,11 @@ The other private helpers decode this list, so they work on copies of .Values.
 {{- $out = append $out $value -}}
 {{- end -}}
 {{- toYaml $out -}}
+{{- end -}}
+
+{{- define "admission-controller._scalar" -}}
+{{- $l := include "admission-controller._levels" . | fromYamlArray -}}
+{{- index $l 2 | default (index $l 1) | default (index $l 0) | default "" -}}
 {{- end -}}
 
 {{/*
@@ -458,6 +469,7 @@ admission-controller._aliases lists the deprecated keys of each workload key.
 {{- define "admission-controller._aliases" -}}
 controller:
   imagePullPolicy: {paths: [image.pullPolicy], mode: string}
+  logLevel: {paths: [logLevel], mode: string}
   replicas: {paths: [replicas], mode: presence}
   resources: {paths: [resources.controller], mode: map}
   podSecurityContext: {paths: [podSecurityContext], mode: map}
@@ -468,6 +480,7 @@ auditScanner:
   podSecurityContext: {paths: [podSecurityContext], mode: map}
   containerSecurityContext: {paths: [containerSecurityContext], mode: map}
 preDeleteJob:
+  logLevel: {paths: [logLevel], mode: string}
   resources: {paths: [resources.preDeleteJob], mode: map}
   podSecurityContext: {paths: [preDeleteHook.podSecurityContext], mode: map}
   containerSecurityContext: {paths: [preDeleteHook.containerSecurityContext], mode: map}
@@ -547,6 +560,15 @@ It keeps an item of any other type, and Kubernetes rejects it.
 {{- else -}}
 {{- $l := include "admission-controller._levels" (dict "ctx" . "key" "imagePullPolicy") | fromYamlArray -}}
 {{- (include "admission-controller._image" . | fromYaml).pullPolicy | default (index $l 1) | default (index $l 0) | default "" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.logLevel" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "logLevel") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- $old.value -}}
+{{- else -}}
+{{- include "admission-controller._scalar" (dict "ctx" . "key" "logLevel") -}}
 {{- end -}}
 {{- end -}}
 

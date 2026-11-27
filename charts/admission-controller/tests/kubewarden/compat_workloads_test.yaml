@@ -339,6 +339,54 @@ tests:
               drop: [ALL]
         template: controller/post-install-hook.yaml
 
+  # logLevel
+  - it: "logLevel alone renders on the controller and the pre-delete Job as on main"
+    set:
+      logLevel: debug
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=debug
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=debug
+        template: controller/pre-delete-hook.yaml
+
+  - it: "logLevel wins over controller.logLevel, preDeleteJob.logLevel and global.logLevel"
+    set:
+      logLevel: debug
+      global.logLevel: warn
+      controller.logLevel: error
+      preDeleteJob.logLevel: warn
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=debug
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=error
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=debug
+        template: controller/pre-delete-hook.yaml
+
+  - it: "controller.logLevel and preDeleteJob.logLevel alone"
+    set:
+      controller.logLevel: error
+      preDeleteJob.logLevel: warn
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=error
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=warn
+        template: controller/pre-delete-hook.yaml
+
   # image.repository and image.tag
   - it: "image.repository and image.tag alone render on the controller and the pre-delete Job as on main"
     set:

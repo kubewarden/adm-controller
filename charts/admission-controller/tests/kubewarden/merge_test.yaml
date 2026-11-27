@@ -11,6 +11,38 @@ release:
   name: rel
   namespace: kw
 tests:
+  - it: "should prefer common over global for a scalar"
+    set:
+      global:
+        logLevel: error
+        imagePullPolicy: Always
+      common:
+        logLevel: warn
+        imagePullPolicy: Never
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: warn}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '- name: "KUBEWARDEN_LOG_LEVEL"\n      value: "warn"'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should fall back to global when the workload value is empty"
+    set:
+      global:
+        logLevel: error
+      controller:
+        logLevel: ""
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=error"}
+        template: "templates/controller/deployment.yaml"
+
   - it: "should append imagePullSecrets: global, common, the deprecated top-level key, then the workload"
     set:
       global:

@@ -27,6 +27,8 @@ global:
   # Pull policy for the chart images: Always, IfNotPresent, or Never.
   # The image.pullPolicy of a workload block replaces it.
   imagePullPolicy: IfNotPresent
+  # Log level for the chart workloads: debug, info, warn, or error.
+  logLevel: info
   # affinity:
   #   podAffinity:
   #     requiredDuringSchedulingIgnoredDuringExecution:
@@ -277,8 +279,9 @@ ports:
   # Note: This is only used for the Service port; the pod-side metrics endpoint
   # is not bound to the host network interface even when hostNetwork is enabled.
   metrics: 8088 # @schema minimum:1;maximum:65535
-# Verbosity of logging. Can be one of 'debug', 'info', 'error'.
-logLevel: info
+# Deprecated: use controller.logLevel and preDeleteJob.logLevel, or
+# global.logLevel. When both are set, this key wins.
+logLevel: "" # @schema deprecated:true
 # open-telemetry options
 telemetry:
   # Kubewarden controller telemetry configuration allow two OpenTelemetry
@@ -474,8 +477,6 @@ auditScanner:
   reportCRDsKind: "openreports"
   # Additional namespaces that the audit scanner will not scan:
   skipAdditionalNamespaces: []
-  # level of logs. One of trace, debug, info, warn, error, fatal
-  logLevel: info
   # Output result of scan to stdout in JSON upon completion
   outputScan: false
   # Configures whether (Cluster)Reports are created, updated or deleted in
@@ -588,9 +589,7 @@ policyServer:
         - "subjectaccessreviews"
       verbs:
         - create
-  env:
-    - name: KUBEWARDEN_LOG_LEVEL
-      value: info
+  env: []
   annotations: {}
   # Resource limits and requests of the PolicyServer pods.
   resources: {}

@@ -184,7 +184,9 @@ spec:
           args:
             - --mode=pre-upgrade
             - --deployments-namespace={{ $namespace }}
-            - --zap-log-level={{ .Values.logLevel }}
+            {{- with include "admission-controller.logLevel" $ctx }}
+            - --zap-log-level={{ . }}
+            {{- end }}
           {{- with .Values.additionalEnvironmentVariables }}
           env:
           {{- toYaml . | nindent 12 }}
