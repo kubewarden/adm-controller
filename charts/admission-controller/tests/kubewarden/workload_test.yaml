@@ -56,6 +56,77 @@ tests:
         template: "templates/controller/pre-upgrade-hook.yaml"
         documentSelector: {path: kind, value: Job}
 
+  - it: "should render the resources and security contexts of each workload block on its own workload"
+    set:
+      controller:
+        resources: {limits: {cpu: "1"}}
+        podSecurityContext: {fsGroup: 1001}
+        containerSecurityContext: {runAsUser: 1001}
+      auditScanner:
+        resources: {limits: {cpu: "2"}}
+        podSecurityContext: {fsGroup: 1002}
+        containerSecurityContext: {runAsUser: 1002}
+      preDeleteJob:
+        resources: {limits: {cpu: "3"}}
+        podSecurityContext: {fsGroup: 1003}
+        containerSecurityContext: {runAsUser: 1003}
+      postInstallJob:
+        resources: {limits: {cpu: "4"}}
+        podSecurityContext: {fsGroup: 1004}
+        containerSecurityContext: {runAsUser: 1004, readOnlyRootFilesystem: false}
+      policyServer:
+        resources: {limits: {cpu: "5"}}
+        podSecurityContext: {fsGroup: 1005}
+        containerSecurityContext: {runAsUser: 1005}
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].resources.limits.cpu", value: "1"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.securityContext.fsGroup", value: 1001}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.containers[0].securityContext.runAsUser", value: 1001}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].resources.limits.cpu", value: "1"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].securityContext.runAsUser", value: 1001}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].resources.limits.cpu", value: "2"}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.securityContext.fsGroup", value: 1002}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].securityContext.runAsUser", value: 1002}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].resources.limits.cpu", value: "3"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.securityContext.fsGroup", value: 1003}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].securityContext.runAsUser", value: 1003}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].resources.limits.cpu", value: "3"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.securityContext.fsGroup", value: 1003}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].securityContext.runAsUser", value: 1003}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].resources.limits.cpu", value: "4"}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "spec.template.spec.securityContext.fsGroup", value: 1004}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem", value: false}
+        template: "templates/controller/post-install-hook.yaml"
+      # The chart always sets runAsUser and runAsGroup 1000 on the post-install Job container.
+      # A user value cannot replace them.
+      - equal: {path: "spec.template.spec.containers[0].securityContext.runAsUser", value: 1000}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].securityContext.runAsGroup", value: 1000}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  limits: \n    cpu: "5"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  securityContexts: \n    container:\n      runAsUser: 1005\n    pod:\n      fsGroup: 1005$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
   - it: "should render the replicas of each workload block on its own workload"
     set:
       controller:

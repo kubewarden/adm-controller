@@ -45,3 +45,41 @@ tests:
           path: data["allow-privilege-escalation.yaml"]
           pattern: 'module: reg.example.com/kubewarden/policies/allow-privilege-escalation-psp:v1.0.16'
         template: defaults/defaults-configmap.yaml
+
+  # The post-install Job always runs as user and group 1000.
+  - it: "postInstallJob.containerSecurityContext cannot replace the fixed user and group of the post-install Job"
+    set:
+      telemetry.metrics: true
+      postInstallJob.containerSecurityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        readOnlyRootFilesystem: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 1000
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 1000
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: false
+        template: controller/post-install-hook.yaml
+
+  - it: "preDeleteHook.containerSecurityContext cannot replace the fixed user and group of the post-install Job"
+    set:
+      telemetry.metrics: true
+      preDeleteHook.containerSecurityContext:
+        runAsUser: 0
+        runAsGroup: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 1000
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 1000
+        template: controller/post-install-hook.yaml

@@ -19,10 +19,7 @@ spec:
       template:
         spec:
           serviceAccountName: {{ .Values.auditScanner.serviceAccountName }}
-          {{- with .Values.podSecurityContext }}
-          securityContext:
-          {{- toYaml . | nindent 12 }}
-          {{- end }}
+          {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 10 }}{{ end }}
           {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 10 }}{{ end }}
           restartPolicy: {{ .Values.auditScanner.containerRestartPolicy }}
           volumes:
@@ -65,9 +62,6 @@ spec:
             - mountPath: "/client-cert"
               name: kubewarden-audit-scanner-client-cert
               readOnly: true
-            {{- if .Values.containerSecurityContext }}
-            securityContext:
-{{ toYaml .Values.containerSecurityContext | indent 14 }}
-            {{- end }}
+            {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 12 }}{{ end }}
             {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 12 }}{{ end }}
 {{ end }}

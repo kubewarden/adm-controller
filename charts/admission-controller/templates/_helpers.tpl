@@ -460,12 +460,20 @@ controller:
   imagePullPolicy: {paths: [image.pullPolicy], mode: string}
   replicas: {paths: [replicas], mode: presence}
   resources: {paths: [resources.controller], mode: map}
+  podSecurityContext: {paths: [podSecurityContext], mode: map}
+  containerSecurityContext: {paths: [containerSecurityContext], mode: map}
 auditScanner:
   resources: {paths: [resources.auditScanner], mode: map}
+  podSecurityContext: {paths: [podSecurityContext], mode: map}
+  containerSecurityContext: {paths: [containerSecurityContext], mode: map}
 preDeleteJob:
   resources: {paths: [resources.preDeleteJob], mode: map}
+  podSecurityContext: {paths: [preDeleteHook.podSecurityContext], mode: map}
+  containerSecurityContext: {paths: [preDeleteHook.containerSecurityContext], mode: map}
 postInstallJob:
   resources: {paths: [resources.postInstallJob], mode: map}
+  podSecurityContext: {paths: [preDeleteHook.podSecurityContext], mode: map}
+  containerSecurityContext: {paths: [preDeleteHook.containerSecurityContext], mode: map}
 policyServer:
   replicas: {paths: [policyServer.replicaCount], mode: presence}
 {{- end -}}
@@ -588,4 +596,21 @@ A deprecated alias wins when it is set.
 
 {{- define "admission-controller.resources" -}}
 {{- include "admission-controller._field" (dict "name" "resources" "value" (include "admission-controller._workload" (dict "ctx" . "key" "resources") | fromYaml).value) -}}
+{{- end -}}
+
+{{- define "admission-controller.podSecurityContext" -}}
+{{- include "admission-controller._field" (dict "name" "securityContext" "value" (include "admission-controller._workload" (dict "ctx" . "key" "podSecurityContext") | fromYaml).value) -}}
+{{- end -}}
+
+{{/*
+admission-controller.containerSecurityContext renders the security context of
+the containers. When it is not empty and ctx.fixedContainerSecurityContext is
+set, the helper puts the fixed fields on top, so a user value cannot replace them.
+*/}}
+{{- define "admission-controller.containerSecurityContext" -}}
+{{- $value := (include "admission-controller._workload" (dict "ctx" . "key" "containerSecurityContext") | fromYaml).value -}}
+{{- if and $value .fixedContainerSecurityContext -}}
+{{- $value = mergeOverwrite (deepCopy $value) .fixedContainerSecurityContext -}}
+{{- end -}}
+{{- include "admission-controller._field" (dict "name" "securityContext" "value" $value) -}}
 {{- end -}}

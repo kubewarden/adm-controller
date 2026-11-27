@@ -118,3 +118,45 @@ tests:
       - matchRegex:
           path: data["policyserver-default.yaml"]
           pattern: '(?m)^  requests: ?\n    memory: 2Gi$'
+
+  # policyServer.securityContexts
+  - it: "policyServer.securityContexts alone renders as on main"
+    set:
+      policyServer.securityContexts:
+        pod:
+          runAsUser: 1234
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  securityContexts: ?\n    pod:\n      runAsUser: 1234$'
+
+  - it: "policyServer.securityContexts wins over podSecurityContext and containerSecurityContext"
+    set:
+      policyServer.securityContexts:
+        pod:
+          runAsUser: 1234
+      policyServer.podSecurityContext:
+        runAsUser: 5
+      policyServer.containerSecurityContext:
+        readOnlyRootFilesystem: true
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  securityContexts: ?\n    pod:\n      runAsUser: 1234$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'runAsUser: 5'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'container:'
+
+  - it: "policyServer.podSecurityContext and containerSecurityContext alone"
+    set:
+      policyServer.podSecurityContext:
+        runAsUser: 5
+      policyServer.containerSecurityContext:
+        readOnlyRootFilesystem: true
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  securityContexts: ?\n    container:\n      readOnlyRootFilesystem: true\n    pod:\n      runAsUser: 5$'

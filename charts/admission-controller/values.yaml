@@ -151,6 +151,18 @@ controller:
     requests:
       cpu: 250m
       memory: 70Mi
+  # Security context for the pod.
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  # Security context for the containers of the pod.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 
 # Deprecated: use global.imagePullSecrets or the imagePullSecrets of a workload
 # block. The chart adds these secrets after global.imagePullSecrets, on every
@@ -162,37 +174,23 @@ additionalLabels: {}
 # -- Additional annotations to add to all resources
 additionalAnnotations: {}
 #   owner: IT-group1
-# SecurityContext to be used in the controller and audit-scanner containers. The
-# content of the containerSecurityContext will be set directly as the
-# securityContext of the container
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  capabilities:
-    drop:
-      - ALL
-# SecurityContext to be used in the controller and audit-scanner pods. The
-# content of the podSecurityContext will be set directly as the securityContext
-# of the pod
-podSecurityContext:
-  runAsNonRoot: true
-  seccompProfile:
-    type: RuntimeDefault
-# SecurityContext to be used in the pre-delete-hook, pre-upgrade-hook and
-# post-install-hook job containers and pods. The content of the next fields will
-# be set directly as the securityContext of the container and pod used in those
-# jobs.
-preDeleteHook:
-  containerSecurityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop:
-        - ALL
-  podSecurityContext:
-    runAsNonRoot: true
-    seccompProfile:
-      type: RuntimeDefault
+# Deprecated: use controller.containerSecurityContext and
+# auditScanner.containerSecurityContext. When both are set, this key wins.
+# The chart merges this key on top of the new key.
+containerSecurityContext: {} # @schema deprecated:true
+# Deprecated: use controller.podSecurityContext and
+# auditScanner.podSecurityContext. When both are set, this key wins.
+# The chart merges this key on top of the new key.
+podSecurityContext: {} # @schema deprecated:true
+# Deprecated: use preDeleteJob.containerSecurityContext,
+# preDeleteJob.podSecurityContext, postInstallJob.containerSecurityContext,
+# and postInstallJob.podSecurityContext. When both are set, this key wins.
+# The chart merges this key on top of the new key.
+# These security contexts apply to the pre-delete, pre-upgrade, and
+# post-install hook Jobs.
+preDeleteHook: # @schema deprecated:true
+  containerSecurityContext: {} # @schema deprecated:true
+  podSecurityContext: {} # @schema deprecated:true
 # If true, the controller will always accept admission reviews in the
 # deployment namespace. It is recommended to keep this value true unless you
 # have a specific reason to disable it. This is a safety flag to avoid policy
@@ -364,6 +362,18 @@ preDeleteJob:
     requests:
       cpu: 50m
       memory: 64Mi
+  # Security context for the pod.
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  # Security context for the containers of the pod.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 postInstallJob:
   image:
     # kuberlr-kubectl image to be used
@@ -380,6 +390,19 @@ postInstallJob:
     requests:
       cpu: 50m
       memory: 64Mi
+  # Security context for the pod.
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  # Security context for the containers of the pod.
+  # The chart always adds runAsUser: 1000 and runAsGroup: 1000.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 podAnnotations: {}
 nodeSelector: {}
 # additionalEnvironmentVariables is a list of additional environment variables
@@ -472,6 +495,18 @@ auditScanner:
     requests:
       cpu: 250m
       memory: 300Mi
+  # Security context for the pod.
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  # Security context for the containers of the pod.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
 # Values to configure the policy reporter subchart enabled by the
 # auditScanner.policyReporter flag
 policy-reporter:
@@ -557,8 +592,14 @@ policyServer:
   annotations: {}
   # Resource limits and requests of the PolicyServer pods.
   resources: {}
+  # Security context for the pod.
+  podSecurityContext: {}
+  # Security context for the containers of the pod.
+  containerSecurityContext: {}
+  # Deprecated: use policyServer.podSecurityContext and
+  # policyServer.containerSecurityContext. When it is set, this key wins.
   # follows the format of https://docs.kubewarden.io/reference/CRDs#policyserversecurity
-  securityContexts: {}
+  securityContexts: {} # @schema deprecated:true
   # imagePullSecret stores the secret name used to pull images from repositories.
   # The secret should be in the same namespace of the Policy Server
   #

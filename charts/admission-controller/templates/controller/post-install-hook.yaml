@@ -41,10 +41,7 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.preDeleteHook.podSecurityContext }}
-      securityContext:
-{{ toYaml .Values.preDeleteHook.podSecurityContext | indent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
       containers:
         - name: post-install-job
@@ -63,12 +60,7 @@ spec:
             # Do not split this into two separate mounts.
             - name: HOME
               value: /tmp
-          {{- if .Values.preDeleteHook.containerSecurityContext }}
-          securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
-{{ toYaml .Values.preDeleteHook.containerSecurityContext | indent 12 }}
-          {{- end }}
+          {{- with include "admission-controller.containerSecurityContext" (merge (dict "fixedContainerSecurityContext" (dict "runAsUser" 1000 "runAsGroup" 1000)) $ctx) }}{{ . | nindent 10 }}{{ end }}
           {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 10 }}{{ end }}
           volumeMounts:
             - name: tmp

@@ -73,10 +73,7 @@ spec:
         {{- toYaml . | nindent 10 }}
         {{- end }}
         {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 8 }}{{ end }}
-        {{- if .Values.containerSecurityContext }}
-        securityContext:
-{{ toYaml .Values.containerSecurityContext | indent 10 }}
-        {{- end }}
+        {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 8 }}{{ end }}
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
@@ -176,10 +173,7 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
         {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 8 }}{{ end }}
-        {{- if .Values.containerSecurityContext }}
-        securityContext:
-{{ toYaml .Values.containerSecurityContext | indent 10 }}
-        {{- end }}
+        {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 8 }}{{ end }}
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
@@ -236,8 +230,5 @@ spec:
             - key: tls.key
               path: tls.key
       {{- end }}
-      {{- if .Values.podSecurityContext }}
-      securityContext:
-{{ toYaml .Values.podSecurityContext | indent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 6 }}{{ end }}
       terminationGracePeriodSeconds: 10

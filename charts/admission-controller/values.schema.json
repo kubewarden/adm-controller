@@ -23,6 +23,28 @@
                 "containerRestartPolicy": {
                     "type": "string"
                 },
+                "containerSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "allowPrivilegeEscalation": {
+                            "type": "boolean"
+                        },
+                        "capabilities": {
+                            "type": "object",
+                            "properties": {
+                                "drop": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "readOnlyRootFilesystem": {
+                            "type": "boolean"
+                        }
+                    }
+                },
                 "cronJob": {
                     "type": "object",
                     "properties": {
@@ -78,6 +100,22 @@
                 "parallelResources": {
                     "type": "integer"
                 },
+                "podSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "runAsNonRoot": {
+                            "type": "boolean"
+                        },
+                        "seccompProfile": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
                 "policyReporter": {
                     "type": "boolean"
                 },
@@ -120,30 +158,34 @@
             }
         },
         "containerSecurityContext": {
-            "type": "object",
-            "properties": {
-                "allowPrivilegeEscalation": {
-                    "type": "boolean"
-                },
-                "capabilities": {
-                    "type": "object",
-                    "properties": {
-                        "drop": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                },
-                "readOnlyRootFilesystem": {
-                    "type": "boolean"
-                }
-            }
+            "deprecated": true,
+            "type": "object"
         },
         "controller": {
             "type": "object",
             "properties": {
+                "containerSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "allowPrivilegeEscalation": {
+                            "type": "boolean"
+                        },
+                        "capabilities": {
+                            "type": "object",
+                            "properties": {
+                                "drop": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "readOnlyRootFilesystem": {
+                            "type": "boolean"
+                        }
+                    }
+                },
                 "image": {
                     "type": "object",
                     "properties": {
@@ -158,6 +200,22 @@
                         },
                         "tag": {
                             "type": "string"
+                        }
+                    }
+                },
+                "podSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "runAsNonRoot": {
+                            "type": "boolean"
+                        },
+                        "seccompProfile": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
                         }
                     }
                 },
@@ -313,20 +371,8 @@
             "type": "object"
         },
         "podSecurityContext": {
-            "type": "object",
-            "properties": {
-                "runAsNonRoot": {
-                    "type": "boolean"
-                },
-                "seccompProfile": {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
+            "deprecated": true,
+            "type": "object"
         },
         "policy-reporter": {
             "type": "object",
@@ -380,6 +426,9 @@
                     "type": "object"
                 },
                 "annotations": {
+                    "type": "object"
+                },
+                "containerSecurityContext": {
                     "type": "object"
                 },
                 "enabled": {
@@ -476,6 +525,9 @@
                         }
                     }
                 },
+                "podSecurityContext": {
+                    "type": "object"
+                },
                 "replicaCount": {
                     "deprecated": true,
                     "type": [
@@ -494,6 +546,7 @@
                     "type": "object"
                 },
                 "securityContexts": {
+                    "deprecated": true,
                     "type": "object"
                 },
                 "serviceAccountName": {
@@ -527,6 +580,28 @@
         "postInstallJob": {
             "type": "object",
             "properties": {
+                "containerSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "allowPrivilegeEscalation": {
+                            "type": "boolean"
+                        },
+                        "capabilities": {
+                            "type": "object",
+                            "properties": {
+                                "drop": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "readOnlyRootFilesystem": {
+                            "type": "boolean"
+                        }
+                    }
+                },
                 "image": {
                     "type": "object",
                     "properties": {
@@ -541,6 +616,22 @@
                         },
                         "tag": {
                             "type": "string"
+                        }
+                    }
+                },
+                "podSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "runAsNonRoot": {
+                            "type": "boolean"
+                        },
+                        "seccompProfile": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
                         }
                     }
                 },
@@ -574,6 +665,20 @@
             }
         },
         "preDeleteHook": {
+            "deprecated": true,
+            "type": "object",
+            "properties": {
+                "containerSecurityContext": {
+                    "deprecated": true,
+                    "type": "object"
+                },
+                "podSecurityContext": {
+                    "deprecated": true,
+                    "type": "object"
+                }
+            }
+        },
+        "preDeleteJob": {
             "type": "object",
             "properties": {
                 "containerSecurityContext": {
@@ -598,6 +703,20 @@
                         }
                     }
                 },
+                "image": {
+                    "deprecated": true,
+                    "type": "object",
+                    "properties": {
+                        "repository": {
+                            "deprecated": true,
+                            "type": "string"
+                        },
+                        "tag": {
+                            "deprecated": true,
+                            "type": "string"
+                        }
+                    }
+                },
                 "podSecurityContext": {
                     "type": "object",
                     "properties": {
@@ -611,25 +730,6 @@
                                     "type": "string"
                                 }
                             }
-                        }
-                    }
-                }
-            }
-        },
-        "preDeleteJob": {
-            "type": "object",
-            "properties": {
-                "image": {
-                    "deprecated": true,
-                    "type": "object",
-                    "properties": {
-                        "repository": {
-                            "deprecated": true,
-                            "type": "string"
-                        },
-                        "tag": {
-                            "deprecated": true,
-                            "type": "string"
                         }
                     }
                 },

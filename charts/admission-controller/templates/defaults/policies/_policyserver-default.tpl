@@ -92,6 +92,17 @@ spec:
   {{- end }}
   {{- if $ps.securityContexts }}
   securityContexts: {{ toYaml $ps.securityContexts | nindent 4 }}
+  {{- else }}
+  {{- $securityContexts := dict }}
+  {{- with $ps.podSecurityContext }}
+  {{- $_ := set $securityContexts "pod" . }}
+  {{- end }}
+  {{- with $ps.containerSecurityContext }}
+  {{- $_ := set $securityContexts "container" . }}
+  {{- end }}
+  {{- with $securityContexts }}
+  securityContexts: {{ toYaml . | nindent 4 }}
+  {{- end }}
   {{- end }}
   {{- if $ps.webhookPort }}
   webhookPort: {{ $ps.webhookPort }}
