@@ -16,7 +16,12 @@ metadata:
 spec:
   image: {{ template "system_default_registry" $ctx }}{{ $ps.image.repository }}:{{ $ps.image.tag }}
   serviceAccountName: {{ $ps.serviceAccountName }}
+  {{- /* The deprecated replicaCount keeps its old rule: 0 becomes 1. */}}
+  {{- if not (kindIs "invalid" $ps.replicaCount) }}
   replicas: {{ $ps.replicaCount | default 1 }}
+  {{- else }}
+  replicas: {{ include "admission-controller.replicas" $ctx }}
+  {{- end }}
   {{- if $ps.minAvailable }}
   minAvailable: {{ $ps.minAvailable }}
   {{- end }}

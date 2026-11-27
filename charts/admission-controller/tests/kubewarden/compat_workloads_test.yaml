@@ -221,3 +221,51 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/new/kubectl:v1
         template: controller/post-install-hook.yaml
+
+  # replicas
+  - it: "replicas alone renders as on main"
+    set:
+      replicas: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+        template: controller/deployment.yaml
+
+  - it: "replicas 0 alone renders 0 as on main"
+    set:
+      replicas: 0
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 0
+        template: controller/deployment.yaml
+
+  - it: "replicas wins over controller.replicas"
+    set:
+      replicas: 3
+      controller.replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+        template: controller/deployment.yaml
+
+  - it: "replicas 0 wins over controller.replicas"
+    set:
+      replicas: 0
+      controller.replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 0
+        template: controller/deployment.yaml
+
+  - it: "controller.replicas alone"
+    set:
+      controller.replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+        template: controller/deployment.yaml

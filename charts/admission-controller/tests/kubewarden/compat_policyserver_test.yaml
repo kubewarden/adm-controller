@@ -1,0 +1,54 @@
+# Compatibility of the deprecated policyServer keys with the new policyServer
+# keys. The default PolicyServer is a YAML string in the defaults ConfigMap.
+suite: compat - deprecated policyServer keys
+templates:
+  - defaults/defaults-configmap.yaml
+release:
+  name: t
+  namespace: kw
+tests:
+  # policyServer.replicaCount
+  - it: "policyServer.replicaCount alone renders as on main"
+    set:
+      policyServer.replicaCount: 3
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 3$'
+
+  - it: "policyServer.replicaCount wins over policyServer.replicas"
+    set:
+      policyServer.replicaCount: 3
+      policyServer.replicas: 5
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 3$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'replicas: 5'
+
+  - it: "policyServer.replicas alone"
+    set:
+      policyServer.replicas: 5
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 5$'
+
+  - it: "policyServer.replicas 0 scales the default PolicyServer to zero"
+    set:
+      policyServer.replicas: 0
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 0$'
+
+  - it: "policyServer.replicaCount 0 still renders 1, as on main, and wins over policyServer.replicas"
+    set:
+      policyServer.replicaCount: 0
+      policyServer.replicas: 5
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 1$'

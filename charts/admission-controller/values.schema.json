@@ -133,6 +133,9 @@
                             "type": "string"
                         }
                     }
+                },
+                "replicas": {
+                    "type": "integer"
                 }
             }
         },
@@ -419,6 +422,13 @@
                     }
                 },
                 "replicaCount": {
+                    "deprecated": true,
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "replicas": {
                     "type": "integer"
                 },
                 "requests": {
@@ -775,7 +785,11 @@
             }
         },
         "replicas": {
-            "type": "integer"
+            "deprecated": true,
+            "type": [
+                "integer",
+                "null"
+            ]
         },
         "resources": {
             "type": "object",

@@ -140,6 +140,8 @@ controller:
     registry: ghcr.io
     # Pull policy for the image. If it is empty, the chart uses common.imagePullPolicy, then global.imagePullPolicy.
     pullPolicy: ""
+  # Controller replicas
+  replicas: 1
 
 # Deprecated: use global.imagePullSecrets or the imagePullSecrets of a workload
 # block. The chart adds these secrets after global.imagePullSecrets, on every
@@ -412,8 +414,8 @@ mTLS:
   # client CA certificate. The ConfigMap must contain a data.client-ca.crt key
   # with the CA cert in PEM format, encoded in base64.
   configMapName: ""
-# Controller replicas
-replicas: 1
+# Deprecated: use controller.replicas. When both are set, this key wins.
+replicas: null # @schema type:[integer, null]; deprecated:true
 
 auditScanner:
   enable: true
@@ -505,7 +507,9 @@ installOpenReportsCRDs: true
 # default Policy Server settings
 policyServer:
   enabled: true
-  replicaCount: 1
+  replicas: 1
+  # Deprecated: use policyServer.replicas. When both are set, this key wins.
+  replicaCount: null # @schema type:[integer, null]; deprecated:true
   # Only one of minAvailable,maxUnavailable can be enabled:
   # minAvailable: 30%
   # maxUnavailable: 1

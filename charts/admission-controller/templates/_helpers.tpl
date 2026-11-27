@@ -428,6 +428,9 @@ admission-controller._aliases lists the deprecated keys of each workload key.
 {{- define "admission-controller._aliases" -}}
 controller:
   imagePullPolicy: {paths: [image.pullPolicy], mode: string}
+  replicas: {paths: [replicas], mode: presence}
+policyServer:
+  replicas: {paths: [policyServer.replicaCount], mode: presence}
 {{- end -}}
 
 {{/*
@@ -443,6 +446,22 @@ It renders {} when the key has no deprecated alias.
 {{- include "admission-controller._legacy" (dict "root" .ctx.root "paths" $alias.paths "mode" $alias.mode) -}}
 {{- else -}}
 {}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller._workload renders "value: <value>" with a key that only
+the workload block has, for example replicas.
+A deprecated alias wins when it is set.
+*/}}
+{{- define "admission-controller._workload" -}}
+{{- $block := index .ctx.root.Values .ctx.workload | default dict -}}
+{{- $new := index $block .key -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" .ctx "key" .key) | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- toYaml $old -}}
+{{- else -}}
+{{- toYaml (dict "value" $new) -}}
 {{- end -}}
 {{- end -}}
 
@@ -482,6 +501,19 @@ It keeps an item of any other type, and Kubernetes rejects it.
 {{- else -}}
 {{- $l := include "admission-controller._levels" (dict "ctx" . "key" "imagePullPolicy") | fromYamlArray -}}
 {{- (include "admission-controller._image" . | fromYaml).pullPolicy | default (index $l 1) | default (index $l 0) | default "" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller.replicas renders the replicas of the workload,
+or 1 when no value is set.
+*/}}
+{{- define "admission-controller.replicas" -}}
+{{- $value := (include "admission-controller._workload" (dict "ctx" . "key" "replicas") | fromYaml).value -}}
+{{- if kindIs "invalid" $value -}}
+1
+{{- else -}}
+{{- $value -}}
 {{- end -}}
 {{- end -}}
 

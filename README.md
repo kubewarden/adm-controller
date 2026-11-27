@@ -62,7 +62,7 @@ The chart can deploy a default Policy Server and recommended policies:
 ```yaml
 policyServer:
   enabled: true
-  replicaCount: 1
+  replicas: 1
   # ... (see values.yaml for full options)
 
 recommendedPolicies:

@@ -55,3 +55,15 @@ tests:
       - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/controller:'}
         template: "templates/controller/pre-upgrade-hook.yaml"
         documentSelector: {path: kind, value: Job}
+
+  - it: "should render the replicas of each workload block on its own workload"
+    set:
+      controller:
+        replicas: 3
+      policyServer:
+        replicas: 4
+    asserts:
+      - equal: {path: "spec.replicas", value: 3}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  replicas: 4$'}
+        template: "templates/defaults/defaults-configmap.yaml"

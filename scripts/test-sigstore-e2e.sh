@@ -404,7 +404,7 @@ function install_kubewarden() {
     echo -e "${GREEN}  Installing kubewarden-controller (unified chart)...${NC}"
     helm upgrade --install kubewarden-controller ./charts/admission-controller \
         -n "$KUBEWARDEN_NAMESPACE" \
-        --set replicas=1 \
+        --set controller.replicas=1 \
         --wait
 
     echo -e "${GREEN}  Waiting for admission-controller rollout...${NC}"
@@ -444,7 +444,7 @@ function configure_policy_server() {
 
     helm upgrade --install kubewarden-controller ./charts/admission-controller \
         -n "$KUBEWARDEN_NAMESPACE" \
-        --set replicas=1 \
+        --set controller.replicas=1 \
         --set 'policyServer.sigstoreTrustConfig'="$SIGSTORE_TRUST_CONFIGMAP" \
         --set 'policyServer.verificationConfig'="$VERIFICATION_CONFIGMAP" \
         --set 'policyServer.insecureSources[0]=registry.local:5001' \
@@ -467,7 +467,7 @@ function install_kubewarden_no_sigstore() {
 
     helm upgrade --install kubewarden-controller ./charts/admission-controller \
         -n "$KUBEWARDEN_NAMESPACE" \
-        --set replicas=1 \
+        --set controller.replicas=1 \
         --set 'policyServer.env[0].name=KUBEWARDEN_LOG_LEVEL' \
         --set 'policyServer.env[0].value=info' \
         --set 'policyServer.env[1].name=RUST_BACKTRACE' \

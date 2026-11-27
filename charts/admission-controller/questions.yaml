@@ -129,7 +129,7 @@ questions:
       in chunks. This parameter controls how many resources are fetched at the same time.
     group: "Audit checks"
   # controller HA:
-  - variable: "replicas"
+  - variable: "controller.replicas"
     type: int
     default: 1
     required: true
@@ -286,7 +286,7 @@ questions:
       with the Kubernetes API Server.
     group: "Default PolicyServer"
   # Default PolicyServer HA
-  - variable: "policyServer.replicaCount"
+  - variable: "policyServer.replicas"
     type: int
     default: 1
     required: true

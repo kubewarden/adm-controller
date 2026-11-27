@@ -13,7 +13,7 @@ metadata:
   annotations:
     {{- include "admission-controller.annotations" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicas }}
+  replicas: {{ include "admission-controller.replicas" $ctx }}
   selector:
     matchLabels:
       {{- include "admission-controller.controllerSelectorLabels" . | nindent 6 }}
