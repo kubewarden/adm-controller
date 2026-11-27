@@ -114,6 +114,8 @@ Two conditions need your attention:
   strategy`.
 - The usual types are `feat`, `fix`, `perf`, `refactor`, `chore`, `ci` and
   `docs`.
+- For breaking change commits (`feat!`, `fix!`), consider if end-users need
+  to be informed, and if nedeed, edit `docs/migration-guides/latest-to-main.md`.
 - Each commit needs a DCO sign-off. Use `git commit -s`.
 - Each commit that an AI helped to write needs an `Assisted-by:` trailer.
 

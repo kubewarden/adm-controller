@@ -338,6 +338,7 @@ specifically.
    https://github.com/kubewarden/adm-controller/actions/workflows/open-release-pr.yml
    Set the desired kubewarden version.
 1. Review & merge automated PR
+   - If needed, add `docs/migration-guides/X-to-Y.md` as needed, drop `latest-to-main.md`.
 1. Tag version in kubewarden-controller repo
 1. Wait for images to be built, so e2e tests can work
 1. Trigger automated PR that syncs adm controller charts with helm-chart repo
