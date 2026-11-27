@@ -9,7 +9,7 @@ users (Kubernetes Operators, Policy Authors, Policy Users, Integrators), so
 they can update to the new version. To do this, when needed, we ship a
 migration guide. To not need to remember nor re-review changelog, we ask PR
 authors and reviewers to add to the draft migration guide for the `main`
-branch. This will helps if reverting PRs.
+branch. This also helps when reverting PRs.
 
 ## Where to put your migration changes
 
@@ -18,17 +18,17 @@ released version number.
 This draft will be promoted to `y-to-x.md` (`y` is previous version, `x` is
 latest) when we release `x`.
 
-## What to put
+## What to include
 
 Migration guides should reflect the complete experience of migrating from the
 last Helm chart stack to the next one:
 
-- what breaking change has been made since the last release?
-- why did we do the breaking change?
-- how can users migrate?
+- What breaking change has been made since the last release?
+- Why did we do the breaking change?
+- How can users migrate?
 
-The draft `latest-to-main.md` *does not need to be polished*. We will do an
-editing pass on release.
+The draft `latest-to-main.md` *does not need to be polished*. We edit prior to
+the release.
 Use terse, technical language (e.g: ASD-STE100), and include terms that users
 might search for.
 
