@@ -42,6 +42,18 @@ the job Pods.
 {{- end }}
 
 {{/*
+Names of the hook Jobs. They come from the chart fullname.
+The fullname is cut, so that each name has at most 63 characters.
+*/}}
+{{- define "admission-controller.preDeleteJobName" -}}
+{{- printf "%s-pre-delete" (include "admission-controller.fullname" . | trunc 52 | trimSuffix "-") }}
+{{- end }}
+
+{{- define "admission-controller.postInstallJobName" -}}
+{{- printf "%s-post-install" (include "admission-controller.fullname" . | trunc 50 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "admission-controller.chart" -}}

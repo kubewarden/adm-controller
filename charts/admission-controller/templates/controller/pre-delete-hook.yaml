@@ -41,14 +41,14 @@ The Job runs the controller image in cleanup mode, which:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Release.Name }}"
+  name: {{ include "admission-controller.preDeleteJobName" . }}
   namespace: {{ include "admission-controller.namespace" . | quote }}
   {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
   {{- include "admission-controller.workloadAnnotations" $metadataCtx | nindent 2 }}
 spec:
   template:
     metadata:
-      name: "{{ .Release.Name }}"
+      name: {{ include "admission-controller.preDeleteJobName" . }}
       {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
       {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ end }}
     spec:

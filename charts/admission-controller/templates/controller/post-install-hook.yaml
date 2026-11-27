@@ -16,14 +16,14 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Release.Name }}-delete-controller-job"
+  name: {{ include "admission-controller.postInstallJobName" . }}
   namespace: {{ include "admission-controller.namespace" . | quote }}
   {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
   {{- include "admission-controller.workloadAnnotations" $metadataCtx | nindent 2 }}
 spec:
   template:
     metadata:
-      name: "{{ .Release.Name }}-delete-controller-job"
+      name: {{ include "admission-controller.postInstallJobName" . }}
       {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
       {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ end }}
     spec:

@@ -138,3 +138,52 @@ tests:
         template: "templates/controller/deployment.yaml"
       - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  replicas: 4$'}
         template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should name the hook Jobs after the chart fullname"
+    release:
+      name: rel
+    asserts:
+      - equal: {path: "metadata.name", value: rel-admission-controller-pre-delete}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.metadata.name", value: rel-admission-controller-pre-delete}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--controller-deployment-name=rel-admission-controller"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "metadata.name", value: rel-admission-controller-pre-upgrade}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.metadata.name", value: rel-admission-controller-pre-upgrade}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "metadata.name", value: rel-admission-controller-post-install}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].command[6]", value: rel-admission-controller}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should keep the hook Job names at 63 characters or less with a 63-character fullnameOverride"
+    set:
+      fullnameOverride: "a23456789-123456789-123456789-123456789-123456789-123456789-123"
+    asserts:
+      - matchRegex: {path: "metadata.name", pattern: '^a23456789-123456789-123456789-123456789-123456789-12-pre-delete$'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "metadata.name", pattern: '^.{1,63}$'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "metadata.name", pattern: '^a23456789-123456789-123456789-123456789-123456789-1-pre-upgrade$'}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex: {path: "metadata.name", pattern: '^.{1,63}$'}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex: {path: "metadata.name", pattern: '^a23456789-123456789-123456789-123456789-123456789-post-install$'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: "metadata.name", pattern: '^.{1,63}$'}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should keep the hook Job names valid when the cut fullname ends with a dash"
+    set:
+      fullnameOverride: "a23456789-123456789-123456789-123456789-123456789-1-3456789-123"
+    asserts:
+      - matchRegex: {path: "metadata.name", pattern: '^a23456789-123456789-123456789-123456789-123456789-1-pre-delete$'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "metadata.name", pattern: '^a23456789-123456789-123456789-123456789-123456789-post-install$'}
+        template: "templates/controller/post-install-hook.yaml"
