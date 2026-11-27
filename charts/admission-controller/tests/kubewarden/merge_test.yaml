@@ -1,0 +1,762 @@
+suite: "Values contract: resolution rules"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/defaults/defaults-configmap.yaml"
+  - "templates/controller/controller-serviceaccount.yaml"
+  - "templates/controller/service.yaml"
+release:
+  name: rel
+  namespace: kw
+tests:
+  - it: "should prefer the workload value, then common, then global for a scalar"
+    set:
+      global:
+        logLevel: error
+        priorityClassName: global-priority
+      common:
+        logLevel: warn
+        priorityClassName: common-priority
+      controller:
+        logLevel: debug
+        priorityClassName: controller-priority
+      auditScanner:
+        logLevel: debug
+        priorityClassName: audit-priority
+      preDeleteJob:
+        logLevel: debug
+        priorityClassName: pre-delete-priority
+      policyServer:
+        logLevel: debug
+        priorityClassName: policy-server-priority
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: controller-priority}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: debug}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.priorityClassName", value: audit-priority}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: pre-delete-priority}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '- name: "KUBEWARDEN_LOG_LEVEL"\n      value: "debug"'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  priorityClassName: "policy-server-priority"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should skip an empty workload scalar and use the common or global value"
+    set:
+      global:
+        logLevel: error
+        priorityClassName: global-priority
+      common:
+        logLevel: warn
+      controller:
+        logLevel: ""
+        priorityClassName: ""
+      preDeleteJob:
+        logLevel: ""
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: global-priority}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/pre-delete-hook.yaml"
+
+  - it: "should skip an empty workload list and use the common or global list"
+    set:
+      global:
+        tolerations:
+          - key: global-taint
+            operator: Exists
+      common:
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+      controller:
+        tolerations: []
+        topologySpreadConstraints: []
+    asserts:
+      - equal:
+          path: "spec.template.spec.tolerations"
+          value:
+            - key: global-taint
+              operator: Exists
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.template.spec.topologySpreadConstraints[0].topologyKey"
+          value: kubernetes.io/hostname
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should prefer common over global for a scalar"
+    set:
+      global:
+        logLevel: error
+        imagePullPolicy: Always
+      common:
+        logLevel: warn
+        imagePullPolicy: Never
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: warn}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '- name: "KUBEWARDEN_LOG_LEVEL"\n      value: "warn"'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should fall back to global when the workload value is empty"
+    set:
+      global:
+        logLevel: error
+      controller:
+        logLevel: ""
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=error"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should merge maps in the order global, common, workload"
+    set:
+      global:
+        nodeSelector: {a: "1", b: "1", c: "1"}
+        labels: {a: "1", b: "1", c: "1"}
+        podAnnotations: {a: "1", b: "1", c: "1"}
+      common:
+        nodeSelector: {b: "2", c: "2"}
+        labels: {b: "2", c: "2"}
+        podAnnotations: {b: "2", c: "2"}
+      controller:
+        nodeSelector: {c: "3"}
+        labels: {c: "3"}
+        podAnnotations: {c: "3"}
+      policyServer:
+        labels: {c: "3"}
+        podAnnotations: {c: "3"}
+    asserts:
+      - equal: {path: "spec.template.spec.nodeSelector", value: {a: "1", b: "2", c: "3"}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.a", value: "1"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.b", value: "2"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.c", value: "3"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.metadata.annotations", value: {a: "1", b: "2", c: "3"}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.nodeSelector", value: {a: "1", b: "2", c: "2"}}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    a: "1"\n(.*\n)*    b: "2"\n    c: "3"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    "a": "1"\n    "b": "2"\n    "c": "3"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should deep merge affinity, with the workload value winning on a duplicate key"
+    set:
+      global:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 1
+                podAffinityTerm: {topologyKey: global}
+      common:
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 50
+                preference:
+                  matchExpressions:
+                    - {key: from-common, operator: Exists}
+      controller:
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm: {topologyKey: controller}
+      policyServer:
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm: {topologyKey: policy-server}
+    asserts:
+      - equal:
+          path: "spec.template.spec.affinity"
+          value:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 50
+                  preference:
+                    matchExpressions:
+                      - {key: from-common, operator: Exists}
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm: {topologyKey: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].podAffinityTerm.topologyKey", value: global}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight", value: 50}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'key: kubernetes\.io/arch'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'key: from-common'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'topologyKey: policy-server'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'topologyKey: global'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should append named lists in the order global, common, workload"
+    set:
+      global:
+        extraEnv: [{name: A, value: a}]
+        extraVolumes: [{name: vol-a, emptyDir: {}}]
+        extraVolumeMounts: [{name: vol-a, mountPath: /a}]
+      common:
+        extraEnv: [{name: C, value: c}]
+        extraVolumes: [{name: vol-c, emptyDir: {}}]
+        extraVolumeMounts: [{name: vol-c, mountPath: /c}]
+      controller:
+        extraEnv: [{name: B, value: b}]
+        extraVolumes: [{name: vol-b, emptyDir: {}}]
+        extraVolumeMounts: [{name: vol-b, mountPath: /b}]
+      auditScanner:
+        extraEnv: [{name: D, value: d}]
+      preDeleteJob:
+        extraVolumes: [{name: vol-d, emptyDir: {}}]
+        extraVolumeMounts: [{name: vol-d, mountPath: /d}]
+    asserts:
+      - equal:
+          path: "spec.template.spec.containers[0].env"
+          value: [{name: A, value: a}, {name: C, value: c}, {name: B, value: b}]
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.template.spec.volumes"
+          value:
+            - {name: cert, secret: {defaultMode: 420, secretName: kubewarden-webhook-server-cert, optional: true}}
+            - {name: vol-a, emptyDir: {}}
+            - {name: vol-c, emptyDir: {}}
+            - {name: vol-b, emptyDir: {}}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.template.spec.containers[0].volumeMounts"
+          value:
+            - {mountPath: /tmp/k8s-webhook-server/serving-certs, name: cert, readOnly: true}
+            - {name: vol-a, mountPath: /a}
+            - {name: vol-c, mountPath: /c}
+            - {name: vol-b, mountPath: /b}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.jobTemplate.spec.template.spec.containers[0].env"
+          value: [{name: A, value: a}, {name: C, value: c}, {name: D, value: d}]
+        template: "templates/controller/audit-scanner.yaml"
+      - equal:
+          path: "spec.template.spec.volumes"
+          value: [{name: vol-a, emptyDir: {}}, {name: vol-c, emptyDir: {}}, {name: vol-d, emptyDir: {}}]
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal:
+          path: "spec.template.spec.containers[0].volumeMounts"
+          value: [{name: vol-a, mountPath: /a}, {name: vol-c, mountPath: /c}, {name: vol-d, mountPath: /d}]
+        template: "templates/controller/pre-delete-hook.yaml"
+
+  # The PolicyServer gets KUBEWARDEN_LOG_LEVEL first, then global, common,
+  # policyServer.extraEnv, and the deprecated policyServer.env.
+  - it: "should append the PolicyServer env in the order global, common, workload, deprecated env"
+    set:
+      global:
+        extraEnv: [{name: A, value: a}]
+      common:
+        extraEnv: [{name: C, value: c}]
+      policyServer:
+        extraEnv: [{name: B, value: b}]
+        env: [{name: OLD, value: old}]
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "A"\n      value: "a"\n    - name: "C"\n      value: "c"\n    - name: "B"\n      value: "b"\n    - name: "OLD"\n      value: "old"$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should not add KUBEWARDEN_LOG_LEVEL to the PolicyServer when an extraEnv entry sets it"
+    set:
+      global:
+        logLevel: debug
+      policyServer:
+        extraEnv: [{name: KUBEWARDEN_LOG_LEVEL, value: trace}]
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "trace"$'
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'value: "debug"'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should replace unnamed lists with the most specific value"
+    set:
+      global:
+        tolerations: [{key: from-global, operator: Exists}]
+        topologySpreadConstraints: [{maxSkew: 1, topologyKey: from-global, whenUnsatisfiable: ScheduleAnyway}]
+        extraEnvFrom: [{configMapRef: {name: from-global}}]
+      common:
+        tolerations: [{key: from-common, operator: Exists}]
+        extraEnvFrom: [{configMapRef: {name: from-common}}]
+      controller:
+        tolerations: [{key: from-controller, operator: Exists}]
+        topologySpreadConstraints: [{maxSkew: 1, topologyKey: from-controller, whenUnsatisfiable: ScheduleAnyway}]
+        extraEnvFrom: [{configMapRef: {name: from-controller}}]
+      policyServer:
+        tolerations: [{key: from-policy-server, operator: Exists}]
+    asserts:
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: from-controller, operator: Exists}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: from-controller, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: from-controller}}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.tolerations", value: [{key: from-common, operator: Exists}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: from-global, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: from-common}}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  tolerations:\n    - key: from-policy-server\n      operator: Exists$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should append imagePullSecrets: global, common, the deprecated top-level key, then the workload"
+    set:
+      global:
+        imagePullSecrets: [global-secret]
+      common:
+        imagePullSecrets: [{name: common-secret}, common-name]
+      imagePullSecrets: [{name: legacy-secret}]
+      controller:
+        imagePullSecrets: [controller-secret]
+      auditScanner:
+        imagePullSecrets: [audit-secret]
+      policyServer:
+        imagePullSecrets: [policy-server-secret]
+    asserts:
+      - equal:
+          path: "spec.template.spec.imagePullSecrets"
+          value: [{name: global-secret}, {name: common-secret}, {name: common-name}, {name: legacy-secret}, {name: controller-secret}]
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.jobTemplate.spec.template.spec.imagePullSecrets"
+          value: [{name: global-secret}, {name: common-secret}, {name: common-name}, {name: legacy-secret}, {name: audit-secret}]
+        template: "templates/controller/audit-scanner.yaml"
+      - equal:
+          path: "spec.template.spec.imagePullSecrets"
+          value: [{name: global-secret}, {name: common-secret}, {name: common-name}, {name: legacy-secret}]
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains:
+          path: "spec.template.spec.containers[0].args"
+          content: "--image-pull-secrets=global-secret,common-secret,common-name,legacy-secret,policy-server-secret"
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should merge annotations: global, common, workload, then additionalAnnotations"
+    set:
+      global:
+        annotations: {a: "1", b: "1", c: "1"}
+      common:
+        annotations: {b: "2", c: "2"}
+      controller:
+        annotations: {c: "3"}
+      additionalAnnotations:
+        a: additional
+    asserts:
+      - equal: {path: "metadata.annotations", value: {a: additional, b: "2", c: "3"}}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should keep the Helm hook annotations of the hook Jobs"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        annotations:
+          helm.sh/hook: test
+          helm.sh/hook-delete-policy: never
+      additionalAnnotations:
+        helm.sh/hook-weight: "-5"
+    asserts:
+      - equal: {path: 'metadata.annotations["helm.sh/hook"]', value: pre-delete}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook-delete-policy"]', value: hook-succeeded}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook-weight"]', value: "1"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook"]', value: "post-install,post-upgrade"}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook-delete-policy"]', value: "before-hook-creation,hook-succeeded"}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook-weight"]', value: "1"}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should prefer additionalLabels over the label keys"
+    set:
+      global:
+        labels: {team: from-global}
+        podLabels: {team: from-global}
+      controller:
+        labels: {team: from-controller}
+      additionalLabels:
+        team: additional
+    asserts:
+      - equal: {path: "metadata.labels.team", value: additional}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: additional}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.team", value: additional}
+        template: "templates/controller/audit-scanner.yaml"
+
+  - it: "should keep the fixed chart labels and the selector"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        labels: &override
+          app.kubernetes.io/name: other
+          app.kubernetes.io/instance: other
+          app.kubernetes.io/component: other
+          app.kubernetes.io/managed-by: other
+          app.kubernetes.io/part-of: other
+          helm.sh/chart: other
+        podLabels: *override
+      common:
+        labels: *override
+        podLabels: *override
+      controller:
+        labels: *override
+        podLabels: *override
+      auditScanner:
+        labels: *override
+        podLabels: *override
+      preDeleteJob:
+        labels: *override
+        podLabels: *override
+      postInstallJob:
+        labels: *override
+        podLabels: *override
+      policyServer:
+        labels: *override
+    asserts:
+      # controller
+      - equal: {path: 'metadata.labels["app.kubernetes.io/name"]', value: admission-controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/managed-by"]', value: Helm}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/part-of"]', value: kubewarden}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: 'metadata.labels["helm.sh/chart"]', pattern: '^admission-controller-'}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/name"]', value: admission-controller}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.selector.matchLabels"
+          value:
+            app.kubernetes.io/instance: rel
+            app.kubernetes.io/component: controller
+        template: "templates/controller/deployment.yaml"
+      # audit scanner
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: audit-scanner}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.labels["app.kubernetes.io/component"]', value: audit-scanner}
+        template: "templates/controller/audit-scanner.yaml"
+      # pre-delete Job
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: pre-delete-job}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/component"]', value: pre-delete-job}
+        template: "templates/controller/pre-delete-hook.yaml"
+      # post-install Job
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: post-install-job}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/component"]', value: post-install-job}
+        template: "templates/controller/post-install-hook.yaml"
+      # default PolicyServer resource
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/component: policy-server$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/instance: rel$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/managed-by: kubewarden-controller$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/name: admission-controller$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    [a-z./-]+: other$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should keep the fixed chart labels when additionalLabels sets them"
+    templates:
+      - "templates/controller/deployment.yaml"
+      - "templates/controller/audit-scanner.yaml"
+      - "templates/controller/pre-delete-hook.yaml"
+      - "templates/controller/post-install-hook.yaml"
+      - "templates/defaults/defaults-configmap.yaml"
+      - "templates/controller/controller-serviceaccount.yaml"
+      - "templates/controller/service.yaml"
+    set:
+      telemetry:
+        metrics: true
+      additionalLabels:
+        app.kubernetes.io/name: other
+        app.kubernetes.io/instance: other
+        app.kubernetes.io/component: other
+        app.kubernetes.io/managed-by: other
+    asserts:
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+      - equal: {path: 'metadata.labels["app.kubernetes.io/name"]', value: admission-controller}
+      - equal: {path: 'metadata.labels["app.kubernetes.io/managed-by"]', value: Helm}
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.selector.matchLabels"
+          value:
+            app.kubernetes.io/instance: rel
+            app.kubernetes.io/component: controller
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: audit-scanner}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: pre-delete-job}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: post-install-job}
+        template: "templates/controller/post-install-hook.yaml"
+      # The other chart objects (ConfigMaps, ServiceAccounts, Services, RBAC,
+      # webhook configurations) also carry the fixed chart labels and
+      # additionalLabels. additionalLabels must not replace a fixed label
+      # there either, and each object must stay valid YAML.
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/controller-serviceaccount.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/service.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/instance: rel$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/component: policy-server$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    [a-z./-]+: other$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should prefer global.imageRegistry over the image.registry of every workload"
+    set:
+      telemetry:
+        metrics: true
+      recommendedPolicies:
+        enabled: true
+      global:
+        imageRegistry: global.example.com
+      controller:
+        image:
+          registry: mirror.example.com
+      auditScanner:
+        image:
+          registry: mirror.example.com
+      postInstallJob:
+        image:
+          registry: mirror.example.com
+      policyServer:
+        image:
+          registry: mirror.example.com
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^global\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^global\.example\.com/kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^global\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^global\.example\.com/rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: global\.example\.com/kubewarden/adm-controller/policy-server:'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["user-group.yaml"]', pattern: '(?m)^  module: global\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The pre-delete Job runs the controller image, so it uses
+  # controller.image.registry.
+  - it: "should use the image.registry of each workload when global.imageRegistry is empty"
+    set:
+      telemetry:
+        metrics: true
+      controller:
+        image:
+          registry: controller.example.com
+      auditScanner:
+        image:
+          registry: audit.example.com
+      postInstallJob:
+        image:
+          registry: kubectl.example.com
+      policyServer:
+        image:
+          registry: policy-server.example.com
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^controller\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^audit\.example\.com/kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^controller\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubectl\.example\.com/rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: policy-server\.example\.com/kubewarden/adm-controller/policy-server:'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render no registry prefix when image.registry is empty and global.imageRegistry is empty"
+    set:
+      telemetry:
+        metrics: true
+      controller:
+        image:
+          registry: ""
+      auditScanner:
+        image:
+          registry: ""
+      postInstallJob:
+        image:
+          registry: ""
+      policyServer:
+        image:
+          registry: ""
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: kubewarden/adm-controller/policy-server:'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The pre-delete Job runs the controller image, so it uses
+  # controller.image.pullPolicy.
+  - it: "should prefer the image.pullPolicy of each workload over common and global"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        imagePullPolicy: IfNotPresent
+      common:
+        imagePullPolicy: Never
+      controller:
+        image:
+          pullPolicy: Always
+      auditScanner:
+        image:
+          pullPolicy: Always
+      postInstallJob:
+        image:
+          pullPolicy: Always
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should prefer the image.pullPolicy of each workload over global.imagePullPolicy"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        imagePullPolicy: Never
+      controller:
+        image:
+          pullPolicy: Always
+      auditScanner:
+        image:
+          pullPolicy: IfNotPresent
+      postInstallJob:
+        image:
+          pullPolicy: Always
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should render the image.pullPolicy of a workload on that workload only"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        imagePullPolicy: Never
+      auditScanner:
+        image:
+          pullPolicy: Always
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should prefer recommendedPolicies.defaultPoliciesRegistry over global.imageRegistry for the policies"
+    set:
+      recommendedPolicies:
+        enabled: true
+        defaultPoliciesRegistry: policies.example.com
+      global:
+        imageRegistry: global.example.com
+    asserts:
+      - matchRegex: {path: 'data["pod-privileged.yaml"]', pattern: '(?m)^  module: policies\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: global\.example\.com/'}
+        template: "templates/defaults/defaults-configmap.yaml"

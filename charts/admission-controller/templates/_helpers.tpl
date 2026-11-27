@@ -42,6 +42,18 @@ the job Pods.
 {{- end }}
 
 {{/*
+Names of the hook Jobs. They come from the chart fullname.
+The fullname is cut, so that each name has at most 63 characters.
+*/}}
+{{- define "admission-controller.preDeleteJobName" -}}
+{{- printf "%s-pre-delete" (include "admission-controller.fullname" . | trunc 52 | trimSuffix "-") }}
+{{- end }}
+
+{{- define "admission-controller.postInstallJobName" -}}
+{{- printf "%s-post-install" (include "admission-controller.fullname" . | trunc 50 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "admission-controller.chart" -}}
@@ -49,11 +61,29 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Base labels shared by every resource in the chart.
+Namespace for all namespaced resources of the chart.
+It is namespaceOverride, or the release namespace when namespaceOverride is empty.
+Helm does not give the computed namespace to the policy-reporter subchart.
+So when namespaceOverride is set and policy-reporter is enabled,
+policy-reporter.namespaceOverride must have the same value.
+*/}}
+{{- define "admission-controller.namespace" -}}
+{{- $override := .Values.namespaceOverride | default "" -}}
+{{- if and $override (.Values.auditScanner | default dict).policyReporter -}}
+{{- $reporterOverride := (index .Values "policy-reporter" | default dict).namespaceOverride | default "" -}}
+{{- if ne $override $reporterOverride -}}
+{{- fail (printf "namespaceOverride (%q) and policy-reporter.namespaceOverride (%q) must have the same value when auditScanner.policyReporter is true" $override $reporterOverride) -}}
+{{- end -}}
+{{- end -}}
+{{- $override | default .Release.Namespace -}}
+{{- end -}}
+
+{{/*
+Fixed labels of the chart. A user value cannot replace them.
 Does not include managed-by (varies: Helm vs kubewarden-controller)
 or component (varies per resource type).
 */}}
-{{- define "admission-controller.commonLabels" -}}
+{{- define "admission-controller.fixedLabels" -}}
 helm.sh/chart: {{ include "admission-controller.chart" . }}
 {{ include "admission-controller.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
@@ -62,9 +92,21 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/version: {{ .Chart.Version | quote }}
 {{- end }}
 app.kubernetes.io/part-of: kubewarden
-{{- if .Values.additionalLabels }}
-{{ toYaml .Values.additionalLabels }}
 {{- end }}
+
+{{/*
+Base labels shared by every resource in the chart: the fixed labels and
+additionalLabels.
+Does not include managed-by (varies: Helm vs kubewarden-controller)
+or component (varies per resource type).
+The fixed labels win over additionalLabels.
+The callers add component and managed-by,
+so additionalLabels cannot set them either.
+*/}}
+{{- define "admission-controller.commonLabels" -}}
+{{- $fixed := include "admission-controller.fixedLabels" . | fromYaml -}}
+{{- $user := omit (.Values.additionalLabels | default dict) "app.kubernetes.io/component" "app.kubernetes.io/managed-by" -}}
+{{- toYaml (merge $fixed $user) -}}
 {{- end }}
 
 {{/*
@@ -88,7 +130,7 @@ app.kubernetes.io/component: controller
 {{- end }}
 
 {{/*
-Labels for defaults resources (PolicyServer RBAC, hook Jobs, etc.)
+Labels for defaults resources (PolicyServer RBAC, etc.)
 No component label — callers add it inline when needed.
 */}}
 {{- define "admission-controller.defaults.labels" -}}
@@ -97,7 +139,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Labels for controller resources (Deployment, Services, RBAC, etc.)
+Labels for controller resources (Services, RBAC, etc.)
 */}}
 {{- define "admission-controller.labels" -}}
 {{ include "admission-controller.commonLabels" . }}
@@ -113,22 +155,6 @@ Labels for embedded default ClusterAdmissionPolicy resources.
 app.kubernetes.io/component: policy
 app.kubernetes.io/managed-by: kubewarden-controller
 {{- end }}
-
-{{/*
-Print the image pull secrets in the expected format (an array of objects with one possible field, "name").
-*/}}
-{{- define "imagePullSecrets" }}
-    {{- $imagePullSecrets := list }}
-    {{- range . }}
-        {{- if kindIs "string" . }}
-            {{- $imagePullSecrets = append $imagePullSecrets (dict "name" .) }}
-        {{- else }}
-            {{- $imagePullSecrets = append $imagePullSecrets . }}
-        {{- end }}
-    {{- end }}
-    {{- toYaml $imagePullSecrets }}
-{{- end }}
-
 
 {{/*
 Annotations
@@ -165,42 +191,65 @@ limit fullname to 47 chars to stay under the 63 char limit.
 {{- end }}
 {{- end }}
 
+{{/*
+Registry prefix for the chart images, with a trailing "/".
+global.imageRegistry wins over the image.registry of the workload block.
+It takes the workload context dict.
+An empty registry gives no prefix.
+When the image has no registry key, the registry is ghcr.io.
+This happens with helm upgrade --reuse-values from a chart version
+that had no image.registry keys.
+*/}}
 {{- define "system_default_registry" -}}
-{{- if .Values.global.cattle.systemDefaultRegistry -}}
-{{- printf "%s/" .Values.global.cattle.systemDefaultRegistry -}}
-{{- else -}}
-{{- "" -}}
+{{- $global := .root.Values.global | default dict -}}
+{{- $image := include "admission-controller._image" . | fromYaml -}}
+{{- $registry := "ghcr.io" -}}
+{{- if hasKey $image "registry" -}}
+{{- $registry = $image.registry -}}
+{{- end -}}
+{{- with $global.imageRegistry | default $registry -}}
+{{- printf "%s/" . -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-Build a comma-separated list of Secret names from .Values.imagePullSecrets,
-for use with the controller --image-pull-secrets flag. Handles both string
-entries and {name: ...} objects. Returns an empty string when no secrets
-are configured.
+admission-controller._image renders the image map of the workload block as YAML,
+or an empty map when the block has no image.
+It takes the context dict of the workload helpers.
 */}}
-{{- define "policyServerImagePullSecretNames" -}}
-{{- $names := list -}}
-{{- range .Values.imagePullSecrets -}}
-  {{- if kindIs "string" . -}}
-    {{- $names = append $names . -}}
-  {{- else -}}
-    {{- $names = append $names .name -}}
-  {{- end -}}
+{{- define "admission-controller._image" -}}
+{{- $block := index .root.Values .workload | default dict -}}
+{{- toYaml ($block.image | default dict) -}}
 {{- end -}}
-{{- join "," $names -}}
+
+{{/*
+admission-controller.skipNamespaces renders the YAML list of the namespaces
+that the audit scanner and the recommended policies skip.
+The deprecated global.skipNamespaces wins when it is not null.
+An empty list is a value: it skips no namespace, as the new key does.
+*/}}
+{{- define "admission-controller.skipNamespaces" -}}
+{{- $old := include "admission-controller._legacy" (dict "root" . "paths" (list "global.skipNamespaces") "mode" "presence") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- toYaml $old.value -}}
+{{- else -}}
+{{- toYaml (.Values.skipNamespaces | default list) -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "audit-scanner.command" -}}
+{{- $ctx := dict "root" . "workload" "auditScanner" "component" "audit-scanner" -}}
 {{- $parallelNamespaces := .Values.auditScanner.parallelNamespaces | int -}}
 {{- $parallelResources := .Values.auditScanner.parallelResources | int -}}
 {{- $parallelPolicies := .Values.auditScanner.parallelPolicies | int -}}
 {{- $pageSize := .Values.auditScanner.pageSize| int -}}
 - /audit-scanner
 - --kubewarden-namespace
-- {{ .Release.Namespace }}
+- {{ include "admission-controller.namespace" . | quote }}
+{{- with include "admission-controller.logLevel" $ctx }}
 - --loglevel
-- {{ .Values.auditScanner.logLevel }}
+- {{ . }}
+{{- end }}
 {{- if gt $parallelNamespaces 0 }}
 - --parallel-namespaces
 - "{{ $parallelNamespaces }}"
@@ -229,7 +278,7 @@ are configured.
 {{- if .Values.auditScanner.outputScan }}
 - --output-scan
 {{- end }}
-{{- range .Values.global.skipNamespaces }}
+{{- range include "admission-controller.skipNamespaces" . | fromYamlArray }}
 - {{ printf "-i" }}
 - {{ printf "%s" . }}
 {{- end -}}
@@ -244,23 +293,6 @@ are configured.
 {{- end -}}
 
 {{/*
-Compute the effective affinity for the controller deployment.
-Uses the controller-specific affinity if set, otherwise falls back to
-global.affinity for backward compatibility.
-
-NOTE: When hostNetwork is enabled, users are responsible for setting
-appropriate podAntiAffinity rules to prevent host-port conflicts between
-controller replicas on the same node.
-*/}}
-{{- define "admission-controller.effectiveAffinity" -}}
-{{- if .Values.affinity -}}
-  {{- toYaml .Values.affinity -}}
-{{- else if .Values.global.affinity -}}
-  {{- toYaml .Values.global.affinity -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
 Annotations for defaults resources.
 */}}
 {{- define "admission-controller.defaults.annotations" -}}
@@ -269,12 +301,14 @@ Annotations for defaults resources.
 {{- end }}
 {{- end }}
 
+{{/*
+Registry prefix for the recommended policies, with a trailing "/".
+It is recommendedPolicies.defaultPoliciesRegistry, else global.imageRegistry,
+else ghcr.io.
+*/}}
 {{- define "policy_default_registry" -}}
-{{- if .Values.recommendedPolicies.defaultPoliciesRegistry -}}
-{{- printf "%s/" .Values.recommendedPolicies.defaultPoliciesRegistry -}}
-{{- else -}}
-{{- printf "%s/" .Values.global.cattle.systemDefaultRegistry -}}
-{{- end -}}
+{{- $global := .Values.global | default dict -}}
+{{- printf "%s/" (.Values.recommendedPolicies.defaultPoliciesRegistry | default $global.imageRegistry | default "ghcr.io") -}}
 {{- end -}}
 
 {{- define "policy_failure_policy" -}}
@@ -291,7 +325,7 @@ namespaceSelector:
   - key: "kubernetes.io/metadata.name"
     operator: NotIn
     values:
-{{- with .Values.global.skipNamespaces }}
+{{- with include "admission-controller.skipNamespaces" . | fromYamlArray }}
       {{- toYaml . | nindent 4 }}
 {{- end }}
 {{- with .Values.recommendedPolicies.skipAdditionalNamespaces }}
@@ -299,11 +333,16 @@ namespaceSelector:
 {{- end }}
 {{- end -}}
 
-{{- define "admission-controller.defaults.effectiveAffinity" -}}
-{{- if .Values.policyServer.affinity -}}
-  {{- toYaml .Values.policyServer.affinity -}}
-{{- else if .Values.global.affinity -}}
-  {{- toYaml .Values.global.affinity -}}
+{{/*
+admission-controller.legacyTelemetry renders "true" when the deprecated
+telemetry path is active: telemetry.metrics or telemetry.tracing is true.
+Then the chart renders the telemetry as in the earlier chart versions, and
+it ignores otel.
+*/}}
+{{- define "admission-controller.legacyTelemetry" -}}
+{{- $telemetry := .Values.telemetry | default dict -}}
+{{- if or $telemetry.metrics $telemetry.tracing -}}
+true
 {{- end -}}
 {{- end -}}
 
@@ -315,5 +354,516 @@ cause port conflicts in host-network mode.
 {{- define "admission-controller.validateHostNetworkSidecar" -}}
 {{- if and .Values.hostNetwork (eq .Values.telemetry.mode "sidecar") (or .Values.telemetry.metrics .Values.telemetry.tracing) -}}
 {{- fail "hostNetwork and telemetry.mode=sidecar are incompatible: OpenTelemetry sidecar injection causes port conflicts in host-network mode. Use telemetry.mode=custom with a remote collector instead." -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Optional CRDs.
+A deprecated key (installPolicyReportCRDs, installOpenReportsCRDs) decides
+when it is set and not null. Otherwise installOptionalCRDs decides.
+When both keys are missing, the CRDs install.
+The helpers render "true", or nothing.
+*/}}
+{{- define "admission-controller._optionalCRDs" -}}
+{{- $old := include "admission-controller._legacy" (dict "root" .root "paths" (list .old) "mode" "presence") | fromYaml -}}
+{{- $new := index (.root.Values.installOptionalCRDs | default dict) .new -}}
+{{- if hasKey $old "value" -}}
+{{- if $old.value }}true{{ end -}}
+{{- else if not (kindIs "invalid" $new) -}}
+{{- if $new }}true{{ end -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.installPolicyReportCRDs" -}}
+{{- include "admission-controller._optionalCRDs" (dict "root" . "old" "installPolicyReportCRDs" "new" "policyReports") -}}
+{{- end -}}
+
+{{- define "admission-controller.installOpenReportsCRDs" -}}
+{{- include "admission-controller._optionalCRDs" (dict "root" . "old" "installOpenReportsCRDs" "new" "openReports") -}}
+{{- end -}}
+
+{{/*
+Values of the workloads
+
+The workload templates read their values through the public helpers below.
+Each public helper takes a context dict:
+  root:      the root context ($)
+  workload:  the name of the workload block in .Values: "controller",
+             "auditScanner", "policyServer", "preDeleteJob" or "postInstallJob"
+  component: the value of the app.kubernetes.io/component label, for example "audit-scanner"
+
+A template builds the context dict once:
+  {{- $ctx := dict "root" $ "workload" "controller" "component" "controller" }}
+
+Each public helper reads one key with one private helper. The private helper sets the rule:
+  admission-controller._scalar: the workload value, else the common value, else the global value.
+  admission-controller._list:   the same rule as admission-controller._scalar, for a list.
+  admission-controller._map:    the global, common, and workload maps merged. The workload wins on a duplicate key.
+  admission-controller._concat: the global, common, and workload lists, in this order.
+An empty value ("", [] or {}) counts as unset.
+The image registry and the pull policy of a workload are in its image map:
+  system_default_registry (above): global.imageRegistry, else the workload image.registry, else ghcr.io when the image has no registry key.
+  admission-controller.imagePullPolicy: the workload image.pullPolicy, else common.imagePullPolicy,
+                                        else global.imagePullPolicy.
+
+Some keys of earlier chart versions are deprecated aliases of these keys.
+admission-controller._alias resolves them. A deprecated key wins over the
+contract keys when it is set.
+
+The private helpers take dict "ctx" <context dict> "key" <key>.
+A key with a dot, for example "serviceAccount.annotations", reads a nested map.
+Templates do not call the private helpers.
+*/}}
+
+{{/*
+admission-controller._levels renders a YAML list with three items:
+the value of the key in global, in common, and in the workload block.
+The other private helpers decode this list, so they work on copies of .Values.
+*/}}
+{{- define "admission-controller._levels" -}}
+{{- $values := .ctx.root.Values -}}
+{{- $blocks := list ($values.global | default dict) ($values.common | default dict) (index $values .ctx.workload | default dict) -}}
+{{- $out := list -}}
+{{- range $block := $blocks -}}
+{{- $value := $block -}}
+{{- range $part := splitList "." $.key -}}
+{{- $value = index ($value | default dict) $part -}}
+{{- end -}}
+{{- $out = append $out $value -}}
+{{- end -}}
+{{- toYaml $out -}}
+{{- end -}}
+
+{{- define "admission-controller._scalar" -}}
+{{- $l := include "admission-controller._levels" . | fromYamlArray -}}
+{{- index $l 2 | default (index $l 1) | default (index $l 0) | default "" -}}
+{{- end -}}
+
+{{- define "admission-controller._list" -}}
+{{- $l := include "admission-controller._levels" . | fromYamlArray -}}
+{{- toYaml (index $l 2 | default (index $l 1) | default (index $l 0) | default list) -}}
+{{- end -}}
+
+{{- define "admission-controller._map" -}}
+{{- $l := include "admission-controller._levels" . | fromYamlArray -}}
+{{- toYaml (mergeOverwrite (dict) (index $l 0 | default dict) (index $l 1 | default dict) (index $l 2 | default dict)) -}}
+{{- end -}}
+
+{{- define "admission-controller._concat" -}}
+{{- $l := include "admission-controller._levels" . | fromYamlArray -}}
+{{- toYaml (concat (index $l 0 | default list) (index $l 1 | default list) (index $l 2 | default list)) -}}
+{{- end -}}
+
+{{/*
+admission-controller._field renders "<name>:" and the value as YAML.
+It renders nothing when the value is empty.
+It takes dict "name" <field name> "value" <value>.
+*/}}
+{{- define "admission-controller._field" -}}
+{{- with .value -}}
+{{ $.name }}:
+  {{- toYaml . | nindent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller._labels renders "labels:" with the merged map of the key,
+then additionalLabels, then the fixed chart labels.
+The fixed chart labels, managed-by and component win on a duplicate key.
+managed-by is the Helm service, or ctx.managedBy when it is set.
+*/}}
+{{- define "admission-controller._labels" -}}
+{{- $labels := include "admission-controller._map" . | fromYaml -}}
+{{- $labels = mergeOverwrite $labels (deepCopy (.ctx.root.Values.additionalLabels | default dict)) -}}
+{{- $fixed := include "admission-controller.fixedLabels" .ctx.root | fromYaml -}}
+{{- $_ := set $fixed "app.kubernetes.io/managed-by" (.ctx.managedBy | default .ctx.root.Release.Service) -}}
+{{- $_ := set $fixed "app.kubernetes.io/component" .ctx.component -}}
+labels:
+  {{- toYaml (mergeOverwrite $labels $fixed) | nindent 2 }}
+{{- end -}}
+
+{{/*
+admission-controller._annotations renders "annotations:" with the base map,
+then additionalAnnotations, then the extra map. The later map wins on a
+duplicate key. Each value is rendered as a string.
+It takes dict "ctx" <context dict> "base" <map> "extra" <map>.
+*/}}
+{{- define "admission-controller._annotations" -}}
+{{- $merged := mergeOverwrite (dict) (deepCopy (.base | default dict)) (deepCopy (.ctx.root.Values.additionalAnnotations | default dict)) (deepCopy (.extra | default dict)) -}}
+{{- $annotations := dict -}}
+{{- range $key, $value := $merged -}}
+{{- $_ := set $annotations $key (toString $value) -}}
+{{- end -}}
+{{- include "admission-controller._field" (dict "name" "annotations" "value" $annotations) -}}
+{{- end -}}
+
+{{/*
+admission-controller._legacy resolves deprecated keys. A deprecated key wins
+over the contract keys when it is set.
+It takes dict "root" <root context> "paths" <list of dotted paths> "mode" <mode>,
+and "new" <resolved contract value> in the map mode.
+It renders "value: <value>" with the first deprecated key that is set,
+or {} when no deprecated key is set.
+Callers test the result with hasKey, so 0 and false count as set.
+The modes:
+  presence: set means not null. For booleans and integers.
+  string:   set means not empty.
+  map:      set means a non-empty map. The value is the new value with the
+            deprecated map merged on top, so the missing leaves come from the
+            new key. A null leaf of the deprecated map removes the leaf.
+  replace:  set means not empty. The value is the deprecated value verbatim.
+*/}}
+{{- define "admission-controller._legacy" -}}
+{{- $out := dict -}}
+{{- range $path := .paths -}}
+{{- if not (hasKey $out "value") -}}
+{{- $value := $.root.Values -}}
+{{- range $part := splitList "." $path -}}
+{{- if kindIs "map" $value -}}
+{{- $value = index $value $part -}}
+{{- else -}}
+{{- $value = index (dict) "missing" -}}
+{{- end -}}
+{{- end -}}
+{{- $set := false -}}
+{{- if eq $.mode "presence" -}}
+{{- $set = not (kindIs "invalid" $value) -}}
+{{- else if eq $.mode "map" -}}
+{{- $set = and (kindIs "map" $value) (not (empty $value)) -}}
+{{- else -}}
+{{- $set = not (empty $value) -}}
+{{- end -}}
+{{- if $set -}}
+{{- if eq $.mode "map" -}}
+{{- $merged := deepCopy ($.new | default dict) -}}
+{{- $_ := include "admission-controller._mergeLegacyMap" (dict "dst" $merged "src" (deepCopy $value)) -}}
+{{- $value = $merged -}}
+{{- end -}}
+{{- $_ := set $out "value" $value -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $out -}}
+{{- end -}}
+
+{{/*
+admission-controller._mergeLegacyMap merges the map src into the map dst, in place.
+A value of src wins over the value of dst, and nested maps merge.
+A null value in src removes the key from dst,
+the same way as Helm removes a default value when the user sets it to null.
+*/}}
+{{- define "admission-controller._mergeLegacyMap" -}}
+{{- $dst := .dst -}}
+{{- range $key, $value := .src -}}
+{{- if kindIs "invalid" $value -}}
+{{- $_ := unset $dst $key -}}
+{{- else if and (kindIs "map" $value) (kindIs "map" (index $dst $key)) -}}
+{{- $_ := include "admission-controller._mergeLegacyMap" (dict "dst" (index $dst $key) "src" $value) -}}
+{{- else -}}
+{{- $_ := set $dst $key $value -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller._aliases lists the deprecated keys of each workload key.
+*/}}
+{{- define "admission-controller._aliases" -}}
+controller:
+  imagePullPolicy: {paths: [image.pullPolicy], mode: string}
+  logLevel: {paths: [logLevel], mode: string}
+  replicas: {paths: [replicas], mode: presence}
+  podAnnotations: {paths: [podAnnotations], mode: replace}
+  affinity: {paths: [affinity], mode: replace}
+  nodeSelector: {paths: [nodeSelector], mode: replace}
+  resources: {paths: [resources.controller], mode: map}
+  podSecurityContext: {paths: [podSecurityContext], mode: map}
+  containerSecurityContext: {paths: [containerSecurityContext], mode: map}
+auditScanner:
+  enabled: {paths: [auditScanner.enable], mode: presence}
+  nodeSelector: {paths: [nodeSelector], mode: replace}
+  resources: {paths: [resources.auditScanner], mode: map}
+  podSecurityContext: {paths: [podSecurityContext], mode: map}
+  containerSecurityContext: {paths: [containerSecurityContext], mode: map}
+preDeleteJob:
+  logLevel: {paths: [logLevel], mode: string}
+  nodeSelector: {paths: [nodeSelector], mode: replace}
+  resources: {paths: [resources.preDeleteJob], mode: map}
+  podSecurityContext: {paths: [preDeleteHook.podSecurityContext], mode: map}
+  containerSecurityContext: {paths: [preDeleteHook.containerSecurityContext], mode: map}
+postInstallJob:
+  nodeSelector: {paths: [nodeSelector], mode: replace}
+  resources: {paths: [resources.postInstallJob], mode: map}
+  podSecurityContext: {paths: [preDeleteHook.podSecurityContext], mode: map}
+  containerSecurityContext: {paths: [preDeleteHook.containerSecurityContext], mode: map}
+policyServer:
+  replicas: {paths: [policyServer.replicaCount], mode: presence}
+  podAnnotations: {paths: [policyServer.annotations], mode: replace}
+{{- end -}}
+
+{{/*
+admission-controller._alias resolves the deprecated keys of one workload key
+with admission-controller._legacy.
+It takes dict "ctx" <context dict> "key" <key>, and "new" <value> in the map mode.
+It renders {} when the key has no deprecated alias.
+*/}}
+{{- define "admission-controller._alias" -}}
+{{- $table := include "admission-controller._aliases" . | fromYaml -}}
+{{- $alias := index (index $table .ctx.workload | default dict) .key | default dict -}}
+{{- if $alias -}}
+{{- include "admission-controller._legacy" (dict "root" .ctx.root "paths" $alias.paths "mode" $alias.mode "new" .new) -}}
+{{- else -}}
+{}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller._workload renders "value: <value>" with a key that only
+the workload block has, for example replicas or resources.
+A deprecated alias wins when it is set.
+*/}}
+{{- define "admission-controller._workload" -}}
+{{- $block := index .ctx.root.Values .ctx.workload | default dict -}}
+{{- $new := index $block .key -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" .ctx "key" .key "new" $new) | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- toYaml $old -}}
+{{- else -}}
+{{- toYaml (dict "value" $new) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller._pullSecrets renders the YAML list of the image pull
+secrets: global, common, the deprecated top-level imagePullSecrets, and the
+workload, in this order.
+Each item is a Secret name or a map with a name key. The helper renders a
+name as a map. It skips an item with an empty or missing name.
+It keeps an item of any other type, and Kubernetes rejects it.
+*/}}
+{{- define "admission-controller._pullSecrets" -}}
+{{- $l := include "admission-controller._levels" (dict "ctx" . "key" "imagePullSecrets") | fromYamlArray -}}
+{{- $secrets := list -}}
+{{- range concat (index $l 0 | default list) (index $l 1 | default list) (.root.Values.imagePullSecrets | default list) (index $l 2 | default list) -}}
+{{- if kindIs "string" . -}}
+{{- if . -}}
+{{- $secrets = append $secrets (dict "name" .) -}}
+{{- end -}}
+{{- else if kindIs "map" . -}}
+{{- if .name -}}
+{{- $secrets = append $secrets . -}}
+{{- end -}}
+{{- else -}}
+{{- $secrets = append $secrets . -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $secrets -}}
+{{- end -}}
+
+{{/* Public helpers that render a bare value. */}}
+
+{{- define "admission-controller.imagePullPolicy" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "imagePullPolicy") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- $old.value -}}
+{{- else -}}
+{{- $l := include "admission-controller._levels" (dict "ctx" . "key" "imagePullPolicy") | fromYamlArray -}}
+{{- (include "admission-controller._image" . | fromYaml).pullPolicy | default (index $l 1) | default (index $l 0) | default "" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.logLevel" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "logLevel") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- $old.value -}}
+{{- else -}}
+{{- include "admission-controller._scalar" (dict "ctx" . "key" "logLevel") -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller.replicas renders the replicas of the workload,
+or 1 when no value is set.
+*/}}
+{{- define "admission-controller.replicas" -}}
+{{- $value := (include "admission-controller._workload" (dict "ctx" . "key" "replicas") | fromYaml).value -}}
+{{- if kindIs "invalid" $value -}}
+1
+{{- else -}}
+{{- $value -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller.enabled renders "true" when the workload is enabled,
+or nothing. A workload without a value is enabled.
+*/}}
+{{- define "admission-controller.enabled" -}}
+{{- $value := (include "admission-controller._workload" (dict "ctx" . "key" "enabled") | fromYaml).value -}}
+{{- if or (kindIs "invalid" $value) $value -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller.policyServerImagePullSecretNames renders the
+comma-separated names of the image pull secrets of the policy servers,
+for the controller --image-pull-secrets flag.
+It reads global, common, the deprecated top-level imagePullSecrets, and
+policyServer. It takes the root context ($).
+*/}}
+{{- define "admission-controller.policyServerImagePullSecretNames" -}}
+{{- $names := list -}}
+{{- range include "admission-controller._pullSecrets" (dict "root" . "workload" "policyServer" "component" "policy-server") | fromYamlArray -}}
+{{- if kindIs "map" . -}}
+{{- $names = append $names .name -}}
+{{- end -}}
+{{- end -}}
+{{- join "," $names -}}
+{{- end -}}
+
+{{/*
+Public helpers that render a YAML map, for the PolicyServer resource,
+which has its own fields for the pod labels and annotations.
+*/}}
+
+{{- define "admission-controller.podLabelsMap" -}}
+{{- include "admission-controller._map" (dict "ctx" . "key" "podLabels") -}}
+{{- end -}}
+
+{{- define "admission-controller.podAnnotationsMap" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "podAnnotations") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- toYaml $old.value -}}
+{{- else -}}
+{{- include "admission-controller._map" (dict "ctx" . "key" "podAnnotations") -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller.otelSettings renders the YAML map of the resolved otel
+settings: endpoint, caSecretName, and clientCertificateSecretName.
+The controller passes the secret names to the PolicyServers with flags.
+*/}}
+{{- define "admission-controller.otelSettings" -}}
+{{- include "admission-controller._otel" . -}}
+{{- end -}}
+
+{{/* Public helpers that render a whole field, or nothing when the value is empty. */}}
+
+{{- define "admission-controller.priorityClassName" -}}
+{{- with include "admission-controller._scalar" (dict "ctx" . "key" "priorityClassName") -}}
+priorityClassName: {{ . | quote }}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.tolerations" -}}
+{{- include "admission-controller._field" (dict "name" "tolerations" "value" (include "admission-controller._list" (dict "ctx" . "key" "tolerations") | fromYamlArray)) -}}
+{{- end -}}
+
+{{- define "admission-controller.topologySpreadConstraints" -}}
+{{- include "admission-controller._field" (dict "name" "topologySpreadConstraints" "value" (include "admission-controller._list" (dict "ctx" . "key" "topologySpreadConstraints") | fromYamlArray)) -}}
+{{- end -}}
+
+{{- define "admission-controller.extraEnvFrom" -}}
+{{- include "admission-controller._field" (dict "name" "envFrom" "value" (include "admission-controller._list" (dict "ctx" . "key" "extraEnvFrom") | fromYamlArray)) -}}
+{{- end -}}
+
+{{- define "admission-controller.nodeSelector" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "nodeSelector") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- include "admission-controller._field" (dict "name" "nodeSelector" "value" $old.value) -}}
+{{- else -}}
+{{- include "admission-controller._field" (dict "name" "nodeSelector" "value" (include "admission-controller._map" (dict "ctx" . "key" "nodeSelector") | fromYaml)) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.affinity" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "affinity") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- include "admission-controller._field" (dict "name" "affinity" "value" $old.value) -}}
+{{- else -}}
+{{- include "admission-controller._field" (dict "name" "affinity" "value" (include "admission-controller._map" (dict "ctx" . "key" "affinity") | fromYaml)) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The annotation helpers add additionalAnnotations on top of the contract map.
+admission-controller.workloadAnnotations adds ctx.extraAnnotations last, and
+admission-controller.podAnnotations adds ctx.extraPodAnnotations last.
+*/}}
+{{- define "admission-controller.workloadAnnotations" -}}
+{{- include "admission-controller._annotations" (dict "ctx" . "base" (include "admission-controller._map" (dict "ctx" . "key" "annotations") | fromYaml) "extra" .extraAnnotations) -}}
+{{- end -}}
+
+{{- define "admission-controller.podAnnotations" -}}
+{{- include "admission-controller._annotations" (dict "ctx" . "base" (include "admission-controller.podAnnotationsMap" . | fromYaml) "extra" .extraPodAnnotations) -}}
+{{- end -}}
+
+{{- define "admission-controller.serviceAccountAnnotations" -}}
+{{- include "admission-controller._annotations" (dict "ctx" . "base" (include "admission-controller._map" (dict "ctx" . "key" "serviceAccount.annotations") | fromYaml) "extra" .extraAnnotations) -}}
+{{- end -}}
+
+{{- define "admission-controller.workloadLabels" -}}
+{{- include "admission-controller._labels" (dict "ctx" . "key" "labels") -}}
+{{- end -}}
+
+{{- define "admission-controller.podLabels" -}}
+{{- include "admission-controller._labels" (dict "ctx" . "key" "podLabels") -}}
+{{- end -}}
+
+{{/*
+admission-controller.imagePullSecrets renders "imagePullSecrets:" with the
+list of admission-controller._pullSecrets.
+*/}}
+{{- define "admission-controller.imagePullSecrets" -}}
+{{- include "admission-controller._field" (dict "name" "imagePullSecrets" "value" (include "admission-controller._pullSecrets" . | fromYamlArray)) -}}
+{{- end -}}
+
+{{/*
+Public helpers for the keys that only the workload block has.
+A deprecated alias wins when it is set.
+*/}}
+
+{{- define "admission-controller.resources" -}}
+{{- include "admission-controller._field" (dict "name" "resources" "value" (include "admission-controller._workload" (dict "ctx" . "key" "resources") | fromYaml).value) -}}
+{{- end -}}
+
+{{- define "admission-controller.podSecurityContext" -}}
+{{- include "admission-controller._field" (dict "name" "securityContext" "value" (include "admission-controller._workload" (dict "ctx" . "key" "podSecurityContext") | fromYaml).value) -}}
+{{- end -}}
+
+{{/*
+admission-controller.containerSecurityContext renders the security context of
+the containers. When it is not empty and ctx.fixedContainerSecurityContext is
+set, the helper puts the fixed fields on top, so a user value cannot replace them.
+*/}}
+{{- define "admission-controller.containerSecurityContext" -}}
+{{- $value := (include "admission-controller._workload" (dict "ctx" . "key" "containerSecurityContext") | fromYaml).value -}}
+{{- if and $value .fixedContainerSecurityContext -}}
+{{- $value = mergeOverwrite (deepCopy $value) .fixedContainerSecurityContext -}}
+{{- end -}}
+{{- include "admission-controller._field" (dict "name" "securityContext" "value" $value) -}}
+{{- end -}}
+
+{{/* Public helpers that render list entries, or nothing when the list is empty. */}}
+
+{{- define "admission-controller.extraEnv" -}}
+{{- with include "admission-controller._concat" (dict "ctx" . "key" "extraEnv") | fromYamlArray -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.extraVolumes" -}}
+{{- with include "admission-controller._concat" (dict "ctx" . "key" "extraVolumes") | fromYamlArray -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.extraVolumeMounts" -}}
+{{- with include "admission-controller._concat" (dict "ctx" . "key" "extraVolumeMounts") | fromYamlArray -}}
+{{- toYaml . -}}
 {{- end -}}
 {{- end -}}

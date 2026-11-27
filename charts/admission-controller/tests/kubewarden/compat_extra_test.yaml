@@ -1,0 +1,340 @@
+# Extra compatibility cases of the new values contract.
+suite: compat - extra cases
+templates:
+  - controller/deployment.yaml
+  - controller/audit-scanner.yaml
+  - controller/pre-delete-hook.yaml
+  - controller/pre-upgrade-hook.yaml
+  - controller/post-install-hook.yaml
+  - controller/service.yaml
+  - defaults/defaults-configmap.yaml
+  - NOTES.txt
+release:
+  name: t
+  namespace: kw
+tests:
+  # The controller Service selector does not select the pods of the other workloads.
+  - it: "the controller Service selector is the controller selector, even with hostile labels"
+    set:
+      telemetry.metrics: true
+      global.labels:
+        app.kubernetes.io/component: controller
+      global.podLabels:
+        app.kubernetes.io/component: controller
+      auditScanner.podLabels:
+        app.kubernetes.io/component: controller
+      preDeleteJob.podLabels:
+        app.kubernetes.io/component: controller
+      postInstallJob.podLabels:
+        app.kubernetes.io/component: controller
+    asserts:
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/instance: t
+            app.kubernetes.io/component: controller
+        template: controller/service.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/instance: t
+            app.kubernetes.io/component: controller
+        template: controller/service.yaml
+        documentIndex: 0
+
+  # The tests with hostile additionalLabels are in compat_labels_test.yaml.
+
+  # global.skipNamespaces in the recommended policies
+  - it: "global.skipNamespaces alone renders in the recommended policies namespace selector as on main"
+    set:
+      recommendedPolicies.enabled: true
+      global.skipNamespaces: [ns-a, ns-b]
+    asserts:
+      - matchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: '(?m)^      values:\n      - ns-a\n      - ns-b\n  settings:'
+        template: defaults/defaults-configmap.yaml
+
+  - it: "global.skipNamespaces wins over skipNamespaces in the recommended policies"
+    set:
+      recommendedPolicies.enabled: true
+      global.skipNamespaces: [ns-a]
+      skipNamespaces: [ns-new]
+    asserts:
+      - matchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: '(?m)^      values:\n      - ns-a\n  settings:'
+        template: defaults/defaults-configmap.yaml
+      - notMatchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: 'ns-new'
+        template: defaults/defaults-configmap.yaml
+
+  - it: "global.skipNamespaces as an empty list skips no namespace in the recommended policies, as on main"
+    set:
+      recommendedPolicies.enabled: true
+      global.skipNamespaces: []
+      skipNamespaces: [ns-new]
+    asserts:
+      - notMatchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: 'kube-system|ns-new'
+        template: defaults/defaults-configmap.yaml
+
+  - it: "skipNamespaces alone in the recommended policies"
+    set:
+      recommendedPolicies.enabled: true
+      skipNamespaces: [ns-new]
+    asserts:
+      - matchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: '(?m)^      values:\n      - ns-new\n  settings:'
+        template: defaults/defaults-configmap.yaml
+
+  # The full values file of the main branch.
+  - it: "the values file of main renders with the defaults of main"
+    values:
+      - values/main-values.yaml
+    set:
+      telemetry.metrics: true
+    asserts:
+      - notFailedTemplate: {}
+        template: controller/deployment.yaml
+      - notFailedTemplate: {}
+        template: defaults/defaults-configmap.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/adm-controller/controller:v1.39.0
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=info
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.replicas
+          value: 1
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 500m, memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: ghcr.io/kubewarden/adm-controller/controller:v1.39.0
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.initContainers[0].args
+          content: --zap-log-level=info
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].resources
+          value:
+            limits: {cpu: 500m, memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/adm-controller/controller:v1.39.0
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=info
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 100m, memory: 128Mi}
+            requests: {cpu: 50m, memory: 64Mi}
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/audit-scanner.yaml
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: kube-system
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/adm-controller/controller:v1.39.0
+        template: controller/pre-delete-hook.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=info
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/rancher/kuberlr-kubectl:v9.0.2
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop: [ALL]
+        template: controller/post-install-hook.yaml
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  image: ghcr.io/kubewarden/adm-controller/policy-server:v1.39.0$'
+        template: defaults/defaults-configmap.yaml
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 1$'
+        template: defaults/defaults-configmap.yaml
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n  [a-zA-Z]'
+        template: defaults/defaults-configmap.yaml
+
+  # NOTES.txt and the defaults ConfigMap use the same policy registry.
+  - it: "NOTES.txt lists the recommended policies from global.imageRegistry, as the defaults ConfigMap"
+    set:
+      recommendedPolicies.enabled: true
+      global.imageRegistry: reg.example.com
+    asserts:
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/allow-privilege-escalation-psp:v1.0.16'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/host-namespaces-psp:'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/pod-privileged:'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/user-group-psp:'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/hostpaths-psp:'
+        template: NOTES.txt
+      - matchRegexRaw:
+          pattern: 'module: registry://reg.example.com/kubewarden/policies/capabilities-psp:'
+        template: NOTES.txt
+      - notMatchRegexRaw:
+          pattern: 'ghcr.io'
+        template: NOTES.txt
+      - matchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: 'module: reg.example.com/kubewarden/policies/allow-privilege-escalation-psp:v1.0.16'
+        template: defaults/defaults-configmap.yaml
+
+  # The post-install Job always runs as user and group 1000.
+  - it: "postInstallJob.containerSecurityContext cannot replace the fixed user and group of the post-install Job"
+    set:
+      telemetry.metrics: true
+      postInstallJob.containerSecurityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        readOnlyRootFilesystem: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 1000
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 1000
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: false
+        template: controller/post-install-hook.yaml
+
+  - it: "preDeleteHook.containerSecurityContext cannot replace the fixed user and group of the post-install Job"
+    set:
+      telemetry.metrics: true
+      preDeleteHook.containerSecurityContext:
+        runAsUser: 0
+        runAsGroup: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 1000
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 1000
+        template: controller/post-install-hook.yaml

@@ -65,7 +65,7 @@ targets:
     sourceid: desiredReleaseVersion
     spec:
       file: charts/admission-controller/values.yaml
-      key: $.image.tag
+      key: $.controller.image.tag
   update_audit_scanner_image_tag:
     scmid: default
     name: Update Helm chart audit-scanner version

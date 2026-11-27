@@ -1,52 +1,40 @@
 {{- include "admission-controller.validateHostNetworkSidecar" . -}}
+{{- $ctx := dict "root" $ "workload" "controller" "component" "controller" }}
+{{- $legacyTelemetry := include "admission-controller.legacyTelemetry" . }}
+{{- $otel := include "admission-controller.otelSettings" $ctx | fromYaml }}
+{{- $useOtel := and (not $legacyTelemetry) $otel.endpoint }}
+{{- if and $legacyTelemetry (eq .Values.telemetry.mode "sidecar") }}
+{{- $ctx = merge (dict "extraPodAnnotations" (dict "sidecar.opentelemetry.io/inject" "true")) $ctx }}
+{{- end }}
+{{- $w := .Values.controller | default dict }}
+{{- $legacyImage := .Values.image | default dict }}
+{{- $wImage := $w.image | default dict }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "admission-controller.fullname" . }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "admission-controller.labels" . | nindent 4 }}
-  annotations:
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  namespace: {{ include "admission-controller.namespace" . | quote }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- with include "admission-controller.workloadAnnotations" $ctx }}{{ . | nindent 2 }}{{ end }}
 spec:
-  replicas: {{ .Values.replicas }}
+  replicas: {{ include "admission-controller.replicas" $ctx }}
   selector:
     matchLabels:
       {{- include "admission-controller.controllerSelectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ else }}
       annotations:
-        {{- range keys .Values.podAnnotations }}
-        {{ . | quote }}: {{ get $.Values.podAnnotations . | quote}}
-        {{- end }}
-        {{- if or .Values.telemetry.metrics .Values.telemetry.tracing }}
-        {{- if and (eq .Values.telemetry.mode "sidecar") }}
-        "sidecar.opentelemetry.io/inject": "true"
-        {{- end }}
-        {{- end }}
-        {{- include "admission-controller.annotations" . | nindent 8 }}
-      labels:
-        {{- include "admission-controller.labels" . | nindent 8 }}
+      {{- end }}
+      {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
     spec:
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-      {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
       serviceAccountName: {{ include "admission-controller.serviceAccountName" . }}
-      {{- $effectiveAffinity := include "admission-controller.effectiveAffinity" . }}
-      {{- if $effectiveAffinity }}
-      affinity: {{ $effectiveAffinity | nindent 8 }}
-      {{- end }}
-      {{- if .Values.global.tolerations }}
-      tolerations: {{ .Values.global.tolerations | toYaml | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- if .Values.global.priorityClassName }}
-      priorityClassName: {{ .Values.global.priorityClassName | toYaml | nindent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.topologySpreadConstraints" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- if .Values.hostNetwork }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
@@ -58,36 +46,35 @@ spec:
       # controller container finds the certificate when it starts.
       initContainers:
       - name: init
-        image: '{{ template "system_default_registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}'
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: '{{ template "system_default_registry" $ctx }}{{ $legacyImage.repository | default $wImage.repository }}:{{ $legacyImage.tag | default $wImage.tag }}'
+        imagePullPolicy: {{ include "admission-controller.imagePullPolicy" $ctx }}
         command:
         - /controller
         args:
         - --mode=init
-        - --deployments-namespace={{ .Release.Namespace }}
+        - --deployments-namespace={{ include "admission-controller.namespace" . }}
         - --webhook-service-name={{ include "admission-controller.webhookServiceName" . }}
-        - --zap-log-level={{ .Values.logLevel }}
-        {{- with .Values.additionalEnvironmentVariables }}
+        {{- with include "admission-controller.logLevel" $ctx }}
+        - --zap-log-level={{ . }}
+        {{- end }}
+        {{- $initEnv := concat (include "admission-controller.extraEnv" $ctx | fromYamlArray) (.Values.additionalEnvironmentVariables | default list) }}
+        {{- with $initEnv }}
         env:
         {{- toYaml . | nindent 10 }}
         {{- end }}
-        {{- if and .Values.resources .Values.resources.controller }}
-        resources:
-{{ toYaml .Values.resources.controller | indent 10 }}
-        {{- end }}
-        {{- if .Values.containerSecurityContext }}
-        securityContext:
-{{ toYaml .Values.containerSecurityContext | indent 10 }}
-        {{- end }}
+        {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 8 }}{{ end }}
+        {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 8 }}{{ end }}
+        {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 8 }}{{ end }}
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
           readOnly: true
+        {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 8 }}{{ end }}
       containers:
       - name: controller
         args:
         - --leader-elect
-        - --deployments-namespace={{ .Release.Namespace }}
+        - --deployments-namespace={{ include "admission-controller.namespace" . }}
         - --webhook-service-name={{ include "admission-controller.webhookServiceName" . }}
         - --webhook-server-port={{ .Values.ports.webhook }}
         - --health-probe-bind-address=:{{ .Values.ports.healthProbe }}
@@ -100,11 +87,13 @@ spec:
         {{- if .Values.alwaysAcceptAdmissionReviewsOnDeploymentsNamespace }}
         - --always-accept-admission-reviews-on-deployments-namespace
         {{- end }}
-        - --zap-log-level={{ .Values.logLevel }}
+        {{- with include "admission-controller.logLevel" $ctx }}
+        - --zap-log-level={{ . }}
+        {{- end }}
        {{- if .Values.mTLS.enable }}
         - --client-ca-configmap-name={{ .Values.mTLS.configMapName }}
        {{- end }}
-       {{- $imagePullSecretNames := include "policyServerImagePullSecretNames" . }}
+       {{- $imagePullSecretNames := include "admission-controller.policyServerImagePullSecretNames" . }}
        {{- if $imagePullSecretNames }}
         - --image-pull-secrets={{ $imagePullSecretNames }}
        {{- end }}
@@ -113,7 +102,7 @@ spec:
        {{- end }}
         - --defaults-configmap-name=kubewarden-defaults
         - --controller-configmap-name=kubewarden-controller-config
-       {{- if or .Values.telemetry.metrics .Values.telemetry.tracing }}
+       {{- if $legacyTelemetry }}
        {{- if and (eq .Values.telemetry.mode "sidecar") }}
         - --enable-otel-sidecar
        {{- end }}
@@ -129,6 +118,15 @@ spec:
         {{- if and (not .Values.telemetry.custom.insecure) .Values.telemetry.custom.otelCollectorClientCertificateSecret }}
         - --opentelemetry-client-certificate-secret={{ .Values.telemetry.custom.otelCollectorClientCertificateSecret }}
         {{- end }}
+       {{- else if $useOtel }}
+        - --enable-metrics
+        - --enable-tracing
+        {{- with $otel.caSecretName }}
+        - --opentelemetry-certificate-secret={{ . }}
+        {{- end }}
+        {{- with $otel.clientCertificateSecretName }}
+        - --opentelemetry-client-certificate-secret={{ . }}
+        {{- end }}
        {{- end }}
         command:
         - /controller
@@ -141,7 +139,7 @@ spec:
           - name: OTEL_EXPORTER_OTLP_INSECURE
             value: "true"
         {{- end }}
-        {{- if or .Values.telemetry.metrics .Values.telemetry.tracing }}
+        {{- if $legacyTelemetry }}
         {{- if eq .Values.telemetry.mode "custom" }}
           - name: OTEL_EXPORTER_OTLP_ENDPOINT
             value: {{.Values.telemetry.custom.endpoint}}
@@ -158,13 +156,17 @@ spec:
             value: /kubewarden/otel-collector-client-certs/tls.key
         {{- end }}
         {{- end }}
+        {{- else }}
+          {{- with include "admission-controller.otelEnv" $ctx }}{{ . | nindent 10 }}{{ end }}
         {{- end }}
+          {{- with include "admission-controller.extraEnv" $ctx }}{{ . | nindent 10 }}{{ end }}
         {{- with .Values.additionalEnvironmentVariables }}
         {{- toYaml . | nindent 10 }}
         {{- end }}
+        {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 8 }}{{ end }}
 
-        image: '{{ template "system_default_registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}'
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: '{{ template "system_default_registry" $ctx }}{{ $legacyImage.repository | default $wImage.repository }}:{{ $legacyImage.tag | default $wImage.tag }}'
+        imagePullPolicy: {{ include "admission-controller.imagePullPolicy" $ctx }}
         livenessProbe:
           httpGet:
             path: /healthz
@@ -177,14 +179,8 @@ spec:
             port: {{ .Values.ports.healthProbe }}
           initialDelaySeconds: 5
           periodSeconds: 10
-        {{- if and .Values.resources .Values.resources.controller }}
-        resources:
-{{ toYaml .Values.resources.controller | indent 10 }}
-        {{- end }}
-        {{- if .Values.containerSecurityContext }}
-        securityContext:
-{{ toYaml .Values.containerSecurityContext | indent 10 }}
-        {{- end }}
+        {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 8 }}{{ end }}
+        {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 8 }}{{ end }}
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
@@ -194,6 +190,7 @@ spec:
           name: client-ca
           readOnly: true
         {{- end }}
+        {{- if not $useOtel }}
         {{- if and (not .Values.telemetry.custom.insecure) .Values.telemetry.custom.otelCollectorCertificateSecret }}
         - mountPath: /kubewarden/otel-collector-certs
           name: otel-collector-certificate
@@ -204,6 +201,10 @@ spec:
           name: otel-collector-client-certificate
           readOnly: true
         {{- end }}
+        {{- else }}
+        {{- with include "admission-controller.otelVolumeMounts" $ctx }}{{ . | nindent 8 }}{{ end }}
+        {{- end }}
+        {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 8 }}{{ end }}
         ports:
         - containerPort: {{ .Values.ports.webhook }}
           name: webhook-server
@@ -221,6 +222,7 @@ spec:
         configMap:
           name: {{ .Values.mTLS.configMapName }}
       {{- end }}
+      {{- if not $useOtel }}
       {{- if and (not .Values.telemetry.custom.insecure) .Values.telemetry.custom.otelCollectorCertificateSecret }}
       - name: otel-collector-certificate
         secret:
@@ -241,8 +243,9 @@ spec:
             - key: tls.key
               path: tls.key
       {{- end }}
-      {{- if .Values.podSecurityContext }}
-      securityContext:
-{{ toYaml .Values.podSecurityContext | indent 8 }}
+      {{- else }}
+      {{- with include "admission-controller.otelVolumes" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- end }}
+      {{- with include "admission-controller.extraVolumes" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 6 }}{{ end }}
       terminationGracePeriodSeconds: 10

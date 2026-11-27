@@ -4,10 +4,9 @@ metadata:
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
     app.kubernetes.io/component: policy-server
-  annotations:
-    {{- include "admission-controller.defaults.annotations" . | nindent 4 }}
+  {{- with include "admission-controller.serviceAccountAnnotations" (dict "root" $ "workload" "policyServer" "component" "policy-server") }}{{ . | nindent 2 }}{{ end }}
   name: {{ .Values.policyServer.serviceAccountName }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" . | quote }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -45,7 +44,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: {{ .Values.policyServer.serviceAccountName }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "admission-controller.namespace" $ | quote }}
 roleRef:
   kind: ClusterRole
   name: kubewarden-context-watcher

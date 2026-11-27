@@ -1,73 +1,106 @@
 {{- define "kubewarden.defaults.policyserverDefault" -}}
+{{- $ctx := dict "root" $ "workload" "policyServer" "component" "policy-server" "managedBy" "kubewarden-controller" -}}
+{{- $ps := .Values.policyServer -}}
+{{- $resources := $ps.resources | default dict -}}
+{{- $pdb := $ps.podDisruptionBudget | default dict -}}
+{{- $legacyPDB := or (not (kindIs "invalid" $ps.minAvailable)) (not (kindIs "invalid" $ps.maxUnavailable)) -}}
 apiVersion: {{ $.Values.crdVersion }}
 kind: PolicyServer
 metadata:
   name: default
-  labels:
-    {{- include "admission-controller.commonLabels" . | nindent 4 }}
-    app.kubernetes.io/component: policy-server
-    app.kubernetes.io/managed-by: kubewarden-controller
-  annotations:
-    {{- include "admission-controller.defaults.annotations" . | nindent 4 }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- with include "admission-controller.workloadAnnotations" $ctx }}{{ . | nindent 2 }}{{ end }}
   finalizers:
     - kubewarden.io/finalizer
 spec:
-  image: {{ template "system_default_registry" . }}{{ .Values.policyServer.image.repository }}:{{ .Values.policyServer.image.tag }}
-  serviceAccountName: {{ .Values.policyServer.serviceAccountName }}
-  replicas: {{ .Values.policyServer.replicaCount | default 1 }}
-  {{- if .Values.policyServer.minAvailable }}
-  minAvailable: {{ .Values.policyServer.minAvailable }}
+  image: {{ template "system_default_registry" $ctx }}{{ $ps.image.repository }}:{{ $ps.image.tag }}
+  serviceAccountName: {{ $ps.serviceAccountName }}
+  {{- /* The deprecated replicaCount keeps its old rule: 0 becomes 1. */}}
+  {{- if not (kindIs "invalid" $ps.replicaCount) }}
+  replicas: {{ $ps.replicaCount | default 1 }}
+  {{- else }}
+  replicas: {{ include "admission-controller.replicas" $ctx }}
   {{- end }}
-  {{- if .Values.policyServer.maxUnavailable }}
-  maxUnavailable: {{ .Values.policyServer.maxUnavailable }}
+  {{- if $legacyPDB }}
+  {{- if $ps.minAvailable }}
+  minAvailable: {{ $ps.minAvailable }}
   {{- end }}
-  {{- $affinity := include "admission-controller.defaults.effectiveAffinity" . -}}
-  {{- if $affinity }}
-  affinity: {{ $affinity | nindent 4 }}
+  {{- if $ps.maxUnavailable }}
+  maxUnavailable: {{ $ps.maxUnavailable }}
   {{- end }}
-  {{- if .Values.global.tolerations }}
-  tolerations: {{ .Values.global.tolerations | toYaml | nindent 4 }}
+  {{- else }}
+  {{- if hasKey $pdb "minAvailable" }}
+  minAvailable: {{ $pdb.minAvailable }}
   {{- end }}
-  {{- if .Values.global.priorityClassName }}
-  priorityClassName: {{ .Values.global.priorityClassName | toYaml | nindent 4 }}
+  {{- if hasKey $pdb "maxUnavailable" }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
   {{- end }}
-  {{- if .Values.policyServer.limits }}
-  limits: {{ .Values.policyServer.limits | toYaml | nindent 4 }}
   {{- end }}
-  {{- if .Values.policyServer.requests }}
-  requests: {{ .Values.policyServer.requests | toYaml | nindent 4 }}
+  {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 2 }}{{ end }}
+  {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 2 }}{{ end }}
+  {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 2 }}{{ end }}
+  {{- with $ps.limits | default $resources.limits }}
+  limits: {{ . | toYaml | nindent 4 }}
   {{- end }}
-  {{- if .Values.policyServer.verificationConfig }}
-  verificationConfig: {{ .Values.policyServer.verificationConfig }}
+  {{- with $ps.requests | default $resources.requests }}
+  requests: {{ . | toYaml | nindent 4 }}
   {{- end }}
-  {{- if .Values.policyServer.sigstoreTrustConfig }}
-  sigstoreTrustConfig: {{ .Values.policyServer.sigstoreTrustConfig }}
+  {{- if $ps.verificationConfig }}
+  verificationConfig: {{ $ps.verificationConfig }}
   {{- end }}
-  {{- if .Values.policyServer.annotations }}
-  annotations:
-    {{- range $key, $value := .Values.policyServer.annotations }}
+  {{- if $ps.sigstoreTrustConfig }}
+  sigstoreTrustConfig: {{ $ps.sigstoreTrustConfig }}
+  {{- end }}
+  {{- with include "admission-controller.podLabelsMap" $ctx | fromYaml }}
+  labels:
+    {{- range $key, $value := . }}
     {{ $key | quote }}: {{ $value | quote }}
     {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.env }}
-  env:
-    {{- range .Values.policyServer.env }}
-    - name: {{ .name | quote }}
-      value: {{ .value | quote }}
+  {{- with include "admission-controller.podAnnotationsMap" $ctx | fromYaml }}
+  annotations:
+    {{- range $key, $value := . }}
+    {{ $key | quote }}: {{ $value | quote }}
     {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.imagePullSecret }}
-  imagePullSecret: {{ .Values.policyServer.imagePullSecret | quote }}
+  {{- $userEnv := concat (include "admission-controller.extraEnv" $ctx | fromYamlArray) ($ps.env | default list) }}
+  {{- $env := list }}
+  {{- $logLevel := include "admission-controller.logLevel" $ctx }}
+  {{- $hasLogLevel := false }}
+  {{- range $userEnv }}
+  {{- if eq (toString .name) "KUBEWARDEN_LOG_LEVEL" }}
+  {{- $hasLogLevel = true }}
   {{- end }}
-  {{- if .Values.policyServer.insecureSources }}
+  {{- end }}
+  {{- if and $logLevel (not $hasLogLevel) }}
+  {{- $env = append $env (dict "name" "KUBEWARDEN_LOG_LEVEL" "value" $logLevel) }}
+  {{- end }}
+  {{- $env = concat $env $userEnv }}
+  {{- if $env }}
+  env:
+    {{- range $env }}
+    - name: {{ .name | quote }}
+      {{- if or (hasKey . "value") (not (hasKey . "valueFrom")) }}
+      value: {{ .value | quote }}
+      {{- end }}
+      {{- with .valueFrom }}
+      valueFrom:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if $ps.imagePullSecret }}
+  imagePullSecret: {{ $ps.imagePullSecret | quote }}
+  {{- end }}
+  {{- if $ps.insecureSources }}
   insecureSources:
-  {{- range $source := .Values.policyServer.insecureSources }}
+  {{- range $source := $ps.insecureSources }}
     - {{ $source | quote }}
   {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.sourceAuthorities }}
+  {{- if $ps.sourceAuthorities }}
   sourceAuthorities:
-  {{- range .Values.policyServer.sourceAuthorities }}
+  {{- range $ps.sourceAuthorities }}
   {{- if .certs }}
     {{ .uri }}:
   {{- range .certs }}
@@ -76,22 +109,33 @@ spec:
   {{- end }}
   {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.namespacedPoliciesCapabilities }}
+  {{- if $ps.namespacedPoliciesCapabilities }}
   namespacedPoliciesCapabilities:
-  {{- range .Values.policyServer.namespacedPoliciesCapabilities }}
+  {{- range $ps.namespacedPoliciesCapabilities }}
     - {{ . | quote }}
   {{- end }}
   {{- end }}
-  {{- if .Values.policyServer.securityContexts }}
-  securityContexts: {{ toYaml .Values.policyServer.securityContexts | nindent 4 }}
+  {{- if $ps.securityContexts }}
+  securityContexts: {{ toYaml $ps.securityContexts | nindent 4 }}
+  {{- else }}
+  {{- $securityContexts := dict }}
+  {{- with $ps.podSecurityContext }}
+  {{- $_ := set $securityContexts "pod" . }}
   {{- end }}
-  {{- if .Values.policyServer.webhookPort }}
-  webhookPort: {{ .Values.policyServer.webhookPort }}
+  {{- with $ps.containerSecurityContext }}
+  {{- $_ := set $securityContexts "container" . }}
   {{- end }}
-  {{- if .Values.policyServer.readinessProbePort }}
-  readinessProbePort: {{ .Values.policyServer.readinessProbePort }}
+  {{- with $securityContexts }}
+  securityContexts: {{ toYaml . | nindent 4 }}
   {{- end }}
-  {{- if .Values.policyServer.metricsPort }}
-  metricsPort: {{ .Values.policyServer.metricsPort }}
+  {{- end }}
+  {{- if $ps.webhookPort }}
+  webhookPort: {{ $ps.webhookPort }}
+  {{- end }}
+  {{- if $ps.readinessProbePort }}
+  readinessProbePort: {{ $ps.readinessProbePort }}
+  {{- end }}
+  {{- if $ps.metricsPort }}
+  metricsPort: {{ $ps.metricsPort }}
   {{- end }}
 {{- end -}}

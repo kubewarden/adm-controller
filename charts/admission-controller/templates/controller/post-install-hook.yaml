@@ -8,48 +8,41 @@
 # In custom telemetry mode there is no sidecar injection, and forcing a restart
 # can deadlock single-node hostNetwork rollouts due to hostPort conflicts.
 {{ if and (or .Values.telemetry.metrics .Values.telemetry.tracing) (eq .Values.telemetry.mode "sidecar") }}
+{{- $ctx := dict "root" $ "workload" "postInstallJob" "component" "post-install-job" }}
+{{- $hookAnnotations := dict "helm.sh/hook" "post-install,post-upgrade" "helm.sh/hook-weight" "1" "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded" }}
+{{- $metadataCtx := merge (dict "extraAnnotations" $hookAnnotations) $ctx }}
+{{- $legacyImage := (.Values.preDeleteJob | default dict).image | default dict }}
+{{- $kubectlImage := (.Values.postInstallJob | default dict).image | default dict }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Release.Name }}-delete-controller-job"
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "1"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  name: {{ include "admission-controller.postInstallJobName" . }}
+  namespace: {{ include "admission-controller.namespace" . | quote }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- include "admission-controller.workloadAnnotations" $metadataCtx | nindent 2 }}
 spec:
   template:
     metadata:
-      name: "{{ .Release.Name }}-delete-controller-job"
-      labels:
-        {{- include "admission-controller.defaults.labels" . | nindent 8 }}
-      annotations:
-        {{- include "admission-controller.annotations" . | nindent 8 }}
+      name: {{ include "admission-controller.postInstallJobName" . }}
+      {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
+      {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ end }}
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ include "admission-controller.serviceAccountName" . }}
-      {{- if .Values.global.tolerations }}
-      tolerations: {{ .Values.global.tolerations | toYaml | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- if .Values.preDeleteHook.podSecurityContext }}
-      securityContext:
-{{ toYaml .Values.preDeleteHook.podSecurityContext | indent 8 }}
-      {{- end }}
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-      {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.topologySpreadConstraints" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 6 }}{{ end }}
       containers:
         - name: post-install-job
-          image: '{{ template "system_default_registry" . }}{{ .Values.preDeleteJob.image.repository }}:{{ .Values.preDeleteJob.image.tag }}'
-          command: ["kubectl", "--namespace", "{{ .Release.Namespace }}", "rollout", "restart", "deployment", {{ include "admission-controller.fullname" . }}]
+          image: '{{ template "system_default_registry" $ctx }}{{ $legacyImage.repository | default $kubectlImage.repository }}:{{ $legacyImage.tag | default $kubectlImage.tag }}'
+          {{- with include "admission-controller.imagePullPolicy" $ctx }}
+          imagePullPolicy: {{ . }}
+          {{- end }}
+          command: ["kubectl", "--namespace", "{{ include "admission-controller.namespace" . }}", "rollout", "restart", "deployment", {{ include "admission-controller.fullname" . }}]
           env:
             - name: KUBERLR_ALLOWDOWNLOAD
               value: "1"
@@ -60,20 +53,16 @@ spec:
             # Do not split this into two separate mounts.
             - name: HOME
               value: /tmp
-          {{- if .Values.preDeleteHook.containerSecurityContext }}
-          securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
-{{ toYaml .Values.preDeleteHook.containerSecurityContext | indent 12 }}
-          {{- end }}
-          {{- if and .Values.resources .Values.resources.postInstallJob }}
-          resources:
-{{ toYaml .Values.resources.postInstallJob | indent 12 }}
-          {{- end }}
+            {{- with include "admission-controller.extraEnv" $ctx }}{{ . | nindent 12 }}{{ end }}
+          {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.containerSecurityContext" (merge (dict "fixedContainerSecurityContext" (dict "runAsUser" 1000 "runAsGroup" 1000)) $ctx) }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 10 }}{{ end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 12 }}{{ end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- with include "admission-controller.extraVolumes" $ctx }}{{ . | nindent 8 }}{{ end }}
 {{ end }}

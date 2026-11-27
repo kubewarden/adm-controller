@@ -4,7 +4,7 @@ Kubewarden CRDs now available:
   clusteradmissionpolicygroups.policies.kubewarden.io
   admissionpolicygroups.policies.kubewarden.io
   policyservers.policies.kubewarden.io
-{{- if .Values.installPolicyReportCRDs }}
+{{- if include "admission-controller.installPolicyReportCRDs" . }}
 
 Policy report CRDs now available:
   policyreports.wgpolicyk8s.io
@@ -13,7 +13,7 @@ Policy report CRDs now available:
   **WARNING**:
   PolicyReport CRDs are deprecated and will be dropped in a future release.
 {{- end }}
-{{- if .Values.installOpenReportsCRDs }}
+{{- if include "admission-controller.installOpenReportsCRDs" . }}
 
 OpenReport CRDs now available:
   reports.openreports.io
@@ -33,17 +33,17 @@ It is ready to run any `clusteradmissionpolicies.policies.kubewarden.io` or
 
 Installed recommended policies:
 - {{ .Values.recommendedPolicies.allowPrivilegeEscalationPolicy.name }}
-  module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.allowPrivilegeEscalationPolicy.module.repository }}:{{ .Values.recommendedPolicies.allowPrivilegeEscalationPolicy.module.tag }}
+  module: registry://{{ include "policy_default_registry" . }}{{ .Values.recommendedPolicies.allowPrivilegeEscalationPolicy.module.repository }}:{{ .Values.recommendedPolicies.allowPrivilegeEscalationPolicy.module.tag }}
 - {{ .Values.recommendedPolicies.hostNamespacePolicy.name }}
-  module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.hostNamespacePolicy.module.repository }}:{{ .Values.recommendedPolicies.hostNamespacePolicy.module.tag }}
+  module: registry://{{ include "policy_default_registry" . }}{{ .Values.recommendedPolicies.hostNamespacePolicy.module.repository }}:{{ .Values.recommendedPolicies.hostNamespacePolicy.module.tag }}
 - {{ .Values.recommendedPolicies.podPrivilegedPolicy.name }}
-  module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.podPrivilegedPolicy.module.repository }}:{{ .Values.recommendedPolicies.podPrivilegedPolicy.module.tag }}
+  module: registry://{{ include "policy_default_registry" . }}{{ .Values.recommendedPolicies.podPrivilegedPolicy.module.repository }}:{{ .Values.recommendedPolicies.podPrivilegedPolicy.module.tag }}
 - {{ .Values.recommendedPolicies.userGroupPolicy.name }}
-  module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.userGroupPolicy.module.repository }}:{{ .Values.recommendedPolicies.userGroupPolicy.module.tag }}
+  module: registry://{{ include "policy_default_registry" . }}{{ .Values.recommendedPolicies.userGroupPolicy.module.repository }}:{{ .Values.recommendedPolicies.userGroupPolicy.module.tag }}
 - {{ .Values.recommendedPolicies.hostPathsPolicy.name }}
-  module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.hostPathsPolicy.module.repository }}:{{ .Values.recommendedPolicies.hostPathsPolicy.module.tag }}
+  module: registry://{{ include "policy_default_registry" . }}{{ .Values.recommendedPolicies.hostPathsPolicy.module.repository }}:{{ .Values.recommendedPolicies.hostPathsPolicy.module.tag }}
 - {{ .Values.recommendedPolicies.capabilitiesPolicy.name }}
-  module: registry://{{ .Values.global.cattle.systemDefaultRegistry}}/{{ .Values.recommendedPolicies.capabilitiesPolicy.module.repository }}:{{ .Values.recommendedPolicies.capabilitiesPolicy.module.tag }}
+  module: registry://{{ include "policy_default_registry" . }}{{ .Values.recommendedPolicies.capabilitiesPolicy.module.repository }}:{{ .Values.recommendedPolicies.capabilitiesPolicy.module.tag }}
 {{- if eq .Values.recommendedPolicies.defaultPolicyMode "monitor" }}
 
 Note: all these policies have been installed in `monitor` mode, you can enforce them

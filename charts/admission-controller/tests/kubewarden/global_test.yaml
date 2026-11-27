@@ -1,0 +1,589 @@
+suite: "Values contract: global"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/pre-upgrade-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/defaults/defaults-configmap.yaml"
+  - "templates/controller/controller-serviceaccount.yaml"
+  - "templates/controller/audit-scanner-serviceaccount.yaml"
+  - "templates/defaults/policy-server-rbac.yaml"
+# The post-install Job renders only with the deprecated telemetry sidecar mode.
+set:
+  telemetry:
+    metrics: true
+tests:
+  - it: "should render the defaults on every workload"
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: info}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n'
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.template.spec.initContainers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  image: ghcr\.io/kubewarden/adm-controller/policy-server:'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render global.imagePullPolicy on every workload"
+    set:
+      global:
+        imagePullPolicy: Always
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should render global.logLevel on every workload"
+    set:
+      global:
+        logLevel: debug
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[3]", value: "--loglevel"}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: debug}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "debug"\n'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render global.priorityClassName on every workload"
+    set:
+      global:
+        priorityClassName: system-cluster-critical
+    asserts:
+      - equal: {path: "spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  priorityClassName: "system-cluster-critical"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The controller gives the image pull secrets to every PolicyServer with the
+  # --image-pull-secrets flag.
+  - it: "should render global.imagePullSecrets on every workload"
+    set:
+      global:
+        imagePullSecrets:
+          - name: registry-credentials
+    asserts:
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=registry-credentials"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should accept plain Secret names in global.imagePullSecrets"
+    set:
+      global:
+        imagePullSecrets:
+          - registry-credentials
+    asserts:
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=registry-credentials"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should skip empty names in imagePullSecrets"
+    set:
+      global:
+        imagePullSecrets:
+          - ""
+          - {}
+          - name: ""
+          - other: x
+          - name: real-secret
+    asserts:
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: real-secret}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: real-secret}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=real-secret"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should omit imagePullSecrets when all names are empty"
+    set:
+      global:
+        imagePullSecrets:
+          - ""
+          - {}
+          - name: ""
+    asserts:
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/post-install-hook.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets="}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should render global.labels on every workload"
+    set:
+      global:
+        labels:
+          team: security
+    asserts:
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    team: security$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notExists: {path: "spec.template.metadata.labels.team"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should render global.annotations on every workload"
+    set:
+      global:
+        annotations:
+          example.com/owner: security
+    asserts:
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    example\.com/owner: security$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notExists: {path: 'spec.template.metadata.annotations["example.com/owner"]'}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should render global.podLabels on every workload"
+    set:
+      global:
+        podLabels:
+          team: security
+    asserts:
+      - equal: {path: "spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  labels:\n    "team": "security"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notExists: {path: "metadata.labels.team"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should render global.podAnnotations on every workload"
+    set:
+      global:
+        podAnnotations:
+          example.com/owner: security
+    asserts:
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    "example\.com/owner": "security"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notExists: {path: 'metadata.annotations["example.com/owner"]'}
+        template: "templates/controller/deployment.yaml"
+
+  # The PolicyServer CRD has no nodeSelector field.
+  - it: "should render global.nodeSelector on every workload"
+    set:
+      global:
+        nodeSelector:
+          kubernetes.io/os: linux
+    asserts:
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "nodeSelector|kubernetes\\.io/os"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render global.affinity on every workload"
+    set:
+      global:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/arch
+                      operator: In
+                      values: [amd64]
+    asserts:
+      - equal: {path: "spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  affinity:\n    nodeAffinity:\n      requiredDuringSchedulingIgnoredDuringExecution:\n        nodeSelectorTerms:\n        - matchExpressions:\n          - key: kubernetes\.io/arch$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render global.tolerations on every workload"
+    set:
+      global:
+        tolerations:
+          - key: dedicated
+            operator: Exists
+            effect: NoSchedule
+    asserts:
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  tolerations:\n    - effect: NoSchedule\n      key: dedicated\n      operator: Exists$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The PolicyServer CRD has no topologySpreadConstraints field.
+  - it: "should render global.topologySpreadConstraints on every workload"
+    set:
+      global:
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+    asserts:
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "topologySpreadConstraints|maxSkew"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render global.extraEnv on every workload"
+    set:
+      global:
+        extraEnv:
+          - name: HTTPS_PROXY
+            value: http://proxy:3128
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: HTTPS_PROXY, value: "http://proxy:3128"}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].env", content: {name: HTTPS_PROXY, value: "http://proxy:3128"}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.containers[0].env", content: {name: HTTPS_PROXY, value: "http://proxy:3128"}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: HTTPS_PROXY, value: "http://proxy:3128"}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: HTTPS_PROXY, value: "http://proxy:3128"}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: HTTPS_PROXY, value: "http://proxy:3128"}}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "HTTPS_PROXY"\n      value: "http://proxy:3128"$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render a global.extraEnv entry with valueFrom on the controller and the PolicyServer"
+    set:
+      global:
+        extraEnv:
+          - name: TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: policy-secrets
+                key: token
+    asserts:
+      - contains:
+          path: "spec.template.spec.containers[0].env"
+          content: {name: TOKEN, valueFrom: {secretKeyRef: {name: policy-secrets, key: token}}}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^    - name: "TOKEN"\n      valueFrom:\n        secretKeyRef:\n          key: token\n          name: policy-secrets$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The PolicyServer CRD has no envFrom field.
+  - it: "should render global.extraEnvFrom on every workload"
+    set:
+      global:
+        extraEnvFrom:
+          - configMapRef:
+              name: proxy-env
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: proxy-env}}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].envFrom", value: [{configMapRef: {name: proxy-env}}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: proxy-env}}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: proxy-env}}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: proxy-env}}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: proxy-env}}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "envFrom|proxy-env"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The PolicyServer CRD has no volumes field.
+  - it: "should render global.extraVolumes on every workload"
+    set:
+      global:
+        extraVolumes:
+          - name: extra-ca
+            configMap:
+              name: extra-ca
+    asserts:
+      - contains: {path: "spec.template.spec.volumes", content: {name: extra-ca, configMap: {name: extra-ca}}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.volumes", content: {name: extra-ca, configMap: {name: extra-ca}}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: extra-ca, configMap: {name: extra-ca}}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: extra-ca, configMap: {name: extra-ca}}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.volumes", content: {name: extra-ca, configMap: {name: extra-ca}}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "volumes|extra-ca"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The PolicyServer CRD has no volumeMounts field.
+  - it: "should render global.extraVolumeMounts on every workload"
+    set:
+      global:
+        extraVolumeMounts:
+          - name: extra-ca
+            mountPath: /etc/extra-ca
+            readOnly: true
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: extra-ca, mountPath: /etc/extra-ca, readOnly: true}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].volumeMounts", content: {name: extra-ca, mountPath: /etc/extra-ca, readOnly: true}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.containers[0].volumeMounts", content: {name: extra-ca, mountPath: /etc/extra-ca, readOnly: true}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: extra-ca, mountPath: /etc/extra-ca, readOnly: true}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: extra-ca, mountPath: /etc/extra-ca, readOnly: true}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: extra-ca, mountPath: /etc/extra-ca, readOnly: true}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "volumeMounts|/etc/extra-ca"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The pre-delete and post-install Jobs run with the controller ServiceAccount.
+  # The pre-upgrade Job has its own ServiceAccount.
+  - it: "should render global.serviceAccount.annotations on every ServiceAccount"
+    set:
+      global:
+        serviceAccount:
+          annotations:
+            example.com/role: kubewarden
+    asserts:
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: kubewarden}
+        template: "templates/controller/controller-serviceaccount.yaml"
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: kubewarden}
+        template: "templates/controller/audit-scanner-serviceaccount.yaml"
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: kubewarden}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: ServiceAccount}
+      - isKind: {of: ServiceAccount}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: kubewarden}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0
+
+  - it: "should render global.imageRegistry on every workload and on the recommended policies"
+    set:
+      global:
+        imageRegistry: registry.example.com
+      recommendedPolicies:
+        enabled: true
+    asserts:
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^registry\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.template.spec.initContainers[0].image", pattern: '^registry\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^registry\.example\.com/kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^registry\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^registry\.example\.com/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^registry\.example\.com/rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: registry\.example\.com/kubewarden/adm-controller/policy-server:'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["allow-privilege-escalation.yaml"]', pattern: '(?m)^  module: registry\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["capabilities.yaml"]', pattern: '(?m)^  module: registry\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["host-namespace.yaml"]', pattern: '(?m)^  module: registry\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["host-paths.yaml"]', pattern: '(?m)^  module: registry\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["pod-privileged.yaml"]', pattern: '(?m)^  module: registry\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["user-group.yaml"]', pattern: '(?m)^  module: registry\.example\.com/kubewarden/policies/'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The otel keys have an effect on the controller only. otel_test.yaml covers
+  # the details.
+  - it: "should render global.otel on the controller only"
+    set:
+      telemetry:
+        metrics: false
+      global:
+        otel:
+          endpoint: "https://otel-collector:4317"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "https://otel-collector:4317"}}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.initContainers[0].env"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.containers[0].env"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - hasDocuments: {count: 0}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "OTEL|otel"}
+        template: "templates/defaults/defaults-configmap.yaml"

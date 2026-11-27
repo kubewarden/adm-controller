@@ -180,7 +180,7 @@ manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefin
 			output:rbac:artifacts:config=charts/admission-controller/templates/controller \
 			output:webhook:artifacts:config=internal/bootstrap
 	sed -i '/^metadata:/a\  labels:\n    {{- include "admission-controller.labels" . | nindent 4 }}\n  annotations:\n    {{- include "admission-controller.annotations" . | nindent 4 }}' charts/admission-controller/templates/controller/controller-rbac-roles.yaml
-	sed -i 's/  namespace: kubewarden/  namespace: {{ .Release.Namespace }}/' charts/admission-controller/templates/controller/controller-rbac-roles.yaml
+	sed -i 's/  namespace: kubewarden/  namespace: {{ include "admission-controller.namespace" . | quote }}/' charts/admission-controller/templates/controller/controller-rbac-roles.yaml
 
 .PHONY: generate-chart
 generate-chart: ## Generate Helm chart values schema.

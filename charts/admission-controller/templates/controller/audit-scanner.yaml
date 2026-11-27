@@ -1,13 +1,12 @@
-{{- if .Values.auditScanner.enable }}
+{{- $ctx := dict "root" $ "workload" "auditScanner" "component" "audit-scanner" }}
+{{- if include "admission-controller.enabled" $ctx }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: {{ include "audit-scanner.fullname" . }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "admission-controller.labels" . | nindent 4 }}
-  annotations:
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  namespace: {{ include "admission-controller.namespace" . | quote }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- with include "admission-controller.workloadAnnotations" $ctx }}{{ . | nindent 2 }}{{ end }}
 spec:
   schedule: {{ .Values.auditScanner.cronJob.schedule | quote }}
   concurrencyPolicy: Forbid
@@ -16,16 +15,13 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          {{- include "admission-controller.podLabels" $ctx | nindent 10 }}
+          {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 10 }}{{ end }}
         spec:
           serviceAccountName: {{ .Values.auditScanner.serviceAccountName }}
-          {{- with .Values.podSecurityContext }}
-          securityContext:
-          {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- if .Values.imagePullSecrets }}
-          imagePullSecrets:
-          {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 12 }}
-          {{- end }}
+          {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 10 }}{{ end }}
           restartPolicy: {{ .Values.auditScanner.containerRestartPolicy }}
           volumes:
           - name: kubewarden-ca
@@ -44,22 +40,23 @@ spec:
                 path: "tls.crt"
               - key: tls.key
                 path: "tls.key"
-          {{- if .Values.global.affinity }}
-          affinity: {{ .Values.global.affinity | toYaml | nindent 14 }}
-          {{- end }}
-          {{- if .Values.global.tolerations }}
-          tolerations: {{ .Values.global.tolerations | toYaml | nindent 14 }}
-          {{- end }}
-          {{- with .Values.nodeSelector }}
-          nodeSelector:
-            {{- toYaml . | nindent 14 }}
-          {{- end }}
+          {{- with include "admission-controller.extraVolumes" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.topologySpreadConstraints" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 10 }}{{ end }}
           containers:
           - name: audit-scanner
-            image: '{{ template "system_default_registry" . }}{{ .Values.auditScanner.image.repository }}:{{ .Values.auditScanner.image.tag }}'
-            imagePullPolicy: {{ .Values.auditScanner.image.pullPolicy }}
+            image: '{{ template "system_default_registry" $ctx }}{{ .Values.auditScanner.image.repository }}:{{ .Values.auditScanner.image.tag }}'
+            imagePullPolicy: {{ include "admission-controller.imagePullPolicy" $ctx }}
             command:
               {{- include "audit-scanner.command" . | nindent 14 }}
+            {{- with include "admission-controller.extraEnv" $ctx }}
+            env:
+              {{- . | nindent 14 }}
+            {{- end }}
+            {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 12 }}{{ end }}
             volumeMounts:
             - mountPath: "/pki"
               name: kubewarden-ca
@@ -67,12 +64,7 @@ spec:
             - mountPath: "/client-cert"
               name: kubewarden-audit-scanner-client-cert
               readOnly: true
-            {{- if .Values.containerSecurityContext }}
-            securityContext:
-{{ toYaml .Values.containerSecurityContext | indent 14 }}
-            {{- end }}
-            {{- if and .Values.resources .Values.resources.auditScanner }}
-            resources:
-{{ toYaml .Values.resources.auditScanner | indent 14 }}
-            {{- end }}
+            {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 12 }}{{ end }}
+            {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 12 }}{{ end }}
+            {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 12 }}{{ end }}
 {{ end }}

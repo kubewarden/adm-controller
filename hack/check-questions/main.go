@@ -63,13 +63,10 @@ func validType(t string) bool {
 // settings), and the question's default only serves as a Rancher UI
 // prefill.
 func allowedMissingKey(variable string) bool {
-	switch variable {
-	case "global.priorityClassName",
-		"telemetry.sidecar.tracing.jaeger.endpoint",
-		"telemetry.sidecar.tracing.jaeger.tls.insecure":
-		return true
-	}
-	return false
+	// No question variable may be missing from values.yaml at the moment.
+	// Add a variable path here to allow it.
+	allowed := map[string]bool{}
+	return allowed[variable]
 }
 
 // lookup resolves a dotted path in a decoded YAML tree.

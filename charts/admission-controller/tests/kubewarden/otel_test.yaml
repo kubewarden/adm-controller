@@ -1,0 +1,275 @@
+suite: "Values contract: telemetry"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/controller/opentelemetry-collector.yaml"
+  - "templates/controller/service.yaml"
+  - "templates/defaults/defaults-configmap.yaml"
+release:
+  name: rel
+tests:
+  - it: "should render global.otel on the controller only"
+    set:
+      global:
+        otel:
+          endpoint: "https://otel-collector:4317"
+          caSecretName: "otel-ca-secret"
+          clientCertificateSecretName: "otel-client-secret"
+    asserts:
+      # controller
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--enable-metrics"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--enable-tracing"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--metrics-bind-address=0"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--opentelemetry-certificate-secret=otel-ca-secret"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--opentelemetry-client-certificate-secret=otel-client-secret"}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--enable-otel-sidecar"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "https://otel-collector:4317"}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_CERTIFICATE, value: /otel/tls/ca/ca.crt}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE, value: /otel/tls/client/tls.crt}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_CLIENT_KEY, value: /otel/tls/client/tls.key}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: otel-ca, mountPath: /otel/tls/ca, readOnly: true}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: otel-client-tls, mountPath: /otel/tls/client, readOnly: true}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: otel-ca, secret: {secretName: otel-ca-secret}}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: otel-client-tls, secret: {secretName: otel-client-secret}}}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: 'spec.template.metadata.annotations["sidecar.opentelemetry.io/inject"]'}
+        template: "templates/controller/deployment.yaml"
+      # no sidecar collector, no restart Job, no metrics Service
+      - hasDocuments: {count: 0}
+        template: "templates/controller/opentelemetry-collector.yaml"
+      - hasDocuments: {count: 0}
+        template: "templates/controller/post-install-hook.yaml"
+      - hasDocuments: {count: 1}
+        template: "templates/controller/service.yaml"
+      - equal: {path: "metadata.name", value: rel-admission-controller-webhook-service}
+        template: "templates/controller/service.yaml"
+      # not on the audit scanner, the hook Job, or the PolicyServer resource
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.containers[0].env"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notContains: {path: "spec.jobTemplate.spec.template.spec.volumes", content: {name: otel-ca, secret: {secretName: otel-ca-secret}}}
+        template: "templates/controller/audit-scanner.yaml"
+      - notContains: {path: "spec.jobTemplate.spec.template.spec.containers[0].volumeMounts", content: {name: otel-ca, mountPath: /otel/tls/ca, readOnly: true}}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.volumes"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].volumeMounts"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "(?i)otel|otlp"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render only the endpoint when no TLS Secret is set"
+    templates:
+      - "templates/controller/deployment.yaml"
+    set:
+      global:
+        otel:
+          endpoint: "http://otel-collector:4317"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--enable-metrics"}
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--enable-tracing"}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector:4317"}}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_CERTIFICATE, value: /otel/tls/ca/ca.crt}}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE, value: /otel/tls/client/tls.crt}}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_CLIENT_KEY, value: /otel/tls/client/tls.key}}
+      - equal:
+          path: "spec.template.spec.volumes"
+          value: [{name: cert, secret: {defaultMode: 420, secretName: kubewarden-webhook-server-cert, optional: true}}]
+      - equal:
+          path: "spec.template.spec.containers[0].volumeMounts"
+          value: [{mountPath: /tmp/k8s-webhook-server/serving-certs, name: cert, readOnly: true}]
+
+  - it: "should render no telemetry when the endpoint is empty"
+    set:
+      global:
+        otel:
+          endpoint: ""
+          caSecretName: "otel-ca-secret"
+          clientCertificateSecretName: "otel-client-secret"
+    asserts:
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--enable-metrics"}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--enable-tracing"}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--opentelemetry-certificate-secret=otel-ca-secret"}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--opentelemetry-client-certificate-secret=otel-client-secret"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--metrics-bind-address=0"}
+        template: "templates/controller/deployment.yaml"
+      - isNullOrEmpty: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.template.spec.volumes"
+          value: [{name: cert, secret: {defaultMode: 420, secretName: kubewarden-webhook-server-cert, optional: true}}]
+        template: "templates/controller/deployment.yaml"
+      - hasDocuments: {count: 0}
+        template: "templates/controller/opentelemetry-collector.yaml"
+      - hasDocuments: {count: 0}
+        template: "templates/controller/post-install-hook.yaml"
+      - hasDocuments: {count: 1}
+        template: "templates/controller/service.yaml"
+
+  - it: "should render controller.otel on the controller"
+    templates:
+      - "templates/controller/deployment.yaml"
+    set:
+      controller:
+        otel:
+          endpoint: "http://controller:4317"
+          caSecretName: "controller-ca"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://controller:4317"}}
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--opentelemetry-certificate-secret=controller-ca"}
+      - contains: {path: "spec.template.spec.volumes", content: {name: otel-ca, secret: {secretName: controller-ca}}}
+
+  - it: "should ignore the otel block of the other workloads"
+    set:
+      auditScanner:
+        otel:
+          endpoint: "http://audit:4317"
+      preDeleteJob:
+        otel:
+          endpoint: "http://pre-delete:4317"
+      postInstallJob:
+        otel:
+          endpoint: "http://post-install:4317"
+      policyServer:
+        otel:
+          endpoint: "http://policy-server:4317"
+    asserts:
+      - isNullOrEmpty: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--enable-tracing"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.containers[0].env"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - hasDocuments: {count: 0}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "(?i)otel|otlp|4317"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should prefer common.otel over global.otel"
+    templates:
+      - "templates/controller/deployment.yaml"
+    set:
+      global:
+        otel:
+          endpoint: "http://global:4317"
+      common:
+        otel:
+          endpoint: "http://common:4317"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://common:4317"}}
+
+  - it: "should prefer controller.otel over common.otel"
+    templates:
+      - "templates/controller/deployment.yaml"
+    set:
+      common:
+        otel:
+          endpoint: "http://common:4317"
+      controller:
+        otel:
+          endpoint: "http://controller:4317"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://controller:4317"}}
+
+  - it: "should fall back to common.otel when the controller otel endpoint is empty"
+    templates:
+      - "templates/controller/deployment.yaml"
+    set:
+      common:
+        otel:
+          endpoint: "http://common:4317"
+      controller:
+        otel:
+          endpoint: ""
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://common:4317"}}
+
+  - it: "should prefer the top-level otel over controller.otel, common.otel, and global.otel"
+    templates:
+      - "templates/controller/deployment.yaml"
+    set:
+      otel:
+        endpoint: "http://chart:4317"
+      controller:
+        otel:
+          endpoint: "http://controller:4317"
+      common:
+        otel:
+          endpoint: "http://common:4317"
+      global:
+        otel:
+          endpoint: "http://global:4317"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://chart:4317"}}
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://controller:4317"}}
+
+  - it: "should resolve each otel field on its own"
+    templates:
+      - "templates/controller/deployment.yaml"
+    set:
+      global:
+        otel:
+          endpoint: "http://global:4317"
+          caSecretName: "global-ca"
+      common:
+        otel:
+          clientCertificateSecretName: "common-client"
+      controller:
+        otel:
+          caSecretName: "controller-ca"
+      otel:
+        clientCertificateSecretName: "chart-client"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://global:4317"}}
+      - contains: {path: "spec.template.spec.volumes", content: {name: otel-ca, secret: {secretName: controller-ca}}}
+      - contains: {path: "spec.template.spec.volumes", content: {name: otel-client-tls, secret: {secretName: chart-client}}}
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--opentelemetry-certificate-secret=controller-ca"}
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--opentelemetry-client-certificate-secret=chart-client"}
+
+  # The deprecated telemetry keys win over otel when telemetry.metrics or
+  # telemetry.tracing is true.
+  - it: "should ignore otel when the deprecated telemetry is enabled"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        otel:
+          endpoint: "http://global:4317"
+          caSecretName: "global-ca"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "https://localhost:4317"}}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://global:4317"}}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.volumes", content: {name: otel-ca, secret: {secretName: global-ca}}}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--enable-tracing"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["sidecar.opentelemetry.io/inject"]', value: "true"}
+        template: "templates/controller/deployment.yaml"
+      - hasDocuments: {count: 1}
+        template: "templates/controller/opentelemetry-collector.yaml"
+      - hasDocuments: {count: 1}
+        template: "templates/controller/post-install-hook.yaml"

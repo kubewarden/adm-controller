@@ -14,6 +14,8 @@ Argo CD runs this hook on every sync, also on the first one, before the
 ServiceAccount of the controller exists. So the Job has its own ServiceAccount,
 with rules for these objects only.
 
+The Job uses the values of the preDeleteJob block.
+
 The hook is a no-op after the first upgrade from a chart that rendered these
 objects. It can be removed once the chart no longer supports an upgrade from
 such a chart, some releases after it shipped.
@@ -24,24 +26,27 @@ name of the Job into a label of its pods, and a label value cannot be longer
 than 63 characters. So the full name is cut at 51 characters.
 */}}
 {{- $name := printf "%s-pre-upgrade" (include "admission-controller.fullname" . | trunc 51 | trimSuffix "-") }}
+{{- $namespace := include "admission-controller.namespace" . }}
+{{- $ctx := dict "root" $ "workload" "preDeleteJob" "component" "pre-upgrade-job" }}
+{{- $controllerCtx := dict "root" $ "workload" "controller" "component" "controller" }}
+{{- $legacyImage := .Values.image | default dict }}
+{{- $controllerImage := (.Values.controller | default dict).image | default dict }}
+{{- $rbacHookAnnotations := dict "helm.sh/hook" "pre-upgrade" "helm.sh/hook-weight" "-1" "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded" }}
+{{- $jobHookAnnotations := dict "helm.sh/hook" "pre-upgrade" "helm.sh/hook-weight" "0" "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded" }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $namespace | quote }}
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": pre-upgrade
-    "helm.sh/hook-weight": "-1"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  {{- include "admission-controller.serviceAccountAnnotations" (merge (dict "extraAnnotations" $rbacHookAnnotations) $ctx) | nindent 2 }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $namespace | quote }}
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
   annotations:
@@ -66,7 +71,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $namespace | quote }}
   labels:
     {{- include "admission-controller.defaults.labels" . | nindent 4 }}
   annotations:
@@ -81,7 +86,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ $name }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ $namespace | quote }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -132,65 +137,57 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ $name }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ $namespace | quote }}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ $name }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": pre-upgrade
-    "helm.sh/hook-weight": "0"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  namespace: {{ $namespace | quote }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- include "admission-controller.workloadAnnotations" (merge (dict "extraAnnotations" $jobHookAnnotations) $ctx) | nindent 2 }}
 spec:
   template:
     metadata:
       name: {{ $name }}
-      labels:
-        {{- include "admission-controller.defaults.labels" . | nindent 8 }}
-      annotations:
-        {{- include "admission-controller.annotations" . | nindent 8 }}
+      {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
+      {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ end }}
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ $name }}
-      {{- if .Values.global.tolerations }}
-      tolerations: {{ .Values.global.tolerations | toYaml | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- if .Values.preDeleteHook.podSecurityContext }}
-      securityContext:
-{{ toYaml .Values.preDeleteHook.podSecurityContext | indent 8 }}
-      {{- end }}
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-      {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 8 }}
+      {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.topologySpreadConstraints" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.extraVolumes" $ctx }}
+      volumes:
+        {{- . | nindent 8 }}
       {{- end }}
       containers:
         - name: kubewarden-pre-upgrade
-          image: '{{ template "system_default_registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}'
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: '{{ template "system_default_registry" $controllerCtx }}{{ $legacyImage.repository | default $controllerImage.repository }}:{{ $legacyImage.tag | default $controllerImage.tag }}'
+          {{- with include "admission-controller.imagePullPolicy" $controllerCtx }}
+          imagePullPolicy: {{ . }}
+          {{- end }}
           command:
             - /controller
           args:
             - --mode=pre-upgrade
-            - --deployments-namespace={{ .Release.Namespace }}
-            - --zap-log-level={{ .Values.logLevel }}
-          {{- with .Values.additionalEnvironmentVariables }}
+            - --deployments-namespace={{ $namespace }}
+            {{- with include "admission-controller.logLevel" $ctx }}
+            - --zap-log-level={{ . }}
+            {{- end }}
+          {{- with concat (include "admission-controller.extraEnv" $ctx | fromYamlArray) (.Values.additionalEnvironmentVariables | default list) }}
           env:
-          {{- toYaml . | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if .Values.preDeleteHook.containerSecurityContext }}
-          securityContext:
-{{ toYaml .Values.preDeleteHook.containerSecurityContext | indent 12 }}
+          {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.extraVolumeMounts" $ctx }}
+          volumeMounts:
+            {{- . | nindent 12 }}
           {{- end }}
-          {{- if and .Values.resources .Values.resources.preDeleteJob }}
-          resources:
-{{ toYaml .Values.resources.preDeleteJob | indent 12 }}
-          {{- end }}
+          {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 10 }}{{ end }}

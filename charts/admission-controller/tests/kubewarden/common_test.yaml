@@ -1,0 +1,396 @@
+suite: "Values contract: common"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/pre-upgrade-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/defaults/defaults-configmap.yaml"
+  - "templates/controller/controller-serviceaccount.yaml"
+  - "templates/controller/audit-scanner-serviceaccount.yaml"
+  - "templates/defaults/policy-server-rbac.yaml"
+# The post-install Job renders only with the deprecated telemetry sidecar mode.
+set:
+  telemetry:
+    metrics: true
+tests:
+  - it: "should render common.imagePullPolicy on every workload"
+    set:
+      common:
+        imagePullPolicy: Never
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should render common.logLevel on every workload"
+    set:
+      common:
+        logLevel: warn
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[3]", value: "--loglevel"}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: warn}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "warn"\n'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.priorityClassName on every workload"
+    set:
+      common:
+        priorityClassName: common-priority
+    asserts:
+      - equal: {path: "spec.template.spec.priorityClassName", value: common-priority}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.priorityClassName", value: common-priority}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: common-priority}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: common-priority}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.priorityClassName", value: common-priority}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  priorityClassName: "common-priority"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.imagePullSecrets on every workload"
+    set:
+      common:
+        imagePullSecrets:
+          - common-secret
+    asserts:
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=common-secret"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should render common.labels on every workload"
+    set:
+      common:
+        labels:
+          team: common
+    asserts:
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    team: common$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.annotations on every workload"
+    set:
+      common:
+        annotations:
+          example.com/owner: common
+    asserts:
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    example\.com/owner: common$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.podLabels on every workload"
+    set:
+      common:
+        podLabels:
+          team: common
+    asserts:
+      - equal: {path: "spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  labels:\n    "team": "common"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.podAnnotations on every workload"
+    set:
+      common:
+        podAnnotations:
+          example.com/owner: common
+    asserts:
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    "example\.com/owner": "common"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.nodeSelector on every workload"
+    set:
+      common:
+        nodeSelector:
+          kubernetes.io/os: linux
+    asserts:
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "nodeSelector|kubernetes\\.io/os"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.affinity on every workload"
+    set:
+      common:
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  topologyKey: kubernetes.io/hostname
+    asserts:
+      - equal: {path: "spec.template.spec.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight", value: 100}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight", value: 100}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight", value: 100}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight", value: 100}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight", value: 100}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  affinity:\n    podAntiAffinity:\n      preferredDuringSchedulingIgnoredDuringExecution:\n      - podAffinityTerm:\n          topologyKey: kubernetes\.io/hostname\n        weight: 100$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.tolerations on every workload"
+    set:
+      common:
+        tolerations:
+          - operator: Exists
+    asserts:
+      - equal: {path: "spec.template.spec.tolerations", value: [{operator: Exists}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.tolerations", value: [{operator: Exists}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.tolerations", value: [{operator: Exists}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.tolerations", value: [{operator: Exists}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.tolerations", value: [{operator: Exists}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  tolerations:\n    - operator: Exists$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.topologySpreadConstraints on every workload"
+    set:
+      common:
+        topologySpreadConstraints:
+          - maxSkew: 2
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+    asserts:
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 2, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 2, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 2, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 2, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 2, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "topologySpreadConstraints|maxSkew"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.extraEnv on every workload"
+    set:
+      common:
+        extraEnv:
+          - name: FROM_COMMON
+            value: "yes"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    - name: "FROM_COMMON"\n      value: "yes"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.extraEnvFrom on every workload"
+    set:
+      common:
+        extraEnvFrom:
+          - secretRef:
+              name: common-env
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "envFrom|common-env"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.extraVolumes on every workload"
+    set:
+      common:
+        extraVolumes:
+          - name: common-vol
+            emptyDir: {}
+    asserts:
+      - contains: {path: "spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "volumes|common-vol"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.extraVolumeMounts on every workload"
+    set:
+      common:
+        extraVolumeMounts:
+          - name: common-vol
+            mountPath: /common
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "volumeMounts|/common"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.serviceAccount.annotations on every ServiceAccount"
+    set:
+      common:
+        serviceAccount:
+          annotations:
+            example.com/role: common
+    asserts:
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
+        template: "templates/controller/controller-serviceaccount.yaml"
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
+        template: "templates/controller/audit-scanner-serviceaccount.yaml"
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: ServiceAccount}
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0
+
+  - it: "should render common.otel on the controller only"
+    set:
+      telemetry:
+        metrics: false
+      common:
+        otel:
+          endpoint: "http://common:4317"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://common:4317"}}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.initContainers[0].env"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.containers[0].env"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - hasDocuments: {count: 0}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "OTEL|otel"}
+        template: "templates/defaults/defaults-configmap.yaml"

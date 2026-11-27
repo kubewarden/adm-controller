@@ -6,12 +6,14 @@
             "type": "object"
         },
         "additionalEnvironmentVariables": {
+            "deprecated": true,
             "type": "array"
         },
         "additionalLabels": {
             "type": "object"
         },
         "affinity": {
+            "deprecated": true,
             "type": "object"
         },
         "alwaysAcceptAdmissionReviewsOnDeploymentsNamespace": {
@@ -22,6 +24,28 @@
             "properties": {
                 "containerRestartPolicy": {
                     "type": "string"
+                },
+                "containerSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "allowPrivilegeEscalation": {
+                            "type": "boolean"
+                        },
+                        "capabilities": {
+                            "type": "object",
+                            "properties": {
+                                "drop": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "readOnlyRootFilesystem": {
+                            "type": "boolean"
+                        }
+                    }
                 },
                 "cronJob": {
                     "type": "object",
@@ -41,12 +65,22 @@
                     "type": "boolean"
                 },
                 "enable": {
+                    "deprecated": true,
+                    "type": [
+                        "boolean",
+                        "null"
+                    ]
+                },
+                "enabled": {
                     "type": "boolean"
                 },
                 "image": {
                     "type": "object",
                     "properties": {
                         "pullPolicy": {
+                            "type": "string"
+                        },
+                        "registry": {
                             "type": "string"
                         },
                         "repository": {
@@ -56,9 +90,6 @@
                             "type": "string"
                         }
                     }
-                },
-                "logLevel": {
-                    "type": "string"
                 },
                 "outputScan": {
                     "type": "boolean"
@@ -75,11 +106,54 @@
                 "parallelResources": {
                     "type": "integer"
                 },
+                "podSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "runAsNonRoot": {
+                            "type": "boolean"
+                        },
+                        "seccompProfile": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
                 "policyReporter": {
                     "type": "boolean"
                 },
                 "reportCRDsKind": {
                     "type": "string"
+                },
+                "resources": {
+                    "type": "object",
+                    "properties": {
+                        "limits": {
+                            "type": "object",
+                            "properties": {
+                                "cpu": {
+                                    "type": "string"
+                                },
+                                "memory": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "requests": {
+                            "type": "object",
+                            "properties": {
+                                "cpu": {
+                                    "type": "string"
+                                },
+                                "memory": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
                 },
                 "serviceAccountName": {
                     "type": "string"
@@ -90,24 +164,99 @@
             }
         },
         "containerSecurityContext": {
+            "deprecated": true,
+            "type": "object"
+        },
+        "controller": {
             "type": "object",
             "properties": {
-                "allowPrivilegeEscalation": {
-                    "type": "boolean"
-                },
-                "capabilities": {
+                "containerSecurityContext": {
                     "type": "object",
                     "properties": {
-                        "drop": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
+                        "allowPrivilegeEscalation": {
+                            "type": "boolean"
+                        },
+                        "capabilities": {
+                            "type": "object",
+                            "properties": {
+                                "drop": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "readOnlyRootFilesystem": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "image": {
+                    "type": "object",
+                    "properties": {
+                        "pullPolicy": {
+                            "type": "string"
+                        },
+                        "registry": {
+                            "type": "string"
+                        },
+                        "repository": {
+                            "type": "string"
+                        },
+                        "tag": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "podDisruptionBudget": {
+                    "type": "object"
+                },
+                "podSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "runAsNonRoot": {
+                            "type": "boolean"
+                        },
+                        "seccompProfile": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string"
+                                }
                             }
                         }
                     }
                 },
-                "readOnlyRootFilesystem": {
-                    "type": "boolean"
+                "replicas": {
+                    "type": "integer"
+                },
+                "resources": {
+                    "type": "object",
+                    "properties": {
+                        "limits": {
+                            "type": "object",
+                            "properties": {
+                                "cpu": {
+                                    "type": "string"
+                                },
+                                "memory": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "requests": {
+                            "type": "object",
+                            "properties": {
+                                "cpu": {
+                                    "type": "string"
+                                },
+                                "memory": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -123,21 +272,84 @@
                 "affinity": {
                     "type": "object"
                 },
-                "cattle": {
+                "annotations": {
+                    "type": "object"
+                },
+                "extraEnv": {
+                    "type": "array"
+                },
+                "extraEnvFrom": {
+                    "type": "array"
+                },
+                "extraVolumeMounts": {
+                    "type": "array"
+                },
+                "extraVolumes": {
+                    "type": "array"
+                },
+                "imagePullPolicy": {
+                    "type": "string"
+                },
+                "imagePullSecrets": {
+                    "type": "array"
+                },
+                "imageRegistry": {
+                    "type": "string"
+                },
+                "labels": {
+                    "type": "object"
+                },
+                "logLevel": {
+                    "type": "string"
+                },
+                "nodeSelector": {
+                    "type": "object"
+                },
+                "otel": {
                     "type": "object",
                     "properties": {
-                        "systemDefaultRegistry": {
+                        "caSecretName": {
+                            "type": "string"
+                        },
+                        "clientCertificateSecretName": {
+                            "type": "string"
+                        },
+                        "endpoint": {
                             "type": "string"
                         }
                     }
                 },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
+                },
+                "priorityClassName": {
+                    "type": "string"
+                },
+                "serviceAccount": {
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "type": "object"
+                        }
+                    }
+                },
                 "skipNamespaces": {
-                    "type": "array",
+                    "deprecated": true,
+                    "type": [
+                        "array",
+                        "null"
+                    ],
                     "items": {
                         "type": "string"
                     }
                 },
                 "tolerations": {
+                    "type": "array"
+                },
+                "topologySpreadConstraints": {
                     "type": "array"
                 }
             }
@@ -146,30 +358,54 @@
             "type": "boolean"
         },
         "image": {
+            "deprecated": true,
             "type": "object",
             "properties": {
                 "pullPolicy": {
+                    "deprecated": true,
                     "type": "string"
                 },
                 "repository": {
+                    "deprecated": true,
                     "type": "string"
                 },
                 "tag": {
+                    "deprecated": true,
                     "type": "string"
                 }
             }
         },
         "imagePullSecrets": {
+            "deprecated": true,
             "type": "array"
         },
         "installOpenReportsCRDs": {
-            "type": "boolean"
+            "deprecated": true,
+            "type": [
+                "boolean",
+                "null"
+            ]
+        },
+        "installOptionalCRDs": {
+            "type": "object",
+            "properties": {
+                "openReports": {
+                    "type": "boolean"
+                },
+                "policyReports": {
+                    "type": "boolean"
+                }
+            }
         },
         "installPolicyReportCRDs": {
             "deprecated": true,
-            "type": "boolean"
+            "type": [
+                "boolean",
+                "null"
+            ]
         },
         "logLevel": {
+            "deprecated": true,
             "type": "string"
         },
         "mTLS": {
@@ -184,6 +420,9 @@
             }
         },
         "nameOverride": {
+            "type": "string"
+        },
+        "namespaceOverride": {
             "type": "string"
         },
         "namespacedPoliciesAllowedResources": {
@@ -216,26 +455,30 @@
             }
         },
         "nodeSelector": {
+            "deprecated": true,
             "type": "object"
         },
+        "otel": {
+            "type": "object",
+            "properties": {
+                "caSecretName": {
+                    "type": "string"
+                },
+                "clientCertificateSecretName": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                }
+            }
+        },
         "podAnnotations": {
+            "deprecated": true,
             "type": "object"
         },
         "podSecurityContext": {
-            "type": "object",
-            "properties": {
-                "runAsNonRoot": {
-                    "type": "boolean"
-                },
-                "seccompProfile": {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
+            "deprecated": true,
+            "type": "object"
         },
         "policy-reporter": {
             "type": "object",
@@ -291,26 +534,25 @@
                 "annotations": {
                     "type": "object"
                 },
+                "containerSecurityContext": {
+                    "type": "object"
+                },
                 "enabled": {
                     "type": "boolean"
                 },
                 "env": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string"
-                            },
-                            "value": {
-                                "type": "string"
-                            }
-                        }
-                    }
+                    "deprecated": true,
+                    "type": "array"
+                },
+                "extraEnv": {
+                    "type": "array"
                 },
                 "image": {
                     "type": "object",
                     "properties": {
+                        "registry": {
+                            "type": "string"
+                        },
                         "repository": {
                             "type": "string"
                         },
@@ -329,7 +571,24 @@
                     }
                 },
                 "limits": {
+                    "deprecated": true,
                     "type": "object"
+                },
+                "maxUnavailable": {
+                    "deprecated": true,
+                    "type": [
+                        "integer",
+                        "string",
+                        "null"
+                    ]
+                },
+                "minAvailable": {
+                    "deprecated": true,
+                    "type": [
+                        "integer",
+                        "string",
+                        "null"
+                    ]
                 },
                 "namespacedPoliciesCapabilities": {
                     "type": [
@@ -381,13 +640,31 @@
                         }
                     }
                 },
+                "podDisruptionBudget": {
+                    "type": "object"
+                },
+                "podSecurityContext": {
+                    "type": "object"
+                },
                 "replicaCount": {
+                    "deprecated": true,
+                    "type": [
+                        "integer",
+                        "null"
+                    ]
+                },
+                "replicas": {
                     "type": "integer"
                 },
                 "requests": {
+                    "deprecated": true,
+                    "type": "object"
+                },
+                "resources": {
                     "type": "object"
                 },
                 "securityContexts": {
+                    "deprecated": true,
                     "type": "object"
                 },
                 "serviceAccountName": {
@@ -407,6 +684,7 @@
                     "minimum": 1
                 },
                 "metrics": {
+                    "deprecated": true,
                     "type": "integer",
                     "maximum": 65535,
                     "minimum": 1
@@ -418,7 +696,7 @@
                 }
             }
         },
-        "preDeleteHook": {
+        "postInstallJob": {
             "type": "object",
             "properties": {
                 "containerSecurityContext": {
@@ -443,6 +721,23 @@
                         }
                     }
                 },
+                "image": {
+                    "type": "object",
+                    "properties": {
+                        "pullPolicy": {
+                            "type": "string"
+                        },
+                        "registry": {
+                            "type": "string"
+                        },
+                        "repository": {
+                            "type": "string"
+                        },
+                        "tag": {
+                            "type": "string"
+                        }
+                    }
+                },
                 "podSecurityContext": {
                     "type": "object",
                     "properties": {
@@ -458,20 +753,129 @@
                             }
                         }
                     }
+                },
+                "resources": {
+                    "type": "object",
+                    "properties": {
+                        "limits": {
+                            "type": "object",
+                            "properties": {
+                                "cpu": {
+                                    "type": "string"
+                                },
+                                "memory": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "requests": {
+                            "type": "object",
+                            "properties": {
+                                "cpu": {
+                                    "type": "string"
+                                },
+                                "memory": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "preDeleteHook": {
+            "deprecated": true,
+            "type": "object",
+            "properties": {
+                "containerSecurityContext": {
+                    "deprecated": true,
+                    "type": "object"
+                },
+                "podSecurityContext": {
+                    "deprecated": true,
+                    "type": "object"
                 }
             }
         },
         "preDeleteJob": {
             "type": "object",
             "properties": {
+                "containerSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "allowPrivilegeEscalation": {
+                            "type": "boolean"
+                        },
+                        "capabilities": {
+                            "type": "object",
+                            "properties": {
+                                "drop": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "readOnlyRootFilesystem": {
+                            "type": "boolean"
+                        }
+                    }
+                },
                 "image": {
+                    "deprecated": true,
                     "type": "object",
                     "properties": {
                         "repository": {
+                            "deprecated": true,
                             "type": "string"
                         },
                         "tag": {
+                            "deprecated": true,
                             "type": "string"
+                        }
+                    }
+                },
+                "podSecurityContext": {
+                    "type": "object",
+                    "properties": {
+                        "runAsNonRoot": {
+                            "type": "boolean"
+                        },
+                        "seccompProfile": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
+                "resources": {
+                    "type": "object",
+                    "properties": {
+                        "limits": {
+                            "type": "object",
+                            "properties": {
+                                "cpu": {
+                                    "type": "string"
+                                },
+                                "memory": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "requests": {
+                            "type": "object",
+                            "properties": {
+                                "cpu": {
+                                    "type": "string"
+                                },
+                                "memory": {
+                                    "type": "string"
+                                }
+                            }
                         }
                     }
                 }
@@ -713,122 +1117,24 @@
             }
         },
         "replicas": {
-            "type": "integer"
+            "deprecated": true,
+            "type": [
+                "integer",
+                "null"
+            ]
         },
         "resources": {
-            "type": "object",
-            "properties": {
-                "auditScanner": {
-                    "type": "object",
-                    "properties": {
-                        "limits": {
-                            "type": "object",
-                            "properties": {
-                                "cpu": {
-                                    "type": "string"
-                                },
-                                "memory": {
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "requests": {
-                            "type": "object",
-                            "properties": {
-                                "cpu": {
-                                    "type": "string"
-                                },
-                                "memory": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                },
-                "controller": {
-                    "type": "object",
-                    "properties": {
-                        "limits": {
-                            "type": "object",
-                            "properties": {
-                                "cpu": {
-                                    "type": "string"
-                                },
-                                "memory": {
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "requests": {
-                            "type": "object",
-                            "properties": {
-                                "cpu": {
-                                    "type": "string"
-                                },
-                                "memory": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                },
-                "postInstallJob": {
-                    "type": "object",
-                    "properties": {
-                        "limits": {
-                            "type": "object",
-                            "properties": {
-                                "cpu": {
-                                    "type": "string"
-                                },
-                                "memory": {
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "requests": {
-                            "type": "object",
-                            "properties": {
-                                "cpu": {
-                                    "type": "string"
-                                },
-                                "memory": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                },
-                "preDeleteJob": {
-                    "type": "object",
-                    "properties": {
-                        "limits": {
-                            "type": "object",
-                            "properties": {
-                                "cpu": {
-                                    "type": "string"
-                                },
-                                "memory": {
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "requests": {
-                            "type": "object",
-                            "properties": {
-                                "cpu": {
-                                    "type": "string"
-                                },
-                                "memory": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                }
+            "deprecated": true,
+            "type": "object"
+        },
+        "skipNamespaces": {
+            "type": "array",
+            "items": {
+                "type": "string"
             }
         },
         "telemetry": {
+            "deprecated": true,
             "type": "object",
             "properties": {
                 "custom": {

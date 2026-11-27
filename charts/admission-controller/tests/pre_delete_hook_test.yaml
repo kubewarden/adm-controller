@@ -54,11 +54,10 @@ tests:
             - --controller-deployment-name=kubewarden-admission-controller
             - --zap-log-level=info
 
-  - it: "should prefix the image with the system default registry"
+  - it: "should prefix the image with the global image registry"
     set:
       global:
-        cattle:
-          systemDefaultRegistry: "registry.example.com"
+        imageRegistry: "registry.example.com"
       image:
         repository: "kubewarden/kubewarden-controller"
         tag: v99.0.0

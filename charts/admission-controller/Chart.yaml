@@ -65,7 +65,7 @@ dependencies:
   - name: openreports
     version: 0.2.1
     repository: https://openreports.github.io/reports-api
-    condition: installOpenReportsCRDs
+    condition: installOpenReportsCRDs,installOptionalCRDs.openReports
   - name: policy-reporter
     version: 3.11.2
     repository: https://kyverno.github.io/policy-reporter

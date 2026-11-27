@@ -1,0 +1,313 @@
+# Compatibility of the deprecated policyServer keys with the new policyServer
+# keys. The default PolicyServer is a YAML string in the defaults ConfigMap.
+suite: compat - deprecated policyServer keys
+templates:
+  - defaults/defaults-configmap.yaml
+release:
+  name: t
+  namespace: kw
+tests:
+  # policyServer.replicaCount
+  - it: "policyServer.replicaCount alone renders as on main"
+    set:
+      policyServer.replicaCount: 3
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 3$'
+
+  - it: "policyServer.replicaCount wins over policyServer.replicas"
+    set:
+      policyServer.replicaCount: 3
+      policyServer.replicas: 5
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 3$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'replicas: 5'
+
+  - it: "policyServer.replicas alone"
+    set:
+      policyServer.replicas: 5
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 5$'
+
+  - it: "policyServer.replicas 0 scales the default PolicyServer to zero"
+    set:
+      policyServer.replicas: 0
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 0$'
+
+  - it: "policyServer.replicaCount 0 still renders 1, as on main, and wins over policyServer.replicas"
+    set:
+      policyServer.replicaCount: 0
+      policyServer.replicas: 5
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 1$'
+
+  # policyServer.env
+  - it: "policyServer.env alone renders its entries as on main, after the log level entry"
+    set:
+      policyServer.env:
+        - name: A
+          value: b
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "A"\n      value: "b"$'
+
+  - it: "policyServer.env with KUBEWARDEN_LOG_LEVEL renders that entry once, as on main"
+    set:
+      policyServer.env:
+        - name: KUBEWARDEN_LOG_LEVEL
+          value: debug
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "debug"$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'value: "info"'
+
+  - it: "policyServer.env is appended after policyServer.extraEnv"
+    set:
+      policyServer.env:
+        - name: A
+          value: b
+      policyServer.extraEnv:
+        - name: N
+          value: "1"
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "N"\n      value: "1"\n    - name: "A"\n      value: "b"$'
+
+  - it: "policyServer.extraEnv alone"
+    set:
+      policyServer.extraEnv:
+        - name: N
+          value: "1"
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "N"\n      value: "1"$'
+
+  # policyServer.minAvailable and policyServer.maxUnavailable
+  - it: "policyServer.minAvailable alone renders as on main"
+    set:
+      policyServer.minAvailable: 2
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  minAvailable: 2$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'maxUnavailable'
+
+  - it: "policyServer.maxUnavailable alone renders as on main"
+    set:
+      policyServer.maxUnavailable: 1
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  maxUnavailable: 1$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'minAvailable'
+
+  - it: "policyServer.minAvailable wins over policyServer.podDisruptionBudget as a unit"
+    set:
+      policyServer.minAvailable: 2
+      policyServer.podDisruptionBudget:
+        maxUnavailable: 1
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  minAvailable: 2$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'maxUnavailable'
+
+  - it: "policyServer.maxUnavailable wins over policyServer.podDisruptionBudget as a unit"
+    set:
+      policyServer.maxUnavailable: 1
+      policyServer.podDisruptionBudget:
+        minAvailable: 50%
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  maxUnavailable: 1$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'minAvailable'
+
+  - it: "policyServer.podDisruptionBudget alone"
+    set:
+      policyServer.podDisruptionBudget:
+        minAvailable: 30%
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  minAvailable: 30%$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'maxUnavailable'
+
+  # policyServer.annotations
+  - it: "policyServer.annotations alone renders in spec.annotations as on main, and in metadata.annotations"
+    set:
+      policyServer.annotations:
+        foo: bar
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^spec:(\n  .*)*\n  annotations:\n    "foo": "bar"$'
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^metadata:(\n  .*)*\n  annotations:\n    foo: bar$'
+
+  - it: "policyServer.annotations wins over policyServer.podAnnotations in spec.annotations"
+    set:
+      policyServer.annotations:
+        foo: old
+      policyServer.podAnnotations:
+        foo: new
+        other: x
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^spec:(\n  .*)*\n  annotations:\n    "foo": "old"$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '"foo": "new"'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'other'
+
+  - it: "policyServer.podAnnotations alone renders in spec.annotations only"
+    set:
+      policyServer.podAnnotations:
+        foo: new
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^spec:(\n  .*)*\n  annotations:\n    "foo": "new"$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^    foo: new$'
+
+  # policyServer.limits and policyServer.requests
+  - it: "policyServer.limits and policyServer.requests alone render as on main"
+    set:
+      policyServer.limits:
+        cpu: 1
+      policyServer.requests:
+        memory: 1Gi
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  limits: ?\n    cpu: 1$'
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  requests: ?\n    memory: 1Gi$'
+
+  - it: "policyServer.limits wins over policyServer.resources.limits, resources.requests still applies"
+    set:
+      policyServer.limits:
+        cpu: 2
+      policyServer.resources:
+        limits:
+          cpu: 3
+          memory: 4Gi
+        requests:
+          memory: 2Gi
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  limits: ?\n    cpu: 2$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'memory: 4Gi'
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  requests: ?\n    memory: 2Gi$'
+
+  - it: "policyServer.requests wins over policyServer.resources.requests"
+    set:
+      policyServer.requests:
+        memory: 1Gi
+      policyServer.resources:
+        requests:
+          memory: 2Gi
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  requests: ?\n    memory: 1Gi$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'memory: 2Gi'
+
+  - it: "policyServer.resources alone"
+    set:
+      policyServer.resources:
+        limits:
+          cpu: 3
+        requests:
+          memory: 2Gi
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  limits: ?\n    cpu: 3$'
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  requests: ?\n    memory: 2Gi$'
+
+  # policyServer.securityContexts
+  - it: "policyServer.securityContexts alone renders as on main"
+    set:
+      policyServer.securityContexts:
+        pod:
+          runAsUser: 1234
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  securityContexts: ?\n    pod:\n      runAsUser: 1234$'
+
+  - it: "policyServer.securityContexts wins over podSecurityContext and containerSecurityContext"
+    set:
+      policyServer.securityContexts:
+        pod:
+          runAsUser: 1234
+      policyServer.podSecurityContext:
+        runAsUser: 5
+      policyServer.containerSecurityContext:
+        readOnlyRootFilesystem: true
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  securityContexts: ?\n    pod:\n      runAsUser: 1234$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'runAsUser: 5'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'container:'
+
+  - it: "policyServer.podSecurityContext and containerSecurityContext alone"
+    set:
+      policyServer.podSecurityContext:
+        runAsUser: 5
+      policyServer.containerSecurityContext:
+        readOnlyRootFilesystem: true
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  securityContexts: ?\n    container:\n      readOnlyRootFilesystem: true\n    pod:\n      runAsUser: 5$'

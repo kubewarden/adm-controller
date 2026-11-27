@@ -1,0 +1,244 @@
+suite: "Values contract: namespaceOverride"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/controller/controller-serviceaccount.yaml"
+  - "templates/controller/audit-scanner-serviceaccount.yaml"
+  - "templates/controller/controller-config-configmap.yaml"
+  - "templates/defaults/defaults-configmap.yaml"
+  - "templates/controller/service.yaml"
+  - "templates/controller/poddisruptionbudget.yaml"
+  - "templates/controller/opentelemetry-collector.yaml"
+release:
+  name: rel
+  namespace: kw
+# Render the optional objects too: the PodDisruptionBudget, and the objects of
+# the deprecated telemetry sidecar mode (metrics Service, collector, and
+# post-install Job).
+set:
+  telemetry:
+    metrics: true
+  controller:
+    podDisruptionBudget:
+      minAvailable: 1
+tests:
+  - it: "should use the release namespace by default"
+    asserts:
+      - equal: {path: "metadata.namespace", value: kw}
+
+  - it: "should use namespaceOverride for every namespaced resource"
+    set:
+      namespaceOverride: other
+    asserts:
+      - equal: {path: "metadata.namespace", value: other}
+
+  - it: "should render a numeric release namespace as a string"
+    release:
+      namespace: "123"
+    asserts:
+      - equal: {path: "metadata.namespace", value: "123"}
+
+  - it: "should render a numeric namespaceOverride as a string"
+    set:
+      namespaceOverride: "123"
+    asserts:
+      - equal: {path: "metadata.namespace", value: "123"}
+---
+suite: "Values contract: namespaceOverride in templates with cluster-scoped objects"
+templates:
+  - "templates/controller/controller-rbac-roles.yaml"
+  - "templates/controller/controller-rbac-rolebinding.yaml"
+  - "templates/controller/pre-upgrade-hook.yaml"
+  - "templates/defaults/policy-server-rbac.yaml"
+release:
+  name: rel
+  namespace: kw
+tests:
+  - it: "should use the release namespace by default"
+    asserts:
+      - equal: {path: "metadata.namespace", value: kw}
+        template: "templates/controller/controller-rbac-roles.yaml"
+        documentSelector: {path: kind, value: Role}
+      - equal: {path: "metadata.namespace", value: kw}
+        template: "templates/controller/controller-rbac-rolebinding.yaml"
+        documentSelector: {path: kind, value: RoleBinding}
+      - equal: {path: "metadata.namespace", value: kw}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: ServiceAccount}
+      - equal: {path: "metadata.namespace", value: kw}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Role}
+      - equal: {path: "metadata.namespace", value: kw}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: RoleBinding}
+      - equal: {path: "metadata.namespace", value: kw}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "metadata.namespace", value: kw}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0
+
+  - it: "should use namespaceOverride for every namespaced resource"
+    set:
+      namespaceOverride: other
+    asserts:
+      - isKind: {of: Role}
+        template: "templates/controller/controller-rbac-roles.yaml"
+        documentSelector: {path: kind, value: Role}
+      - equal: {path: "metadata.namespace", value: other}
+        template: "templates/controller/controller-rbac-roles.yaml"
+        documentSelector: {path: kind, value: Role}
+      - isKind: {of: RoleBinding}
+        template: "templates/controller/controller-rbac-rolebinding.yaml"
+        documentSelector: {path: kind, value: RoleBinding}
+      - equal: {path: "metadata.namespace", value: other}
+        template: "templates/controller/controller-rbac-rolebinding.yaml"
+        documentSelector: {path: kind, value: RoleBinding}
+      - equal: {path: "metadata.namespace", value: other}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: ServiceAccount}
+      - equal: {path: "metadata.namespace", value: other}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Role}
+      - equal: {path: "metadata.namespace", value: other}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: RoleBinding}
+      - equal: {path: "metadata.namespace", value: other}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - isKind: {of: ServiceAccount}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0
+      - equal: {path: "metadata.namespace", value: other}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0
+---
+suite: "Values contract: namespaceOverride references"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/pre-upgrade-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/controller/controller-rbac-rolebinding.yaml"
+  - "templates/controller/audit-scanner-rolebinding.yaml"
+  - "templates/defaults/policy-server-rbac.yaml"
+release:
+  name: rel
+  namespace: kw
+set:
+  namespaceOverride: other
+  telemetry:
+    metrics: true
+tests:
+  - it: "should pass namespaceOverride to the controller, its init container, the audit scanner, and the hook Jobs"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--deployments-namespace=other"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--deployments-namespace=other"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[1]", value: "--kubewarden-namespace"}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[2]", value: other}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--deployments-namespace=other"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--deployments-namespace=other"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].command[1]", value: "--namespace"}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].command[2]", value: other}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should use namespaceOverride in the subjects of the role bindings"
+    asserts:
+      - equal: {path: "subjects[0].namespace", value: other}
+        template: "templates/controller/controller-rbac-rolebinding.yaml"
+        documentIndex: 0
+      - equal: {path: "subjects[0].namespace", value: other}
+        template: "templates/controller/controller-rbac-rolebinding.yaml"
+        documentSelector: {path: kind, value: RoleBinding}
+      - equal: {path: "subjects[0].namespace", value: other}
+        template: "templates/controller/audit-scanner-rolebinding.yaml"
+        documentIndex: 0
+      - equal: {path: "subjects[0].namespace", value: other}
+        template: "templates/controller/audit-scanner-rolebinding.yaml"
+        documentIndex: 1
+      - equal: {path: "subjects[0].namespace", value: other}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: RoleBinding}
+      - equal: {path: "subjects[0].namespace", value: other}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: ClusterRoleBinding}
+      - isKind: {of: ClusterRoleBinding}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 2
+      - equal: {path: "subjects[0].namespace", value: other}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 2
+
+  - it: "should render a numeric namespace as a string in the namespace references"
+    release:
+      namespace: "123"
+    set:
+      namespaceOverride: ""
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--deployments-namespace=123"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[2]", value: "123"}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].command[2]", value: "123"}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "subjects[0].namespace", value: "123"}
+        template: "templates/controller/controller-rbac-rolebinding.yaml"
+        documentIndex: 0
+      - equal: {path: "subjects[0].namespace", value: "123"}
+        template: "templates/controller/audit-scanner-rolebinding.yaml"
+        documentIndex: 0
+      - equal: {path: "subjects[0].namespace", value: "123"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: ClusterRoleBinding}
+      - equal: {path: "subjects[0].namespace", value: "123"}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 2
+
+---
+suite: "Values contract: namespaceOverride and the policy-reporter subchart"
+templates:
+  - "templates/controller/deployment.yaml"
+release:
+  name: rel
+  namespace: kw
+tests:
+  - it: "should fail when namespaceOverride and policy-reporter.namespaceOverride differ with policyReporter enabled"
+    set:
+      namespaceOverride: other
+      auditScanner.policyReporter: true
+    asserts:
+      - failedTemplate:
+          errorMessage: 'namespaceOverride ("other") and policy-reporter.namespaceOverride ("") must have the same value when auditScanner.policyReporter is true'
+
+  - it: "should render when namespaceOverride and policy-reporter.namespaceOverride match"
+    set:
+      namespaceOverride: other
+      auditScanner.policyReporter: true
+      policy-reporter.namespaceOverride: other
+    asserts:
+      - equal: {path: "metadata.namespace", value: other}
+
+  - it: "should not check policy-reporter.namespaceOverride when namespaceOverride is empty"
+    set:
+      auditScanner.policyReporter: true
+      policy-reporter.namespaceOverride: reporter
+    asserts:
+      - equal: {path: "metadata.namespace", value: kw}
+
+  - it: "should not check policy-reporter.namespaceOverride when policyReporter is disabled"
+    set:
+      namespaceOverride: other
+      auditScanner.policyReporter: false
+    asserts:
+      - equal: {path: "metadata.namespace", value: other}

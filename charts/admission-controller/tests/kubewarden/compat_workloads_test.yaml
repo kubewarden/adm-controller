@@ -1,0 +1,1043 @@
+# Compatibility of the deprecated top-level keys with the workload blocks.
+# For each deprecated key: the key alone renders as in the main branch,
+# the deprecated key wins over the new key, and the new key alone works.
+suite: compat - deprecated workload keys
+templates:
+  - controller/deployment.yaml
+  - controller/audit-scanner.yaml
+  - controller/pre-delete-hook.yaml
+  - controller/post-install-hook.yaml
+release:
+  name: t
+  namespace: kw
+tests:
+  # imagePullSecrets
+  - it: "imagePullSecrets alone renders on every workload and in --image-pull-secrets as on main"
+    set:
+      telemetry.metrics: true
+      imagePullSecrets:
+        - name: old-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: old-secret}]
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --image-pull-secrets=old-secret
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.imagePullSecrets
+          value: [{name: old-secret}]
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: old-secret}]
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: old-secret}]
+        template: controller/post-install-hook.yaml
+
+  - it: "imagePullSecrets with the new keys: global first, then the deprecated key, then the workload"
+    set:
+      telemetry.metrics: true
+      imagePullSecrets:
+        - name: old-secret
+      global.imagePullSecrets:
+        - g-secret
+      controller.imagePullSecrets:
+        - c-secret
+      auditScanner.imagePullSecrets:
+        - a-secret
+      preDeleteJob.imagePullSecrets:
+        - d-secret
+      postInstallJob.imagePullSecrets:
+        - p-secret
+      policyServer.imagePullSecrets:
+        - ps-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: old-secret}, {name: c-secret}]
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --image-pull-secrets=g-secret,old-secret,ps-secret
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: old-secret}, {name: a-secret}]
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: old-secret}, {name: d-secret}]
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: old-secret}, {name: p-secret}]
+        template: controller/post-install-hook.yaml
+
+  - it: "imagePullSecrets new keys alone"
+    set:
+      global.imagePullSecrets:
+        - g-secret
+      controller.imagePullSecrets:
+        - c-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: c-secret}]
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --image-pull-secrets=g-secret
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}]
+        template: controller/audit-scanner.yaml
+
+  # containerSecurityContext and podSecurityContext
+  - it: "containerSecurityContext and podSecurityContext alone render on controller and audit scanner as on main"
+    set:
+      containerSecurityContext:
+        readOnlyRootFilesystem: false
+      podSecurityContext:
+        runAsUser: 1234
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            runAsUser: 1234
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            runAsUser: 1234
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/audit-scanner.yaml
+
+  - it: "containerSecurityContext and podSecurityContext win over the workload keys, missing leaves come from the new keys"
+    set:
+      containerSecurityContext:
+        readOnlyRootFilesystem: false
+      podSecurityContext:
+        runAsUser: 1234
+      controller.containerSecurityContext:
+        readOnlyRootFilesystem: true
+        runAsUser: 5
+      controller.podSecurityContext:
+        runAsUser: 6
+        fsGroup: 7
+      auditScanner.containerSecurityContext:
+        readOnlyRootFilesystem: true
+      auditScanner.podSecurityContext:
+        runAsUser: 8
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsUser: 5
+            capabilities:
+              drop: [ALL]
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            runAsUser: 1234
+            fsGroup: 7
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.securityContext.runAsUser
+          value: 1234
+        template: controller/audit-scanner.yaml
+
+  - it: "controller and auditScanner security contexts alone"
+    set:
+      controller.containerSecurityContext:
+        readOnlyRootFilesystem: false
+      auditScanner.podSecurityContext:
+        runAsUser: 8
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: false
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.securityContext.runAsUser
+          value: 8
+        template: controller/audit-scanner.yaml
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+        template: controller/deployment.yaml
+
+  # preDeleteHook.containerSecurityContext and preDeleteHook.podSecurityContext
+  - it: "preDeleteHook security contexts alone render on both hook Jobs as on main"
+    set:
+      telemetry.metrics: true
+      preDeleteHook:
+        containerSecurityContext:
+          readOnlyRootFilesystem: false
+        podSecurityContext:
+          runAsUser: 1234
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            runAsUser: 1234
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop: [ALL]
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            runAsUser: 1234
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/post-install-hook.yaml
+
+  - it: "preDeleteHook security contexts win over preDeleteJob and postInstallJob"
+    set:
+      telemetry.metrics: true
+      preDeleteHook:
+        containerSecurityContext:
+          readOnlyRootFilesystem: false
+        podSecurityContext:
+          runAsUser: 1234
+      preDeleteJob:
+        containerSecurityContext:
+          readOnlyRootFilesystem: true
+          privileged: false
+        podSecurityContext:
+          runAsUser: 10
+      postInstallJob:
+        containerSecurityContext:
+          readOnlyRootFilesystem: true
+        podSecurityContext:
+          runAsUser: 11
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            privileged: false
+            capabilities:
+              drop: [ALL]
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1234
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop: [ALL]
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1234
+        template: controller/post-install-hook.yaml
+
+  - it: "preDeleteJob and postInstallJob security contexts alone"
+    set:
+      telemetry.metrics: true
+      preDeleteJob:
+        podSecurityContext:
+          runAsUser: 10
+      postInstallJob:
+        containerSecurityContext:
+          readOnlyRootFilesystem: false
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 10
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+        template: controller/pre-delete-hook.yaml
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop: [ALL]
+        template: controller/post-install-hook.yaml
+
+  # affinity
+  - it: "affinity alone renders on the controller as on main"
+    set:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: old, operator: Exists}
+    asserts:
+      - equal:
+          path: spec.template.spec.affinity
+          value:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: old, operator: Exists}
+        template: controller/deployment.yaml
+
+  - it: "affinity wins verbatim over controller.affinity and is not merged with global.affinity"
+    set:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: old, operator: Exists}
+      controller.affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+      global.affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 2
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+    asserts:
+      - equal:
+          path: spec.template.spec.affinity
+          value:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: old, operator: Exists}
+        template: controller/deployment.yaml
+
+  - it: "controller.affinity alone merges with global.affinity"
+    set:
+      controller.affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+      global.affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 2
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+    asserts:
+      - equal:
+          path: spec.template.spec.affinity
+          value:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 1
+                  podAffinityTerm:
+                    topologyKey: kubernetes.io/hostname
+            podAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 2
+                  podAffinityTerm:
+                    topologyKey: kubernetes.io/hostname
+        template: controller/deployment.yaml
+
+  # logLevel
+  - it: "logLevel alone renders on the controller and the pre-delete Job as on main"
+    set:
+      logLevel: debug
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=debug
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=debug
+        template: controller/pre-delete-hook.yaml
+
+  - it: "logLevel wins over controller.logLevel, preDeleteJob.logLevel and global.logLevel"
+    set:
+      logLevel: debug
+      global.logLevel: warn
+      controller.logLevel: error
+      preDeleteJob.logLevel: warn
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=debug
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=error
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=debug
+        template: controller/pre-delete-hook.yaml
+
+  - it: "controller.logLevel and preDeleteJob.logLevel alone"
+    set:
+      controller.logLevel: error
+      preDeleteJob.logLevel: warn
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=error
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=warn
+        template: controller/pre-delete-hook.yaml
+
+  # image.repository and image.tag
+  - it: "image.repository and image.tag alone render on the controller and the pre-delete Job as on main"
+    set:
+      image.repository: my/ctrl
+      image.tag: v9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/my/ctrl:v9
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/my/ctrl:v9
+        template: controller/pre-delete-hook.yaml
+
+  - it: "image.repository wins over controller.image.repository, controller.image.tag fills the tag"
+    set:
+      image.repository: old/repo
+      controller.image.repository: new/repo
+      controller.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/old/repo:v2
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/old/repo:v2
+        template: controller/pre-delete-hook.yaml
+
+  - it: "image.tag wins over controller.image.tag, controller.image.repository fills the repository"
+    set:
+      image.tag: v1
+      controller.image.repository: new/repo
+      controller.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/repo:v1
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/repo:v1
+        template: controller/pre-delete-hook.yaml
+
+  - it: "controller.image alone, the pre-delete Job uses the same image"
+    set:
+      controller.image.repository: new/repo
+      controller.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/repo:v2
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/repo:v2
+        template: controller/pre-delete-hook.yaml
+
+  # image.pullPolicy
+  - it: "image.pullPolicy alone renders on the controller and the pre-delete Job as on main"
+    set:
+      image.pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: controller/pre-delete-hook.yaml
+
+  - it: "image.pullPolicy wins over controller.image.pullPolicy and global.imagePullPolicy"
+    set:
+      image.pullPolicy: Always
+      controller.image.pullPolicy: IfNotPresent
+      global.imagePullPolicy: Never
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: controller/pre-delete-hook.yaml
+
+  # preDeleteJob.image.repository and preDeleteJob.image.tag
+  - it: "preDeleteJob.image.repository and preDeleteJob.image.tag alone render on the post-install Job as on main"
+    set:
+      telemetry.metrics: true
+      preDeleteJob.image.repository: my/kubectl
+      preDeleteJob.image.tag: v9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/my/kubectl:v9
+        template: controller/post-install-hook.yaml
+
+  - it: "preDeleteJob.image.repository wins over postInstallJob.image.repository, postInstallJob.image.tag fills the tag"
+    set:
+      telemetry.metrics: true
+      preDeleteJob.image.repository: old/kubectl
+      postInstallJob.image.repository: new/kubectl
+      postInstallJob.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/old/kubectl:v2
+        template: controller/post-install-hook.yaml
+
+  - it: "preDeleteJob.image.tag wins over postInstallJob.image.tag, postInstallJob.image.repository fills the repository"
+    set:
+      telemetry.metrics: true
+      preDeleteJob.image.tag: v1
+      postInstallJob.image.repository: new/kubectl
+      postInstallJob.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/kubectl:v1
+        template: controller/post-install-hook.yaml
+
+  # podAnnotations
+  - it: "podAnnotations alone renders on the controller pods as on main"
+    set:
+      podAnnotations:
+        foo: bar
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            foo: bar
+        template: controller/deployment.yaml
+      - notExists:
+          path: spec.jobTemplate.spec.template.metadata.annotations.foo
+        template: controller/audit-scanner.yaml
+
+  - it: "podAnnotations wins over controller.podAnnotations"
+    set:
+      podAnnotations:
+        foo: old
+      controller.podAnnotations:
+        foo: new
+        other: x
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            foo: old
+        template: controller/deployment.yaml
+
+  - it: "controller.podAnnotations alone"
+    set:
+      controller.podAnnotations:
+        foo: new
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            foo: new
+        template: controller/deployment.yaml
+
+  # nodeSelector
+  - it: "nodeSelector alone renders on the controller and the audit scanner as on main"
+    set:
+      nodeSelector:
+        disk: ssd
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value: {disk: ssd}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.nodeSelector
+          value: {disk: ssd}
+        template: controller/audit-scanner.yaml
+
+  - it: "nodeSelector wins over controller.nodeSelector and auditScanner.nodeSelector"
+    set:
+      nodeSelector:
+        disk: ssd
+      controller.nodeSelector:
+        zone: a
+      auditScanner.nodeSelector:
+        zone: b
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value: {disk: ssd}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.nodeSelector
+          value: {disk: ssd}
+        template: controller/audit-scanner.yaml
+
+  - it: "controller.nodeSelector and auditScanner.nodeSelector alone"
+    set:
+      controller.nodeSelector:
+        zone: a
+      auditScanner.nodeSelector:
+        zone: b
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value: {zone: a}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.nodeSelector
+          value: {zone: b}
+        template: controller/audit-scanner.yaml
+
+  # additionalEnvironmentVariables
+  - it: "additionalEnvironmentVariables alone renders in the controller env as on main"
+    set:
+      additionalEnvironmentVariables:
+        - name: FOO
+          value: bar
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: FOO
+              value: bar
+        template: controller/deployment.yaml
+
+  - it: "additionalEnvironmentVariables is appended after controller.extraEnv"
+    set:
+      additionalEnvironmentVariables:
+        - name: FOO
+          value: bar
+      global.extraEnv:
+        - name: GLOBAL
+          value: "1"
+      controller.extraEnv:
+        - name: NEW
+          value: "2"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: GLOBAL
+              value: "1"
+            - name: NEW
+              value: "2"
+            - name: FOO
+              value: bar
+        template: controller/deployment.yaml
+
+  - it: "controller.extraEnv alone"
+    set:
+      controller.extraEnv:
+        - name: NEW
+          value: "2"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: NEW
+              value: "2"
+        template: controller/deployment.yaml
+
+  # resources.<workload>
+  - it: "resources.<workload> alone renders on each workload as on main"
+    set:
+      telemetry.metrics: true
+      resources:
+        controller:
+          limits:
+            cpu: 1500m
+        auditScanner:
+          limits:
+            cpu: 2500m
+        preDeleteJob:
+          limits:
+            cpu: 300m
+        postInstallJob:
+          limits:
+            cpu: 400m
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 1500m, memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 2500m, memory: 1Gi}
+            requests: {cpu: 250m, memory: 300Mi}
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 300m, memory: 128Mi}
+            requests: {cpu: 50m, memory: 64Mi}
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 400m, memory: 128Mi}
+            requests: {cpu: 50m, memory: 64Mi}
+        template: controller/post-install-hook.yaml
+
+  - it: "resources.<workload> wins over <workload>.resources, missing leaves come from the new key"
+    set:
+      telemetry.metrics: true
+      resources:
+        controller:
+          limits:
+            cpu: 1500m
+        auditScanner:
+          requests:
+            memory: 400Mi
+        preDeleteJob:
+          limits:
+            cpu: 300m
+        postInstallJob:
+          limits:
+            cpu: 400m
+      controller.resources:
+        limits:
+          cpu: 900m
+          memory: 300Mi
+      auditScanner.resources:
+        requests:
+          memory: 500Mi
+      preDeleteJob.resources:
+        limits:
+          cpu: 30m
+      postInstallJob.resources:
+        limits:
+          cpu: 40m
+          memory: 1Gi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 1500m, memory: 300Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].resources.requests.memory
+          value: 400Mi
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 300m
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits
+          value: {cpu: 400m, memory: 1Gi}
+        template: controller/post-install-hook.yaml
+
+  - it: "a null leaf in resources.<workload> removes the leaf as on main"
+    set:
+      resources:
+        controller:
+          limits:
+            cpu: null
+        preDeleteJob:
+          limits:
+            cpu: null
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].resources
+          value:
+            limits: {memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {memory: 128Mi}
+            requests: {cpu: 50m, memory: 64Mi}
+        template: controller/pre-delete-hook.yaml
+
+  - it: "<workload>.resources alone"
+    set:
+      controller.resources:
+        limits:
+          cpu: 900m
+      auditScanner.resources:
+        requests:
+          memory: 500Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 900m
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].resources.requests.memory
+          value: 500Mi
+        template: controller/audit-scanner.yaml
+
+  # replicas
+  - it: "replicas alone renders as on main"
+    set:
+      replicas: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+        template: controller/deployment.yaml
+
+  - it: "replicas 0 alone renders 0 as on main"
+    set:
+      replicas: 0
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 0
+        template: controller/deployment.yaml
+
+  - it: "replicas wins over controller.replicas"
+    set:
+      replicas: 3
+      controller.replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+        template: controller/deployment.yaml
+
+  - it: "replicas 0 wins over controller.replicas"
+    set:
+      replicas: 0
+      controller.replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 0
+        template: controller/deployment.yaml
+
+  - it: "controller.replicas alone"
+    set:
+      controller.replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+        template: controller/deployment.yaml
+
+  # auditScanner.enable
+  - it: "auditScanner.enable false alone disables the audit scanner as on main"
+    set:
+      auditScanner.enable: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enable true alone renders the audit scanner as on main"
+    set:
+      auditScanner.enable: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enable false wins over auditScanner.enabled true"
+    set:
+      auditScanner.enable: false
+      auditScanner.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enable true wins over auditScanner.enabled false"
+    set:
+      auditScanner.enable: true
+      auditScanner.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enabled false alone disables the audit scanner"
+    set:
+      auditScanner.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enable null leaves auditScanner.enabled in charge"
+    set:
+      auditScanner.enable: null
+      auditScanner.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: controller/audit-scanner.yaml
+
+  # global.skipNamespaces (audit scanner part, the policies part is in compat_extra_test.yaml)
+  - it: "global.skipNamespaces alone renders in the audit scanner -i args as on main"
+    set:
+      global.skipNamespaces: [ns-a, ns-b]
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-a
+        template: controller/audit-scanner.yaml
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-b
+        template: controller/audit-scanner.yaml
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: kube-system
+        template: controller/audit-scanner.yaml
+
+  - it: "global.skipNamespaces wins over skipNamespaces in the audit scanner"
+    set:
+      global.skipNamespaces: [ns-a]
+      skipNamespaces: [ns-new]
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-a
+        template: controller/audit-scanner.yaml
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-new
+        template: controller/audit-scanner.yaml
+
+  - it: "global.skipNamespaces as an empty list skips no namespace in the audit scanner, as on main"
+    set:
+      global.skipNamespaces: []
+      skipNamespaces: [ns-new]
+    asserts:
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: "-i"
+        template: controller/audit-scanner.yaml
+
+  - it: "global.skipNamespaces set to null falls back to skipNamespaces in the audit scanner"
+    values:
+      - values/main-values.yaml
+    set:
+      global.skipNamespaces: null
+      skipNamespaces: [ns-new]
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-new
+        template: controller/audit-scanner.yaml
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: calico-system
+        template: controller/audit-scanner.yaml
+
+  - it: "skipNamespaces alone in the audit scanner"
+    set:
+      skipNamespaces: [ns-new]
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-new
+        template: controller/audit-scanner.yaml
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: kube-system
+        template: controller/audit-scanner.yaml

@@ -1,0 +1,323 @@
+# Compatibility of the deprecated telemetry.* and ports.metrics keys with otel.
+# The deprecated path is active when telemetry.metrics or telemetry.tracing is
+# true. Then the chart renders as on main and ignores otel.
+suite: compat - deprecated telemetry keys
+templates:
+  - controller/deployment.yaml
+  - controller/opentelemetry-collector.yaml
+  - controller/post-install-hook.yaml
+  - controller/service.yaml
+release:
+  name: t
+  namespace: kw
+tests:
+  - it: "telemetry.metrics sidecar alone renders as on main"
+    set:
+      telemetry.metrics: true
+      ports.metrics: 9999
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["sidecar.opentelemetry.io/inject"]
+          value: "true"
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metrics-bind-address=:9999
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-otel-sidecar
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-metrics
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-tracing
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: KUBEWARDEN_POLICY_SERVER_SERVICES_METRICS_PORT
+              value: "8080"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: https://localhost:4317
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+        template: controller/deployment.yaml
+      - hasDocuments:
+          count: 1
+        template: controller/opentelemetry-collector.yaml
+      - isKind:
+          of: OpenTelemetryCollector
+        template: controller/opentelemetry-collector.yaml
+      - hasDocuments:
+          count: 1
+        template: controller/post-install-hook.yaml
+      - hasDocuments:
+          count: 2
+        template: controller/service.yaml
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 9999
+        template: controller/service.yaml
+        documentIndex: 0
+
+  - it: "telemetry.tracing sidecar alone renders as on main"
+    set:
+      telemetry.tracing: true
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["sidecar.opentelemetry.io/inject"]
+          value: "true"
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-tracing
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metrics-bind-address=0
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-metrics
+        template: controller/deployment.yaml
+      - hasDocuments:
+          count: 1
+        template: controller/opentelemetry-collector.yaml
+      - hasDocuments:
+          count: 1
+        template: controller/post-install-hook.yaml
+      - hasDocuments:
+          count: 1
+        template: controller/service.yaml
+
+  - it: "telemetry custom mode alone renders as on main"
+    set:
+      telemetry.metrics: true
+      telemetry.tracing: true
+      telemetry.mode: custom
+      telemetry.custom.endpoint: https://custom:4317
+      telemetry.custom.otelCollectorCertificateSecret: old-ca
+      telemetry.custom.otelCollectorClientCertificateSecret: old-client
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["sidecar.opentelemetry.io/inject"]
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-otel-sidecar
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --opentelemetry-certificate-secret=old-ca
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --opentelemetry-client-certificate-secret=old-client
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: https://custom:4317
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "false"
+            - name: OTEL_EXPORTER_OTLP_CERTIFICATE
+              value: /kubewarden/otel-collector-certs/ca.crt
+            - name: OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE
+              value: /kubewarden/otel-collector-client-certs/tls.crt
+            - name: OTEL_EXPORTER_OTLP_CLIENT_KEY
+              value: /kubewarden/otel-collector-client-certs/tls.key
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: otel-collector-certificate
+            secret:
+              defaultMode: 420
+              secretName: old-ca
+              items:
+                - key: ca.crt
+                  path: ca.crt
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /kubewarden/otel-collector-client-certs
+            name: otel-collector-client-certificate
+            readOnly: true
+        template: controller/deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: controller/opentelemetry-collector.yaml
+      - hasDocuments:
+          count: 0
+        template: controller/post-install-hook.yaml
+
+  - it: "telemetry sidecar wins over otel"
+    set:
+      telemetry.metrics: true
+      otel.endpoint: https://new:4317
+      otel.caSecretName: new-ca
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["sidecar.opentelemetry.io/inject"]
+          value: "true"
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: https://localhost:4317
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: https://new:4317
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --opentelemetry-certificate-secret=new-ca
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: otel-ca
+            secret:
+              secretName: new-ca
+        template: controller/deployment.yaml
+      - hasDocuments:
+          count: 1
+        template: controller/opentelemetry-collector.yaml
+      - hasDocuments:
+          count: 1
+        template: controller/post-install-hook.yaml
+
+  - it: "telemetry custom mode wins over otel"
+    set:
+      telemetry.tracing: true
+      telemetry.mode: custom
+      telemetry.custom.endpoint: https://custom:4317
+      otel.endpoint: https://new:4317
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: https://custom:4317
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: https://new:4317
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-metrics
+        template: controller/deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: controller/opentelemetry-collector.yaml
+
+  - it: "telemetry keys without metrics or tracing leave otel in charge"
+    set:
+      telemetry.mode: custom
+      telemetry.custom.endpoint: https://custom:4317
+      telemetry.custom.otelCollectorCertificateSecret: old-ca
+      otel.endpoint: https://new:4317
+      otel.caSecretName: new-ca
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: https://new:4317
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: https://custom:4317
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --opentelemetry-certificate-secret=new-ca
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --opentelemetry-certificate-secret=old-ca
+        template: controller/deployment.yaml
+
+  - it: "otel alone"
+    set:
+      otel.endpoint: https://new:4317
+      otel.caSecretName: new-ca
+      otel.clientCertificateSecretName: new-client
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["sidecar.opentelemetry.io/inject"]
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metrics-bind-address=0
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-metrics
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-tracing
+        template: controller/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-otel-sidecar
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --opentelemetry-certificate-secret=new-ca
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --opentelemetry-client-certificate-secret=new-client
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: https://new:4317
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_CERTIFICATE
+            value: /otel/tls/ca/ca.crt
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: otel-ca
+            secret:
+              secretName: new-ca
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: otel-client-tls
+            secret:
+              secretName: new-client
+        template: controller/deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: controller/opentelemetry-collector.yaml
+      - hasDocuments:
+          count: 0
+        template: controller/post-install-hook.yaml
+      - hasDocuments:
+          count: 1
+        template: controller/service.yaml
