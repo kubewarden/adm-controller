@@ -1,4 +1,4 @@
-{{- if or .Values.installPolicyReportCRDs (not (hasKey .Values "installPolicyReportCRDs")) }}
+{{- if include "admission-controller.installPolicyReportCRDs" . }}
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition

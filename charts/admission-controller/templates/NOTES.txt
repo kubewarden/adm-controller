@@ -4,7 +4,7 @@ Kubewarden CRDs now available:
   clusteradmissionpolicygroups.policies.kubewarden.io
   admissionpolicygroups.policies.kubewarden.io
   policyservers.policies.kubewarden.io
-{{- if .Values.installPolicyReportCRDs }}
+{{- if include "admission-controller.installPolicyReportCRDs" . }}
 
 Policy report CRDs now available:
   policyreports.wgpolicyk8s.io
@@ -13,7 +13,7 @@ Policy report CRDs now available:
   **WARNING**:
   PolicyReport CRDs are deprecated and will be dropped in a future release.
 {{- end }}
-{{- if .Values.installOpenReportsCRDs }}
+{{- if include "admission-controller.installOpenReportsCRDs" . }}
 
 OpenReport CRDs now available:
   reports.openreports.io

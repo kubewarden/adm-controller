@@ -546,9 +546,9 @@ auditScanner:
   #
   # The CRDs used to store the audit scanner results must be installed in the
   # cluster. You can install both.
-  # If you want to use the PolicyReports CRDs, enable the
-  # installPolicyReportCRDs flag. If you want to use the OpenReports CRDs,
-  # enable the installOpenReportCRDs flag.
+  # If you want to use the PolicyReports CRDs, enable
+  # installOptionalCRDs.policyReports. If you want to use the OpenReports CRDs,
+  # enable installOptionalCRDs.openReports.
   reportCRDsKind: "openreports"
   # Additional namespaces that the audit scanner will not scan:
   skipAdditionalNamespaces: []
@@ -609,17 +609,23 @@ policy-reporter:
 # crdVersion is the apiVersion used for all default policy and PolicyServer resources
 crdVersion: "policies.kubewarden.io/v1"
 
-# CRD installation toggles
-
-# deploy policyreports.wgpolicyk8s.io, clusterpolicyreports.wgpolicyk8s.io CRDs
-# Set to false if they are already defined inside of the cluster
-#
-# These reports are marked as DEPRECATED and its support will be removed in a
-# future release, in favour of OpenReports.
-installPolicyReportCRDs: false # @schema deprecated
-# deploy reports.openreports.io, clusterreports.openreports.io CRDs
-# Set to false if they are already defined inside of the cluster
-installOpenReportsCRDs: true
+# Optional CRDs.
+installOptionalCRDs:
+  # deploy reports.openreports.io, clusterreports.openreports.io CRDs
+  # Set to false if they are already defined inside of the cluster
+  openReports: true
+  # deploy policyreports.wgpolicyk8s.io, clusterpolicyreports.wgpolicyk8s.io CRDs
+  # Set to false if they are already defined inside of the cluster
+  #
+  # These reports are marked as DEPRECATED and its support will be removed in a
+  # future release, in favour of OpenReports.
+  policyReports: false
+# Deprecated: use installOptionalCRDs.policyReports. When this key is not null,
+# it wins.
+installPolicyReportCRDs: null # @schema type:[boolean, null]; deprecated:true
+# Deprecated: use installOptionalCRDs.openReports. When this key is not null,
+# it wins.
+installOpenReportsCRDs: null # @schema type:[boolean, null]; deprecated:true
 
 # default Policy Server settings
 policyServer:

@@ -178,7 +178,7 @@ questions:
       The secret must contain the keys `tls.crt` and `tls.key`.
     group: "OpenTelemetry"
   # CRD Settings:
-  - variable: "installPolicyReportCRDs"
+  - variable: "installOptionalCRDs.policyReports"
     type: boolean
     default: false
     required: false
@@ -186,7 +186,7 @@ questions:
     description: |
       Install the PolicyReport and ClusterPolicyReport CRDs.
     group: "CRD Settings"
-  - variable: "installOpenReportsCRDs"
+  - variable: "installOptionalCRDs.openReports"
     type: boolean
     default: true
     required: false

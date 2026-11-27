@@ -358,6 +358,33 @@ cause port conflicts in host-network mode.
 {{- end -}}
 
 {{/*
+Optional CRDs.
+A deprecated key (installPolicyReportCRDs, installOpenReportsCRDs) decides
+when it is set and not null. Otherwise installOptionalCRDs decides.
+When both keys are missing, the CRDs install.
+The helpers render "true", or nothing.
+*/}}
+{{- define "admission-controller._optionalCRDs" -}}
+{{- $old := include "admission-controller._legacy" (dict "root" .root "paths" (list .old) "mode" "presence") | fromYaml -}}
+{{- $new := index (.root.Values.installOptionalCRDs | default dict) .new -}}
+{{- if hasKey $old "value" -}}
+{{- if $old.value }}true{{ end -}}
+{{- else if not (kindIs "invalid" $new) -}}
+{{- if $new }}true{{ end -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.installPolicyReportCRDs" -}}
+{{- include "admission-controller._optionalCRDs" (dict "root" . "old" "installPolicyReportCRDs" "new" "policyReports") -}}
+{{- end -}}
+
+{{- define "admission-controller.installOpenReportsCRDs" -}}
+{{- include "admission-controller._optionalCRDs" (dict "root" . "old" "installOpenReportsCRDs" "new" "openReports") -}}
+{{- end -}}
+
+{{/*
 Values of the workloads
 
 The workload templates read their values through the public helpers below.

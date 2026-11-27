@@ -380,11 +380,29 @@
             "type": "array"
         },
         "installOpenReportsCRDs": {
-            "type": "boolean"
+            "deprecated": true,
+            "type": [
+                "boolean",
+                "null"
+            ]
+        },
+        "installOptionalCRDs": {
+            "type": "object",
+            "properties": {
+                "openReports": {
+                    "type": "boolean"
+                },
+                "policyReports": {
+                    "type": "boolean"
+                }
+            }
         },
         "installPolicyReportCRDs": {
             "deprecated": true,
-            "type": "boolean"
+            "type": [
+                "boolean",
+                "null"
+            ]
         },
         "logLevel": {
             "deprecated": true,

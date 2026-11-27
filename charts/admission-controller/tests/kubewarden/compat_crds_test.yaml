@@ -1,0 +1,88 @@
+# Policy report CRDs: the deprecated installPolicyReportCRDs decides when it is
+# not null. Otherwise installOptionalCRDs.policyReports decides.
+# Truth table: old key {unset, null, false, true} x new key {false, true}.
+suite: compat - installPolicyReportCRDs and installOptionalCRDs.policyReports
+# The templates/ prefix is required: helm-unittest reads a crds/ path as the
+# top-level crds directory of the chart.
+templates:
+  - templates/crds/policyreports.yaml
+  - templates/crds/clusterpolicyreports.yaml
+release:
+  name: t
+  namespace: kw
+tests:
+  - it: "default values do not install the policy report CRDs, as on main"
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: "old unset, new false: not installed"
+    set:
+      installOptionalCRDs.policyReports: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: "old unset, new true: installed"
+    set:
+      installOptionalCRDs.policyReports: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: "old null, new false: not installed"
+    set:
+      installPolicyReportCRDs: null
+      installOptionalCRDs.policyReports: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: "old null, new true: installed"
+    set:
+      installPolicyReportCRDs: null
+      installOptionalCRDs.policyReports: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: "old false, new false: not installed"
+    set:
+      installPolicyReportCRDs: false
+      installOptionalCRDs.policyReports: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: "old false, new true: not installed (old wins)"
+    set:
+      installPolicyReportCRDs: false
+      installOptionalCRDs.policyReports: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: "old true, new false: installed (old wins)"
+    set:
+      installPolicyReportCRDs: true
+      installOptionalCRDs.policyReports: false
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: "old true, new true: installed"
+    set:
+      installPolicyReportCRDs: true
+      installOptionalCRDs.policyReports: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: "old true alone: installed, as on main"
+    set:
+      installPolicyReportCRDs: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: CustomResourceDefinition

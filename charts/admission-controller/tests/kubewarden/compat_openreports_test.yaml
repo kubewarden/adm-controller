@@ -1,0 +1,64 @@
+# OpenReports subchart. Chart.yaml has the condition
+# "installOpenReportsCRDs,installOptionalCRDs.openReports": Helm uses the first
+# path with a boolean value. installOpenReportsCRDs is null by default, so
+# installOptionalCRDs.openReports decides unless the deprecated key is set.
+# The glob selects the subchart templates. When Helm does not load the
+# subchart, the glob selects no template and the count is 0.
+suite: compat - installOpenReportsCRDs and installOptionalCRDs.openReports
+templates:
+  - charts/openreports/templates/*.yaml
+release:
+  name: t
+  namespace: kw
+tests:
+  - it: "default values install the OpenReports CRDs, as on main"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: CustomResourceDefinition
+
+  - it: "installOpenReportsCRDs false alone: not installed, as on main"
+    set:
+      installOpenReportsCRDs: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: "installOpenReportsCRDs true alone: installed, as on main"
+    set:
+      installOpenReportsCRDs: true
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: "installOptionalCRDs.openReports false alone: not installed"
+    set:
+      installOptionalCRDs.openReports: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: "installOpenReportsCRDs false wins over installOptionalCRDs.openReports true"
+    set:
+      installOpenReportsCRDs: false
+      installOptionalCRDs.openReports: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: "installOpenReportsCRDs true wins over installOptionalCRDs.openReports false"
+    set:
+      installOpenReportsCRDs: true
+      installOptionalCRDs.openReports: false
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: "installOpenReportsCRDs null leaves installOptionalCRDs.openReports in charge"
+    set:
+      installOpenReportsCRDs: null
+      installOptionalCRDs.openReports: false
+    asserts:
+      - hasDocuments:
+          count: 0
