@@ -311,6 +311,14 @@
                 "priorityClassName": {
                     "type": "string"
                 },
+                "serviceAccount": {
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "type": "object"
+                        }
+                    }
+                },
                 "skipNamespaces": {
                     "type": "array",
                     "items": {

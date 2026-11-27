@@ -110,6 +110,9 @@ global:
   extraVolumes: []
   # Extra volume mounts for all containers.
   extraVolumeMounts: []
+  serviceAccount:
+    # Annotations for the ServiceAccounts of the workloads.
+    annotations: {}
   skipNamespaces:
     - calico-apiserver
     - calico-system

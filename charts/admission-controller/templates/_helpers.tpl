@@ -346,7 +346,7 @@ admission-controller._alias resolves them. A deprecated key wins over the
 contract keys when it is set.
 
 The private helpers take dict "ctx" <context dict> "key" <key>.
-A key with a dot reads a nested map.
+A key with a dot, for example "serviceAccount.annotations", reads a nested map.
 Templates do not call the private helpers.
 */}}
 
@@ -724,6 +724,10 @@ admission-controller.podAnnotations adds ctx.extraPodAnnotations last.
 
 {{- define "admission-controller.podAnnotations" -}}
 {{- include "admission-controller._annotations" (dict "ctx" . "base" (include "admission-controller.podAnnotationsMap" . | fromYaml) "extra" .extraPodAnnotations) -}}
+{{- end -}}
+
+{{- define "admission-controller.serviceAccountAnnotations" -}}
+{{- include "admission-controller._annotations" (dict "ctx" . "base" (include "admission-controller._map" (dict "ctx" . "key" "serviceAccount.annotations") | fromYaml) "extra" .extraAnnotations) -}}
 {{- end -}}
 
 {{- define "admission-controller.workloadLabels" -}}

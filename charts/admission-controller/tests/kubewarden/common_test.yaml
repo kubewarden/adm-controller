@@ -352,3 +352,21 @@ tests:
         template: "templates/controller/post-install-hook.yaml"
       - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "volumeMounts|/common"}
         template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.serviceAccount.annotations on every ServiceAccount"
+    set:
+      common:
+        serviceAccount:
+          annotations:
+            example.com/role: common
+    asserts:
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
+        template: "templates/controller/controller-serviceaccount.yaml"
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
+        template: "templates/controller/audit-scanner-serviceaccount.yaml"
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: ServiceAccount}
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0

@@ -456,6 +456,29 @@ tests:
       - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "volumeMounts|/etc/extra-ca"}
         template: "templates/defaults/defaults-configmap.yaml"
 
+  # The pre-delete and post-install Jobs run with the controller ServiceAccount.
+  # The pre-upgrade Job has its own ServiceAccount.
+  - it: "should render global.serviceAccount.annotations on every ServiceAccount"
+    set:
+      global:
+        serviceAccount:
+          annotations:
+            example.com/role: kubewarden
+    asserts:
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: kubewarden}
+        template: "templates/controller/controller-serviceaccount.yaml"
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: kubewarden}
+        template: "templates/controller/audit-scanner-serviceaccount.yaml"
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: kubewarden}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: ServiceAccount}
+      - isKind: {of: ServiceAccount}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0
+      - equal: {path: 'metadata.annotations["example.com/role"]', value: kubewarden}
+        template: "templates/defaults/policy-server-rbac.yaml"
+        documentIndex: 0
+
   - it: "should render global.imageRegistry on every workload and on the recommended policies"
     set:
       global:
