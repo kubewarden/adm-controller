@@ -63,6 +63,13 @@
                     "type": "boolean"
                 },
                 "enable": {
+                    "deprecated": true,
+                    "type": [
+                        "boolean",
+                        "null"
+                    ]
+                },
+                "enabled": {
                     "type": "boolean"
                 },
                 "image": {

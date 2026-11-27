@@ -1,5 +1,5 @@
 {{- $ctx := dict "root" $ "workload" "auditScanner" "component" "audit-scanner" }}
-{{- if .Values.auditScanner.enable }}
+{{- if include "admission-controller.enabled" $ctx }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:

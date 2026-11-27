@@ -438,7 +438,9 @@ mTLS:
 replicas: null # @schema type:[integer, null]; deprecated:true
 
 auditScanner:
-  enable: true
+  enabled: true
+  # Deprecated: use auditScanner.enabled. When both are set, this key wins.
+  enable: null # @schema type:[boolean, null]; deprecated:true
   policyReporter: false
   # The default audit-scanner ServiceAccount is bound to the ClusterRoles:
   # - view: Allows read-only access to most objects in a namespace.

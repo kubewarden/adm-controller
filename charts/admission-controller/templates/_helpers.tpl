@@ -463,6 +463,7 @@ controller:
   podSecurityContext: {paths: [podSecurityContext], mode: map}
   containerSecurityContext: {paths: [containerSecurityContext], mode: map}
 auditScanner:
+  enabled: {paths: [auditScanner.enable], mode: presence}
   resources: {paths: [resources.auditScanner], mode: map}
   podSecurityContext: {paths: [podSecurityContext], mode: map}
   containerSecurityContext: {paths: [containerSecurityContext], mode: map}
@@ -559,6 +560,17 @@ or 1 when no value is set.
 1
 {{- else -}}
 {{- $value -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller.enabled renders "true" when the workload is enabled,
+or nothing. A workload without a value is enabled.
+*/}}
+{{- define "admission-controller.enabled" -}}
+{{- $value := (include "admission-controller._workload" (dict "ctx" . "key" "enabled") | fromYaml).value -}}
+{{- if or (kindIs "invalid" $value) $value -}}
+true
 {{- end -}}
 {{- end -}}
 

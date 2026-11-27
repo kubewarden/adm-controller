@@ -650,3 +650,55 @@ tests:
           path: spec.replicas
           value: 2
         template: controller/deployment.yaml
+
+  # auditScanner.enable
+  - it: "auditScanner.enable false alone disables the audit scanner as on main"
+    set:
+      auditScanner.enable: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enable true alone renders the audit scanner as on main"
+    set:
+      auditScanner.enable: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enable false wins over auditScanner.enabled true"
+    set:
+      auditScanner.enable: false
+      auditScanner.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enable true wins over auditScanner.enabled false"
+    set:
+      auditScanner.enable: true
+      auditScanner.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enabled false alone disables the audit scanner"
+    set:
+      auditScanner.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: controller/audit-scanner.yaml
+
+  - it: "auditScanner.enable null leaves auditScanner.enabled in charge"
+    set:
+      auditScanner.enable: null
+      auditScanner.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: controller/audit-scanner.yaml
