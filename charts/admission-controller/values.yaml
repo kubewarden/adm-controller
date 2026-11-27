@@ -17,6 +17,9 @@ global:
   # Registry for all chart images and for the recommended policies.
   # If you set it, it replaces the image.registry of every workload block.
   imageRegistry: ""
+  # Pull policy for the chart images: Always, IfNotPresent, or Never.
+  # The image.pullPolicy of a workload block replaces it.
+  imagePullPolicy: IfNotPresent
   # affinity:
   #   podAffinity:
   #     requiredDuringSchedulingIgnoredDuringExecution:
@@ -128,6 +131,8 @@ controller:
     tag: v1.39.0
     # Registry for the image. global.imageRegistry replaces it when set.
     registry: ghcr.io
+    # Pull policy for the image. If it is empty, the chart uses common.imagePullPolicy, then global.imagePullPolicy.
+    pullPolicy: ""
 
 # Secrets to pull container images from private registries
 imagePullSecrets: []
@@ -318,14 +323,14 @@ telemetry:
       # tls:
       #  insecure: true
 
-# Deprecated: use controller.image.repository and controller.image.tag.
-# When both are set, this key wins.
+# Deprecated: use controller.image.repository, controller.image.tag, and
+# controller.image.pullPolicy. When both are set, this key wins.
 # The init container of the controller pod, and the pre-delete and
 # pre-upgrade Jobs, use the same image.
-image:
+image: # @schema deprecated:true
   repository: "" # @schema deprecated:true
   tag: "" # @schema deprecated:true
-  pullPolicy: IfNotPresent
+  pullPolicy: "" # @schema deprecated:true
 preDeleteJob:
   # Deprecated: use postInstallJob.image.repository and postInstallJob.image.tag.
   # When both are set, this key wins.
@@ -339,6 +344,8 @@ postInstallJob:
     tag: v9.0.2
     # Registry for the image. global.imageRegistry replaces it when set.
     registry: ghcr.io
+    # Pull policy for the image. If it is empty, the chart uses common.imagePullPolicy, then global.imagePullPolicy.
+    pullPolicy: ""
 podAnnotations: {}
 nodeSelector: {}
 # additionalEnvironmentVariables is a list of additional environment variables
@@ -414,7 +421,8 @@ auditScanner:
     tag: v1.39.0
     # Registry for the image. global.imageRegistry replaces it when set.
     registry: ghcr.io
-    pullPolicy: IfNotPresent
+    # Pull policy for the image. If it is empty, the chart uses common.imagePullPolicy, then global.imagePullPolicy.
+    pullPolicy: ""
   cronJob:
     schedule: "0 * * * *" # every 60 minutes
     failedJobsHistoryLimit: 5

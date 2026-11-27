@@ -179,7 +179,9 @@ spec:
       containers:
         - name: kubewarden-pre-upgrade
           image: '{{ template "system_default_registry" $controllerCtx }}{{ $legacyImage.repository | default $controllerImage.repository }}:{{ $legacyImage.tag | default $controllerImage.tag }}'
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with include "admission-controller.imagePullPolicy" $controllerCtx }}
+          imagePullPolicy: {{ . }}
+          {{- end }}
           command:
             - /controller
           args:

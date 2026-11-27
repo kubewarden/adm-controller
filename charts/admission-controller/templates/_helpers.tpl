@@ -360,3 +360,122 @@ cause port conflicts in host-network mode.
 {{- fail "hostNetwork and telemetry.mode=sidecar are incompatible: OpenTelemetry sidecar injection causes port conflicts in host-network mode. Use telemetry.mode=custom with a remote collector instead." -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Values of the workloads
+
+The workload templates read their values through the public helpers below.
+Each public helper takes a context dict:
+  root:      the root context ($)
+  workload:  the name of the workload block in .Values: "controller",
+             "auditScanner", "policyServer", "preDeleteJob" or "postInstallJob"
+  component: the value of the app.kubernetes.io/component label, for example "audit-scanner"
+
+A template builds the context dict once:
+  {{- $ctx := dict "root" $ "workload" "controller" "component" "controller" }}
+
+The image registry and the pull policy of a workload are in its image map:
+  system_default_registry (above): global.imageRegistry, else the workload image.registry, else ghcr.io when the image has no registry key.
+  admission-controller.imagePullPolicy: the workload image.pullPolicy, else common.imagePullPolicy,
+                                        else global.imagePullPolicy.
+
+Some keys of earlier chart versions are deprecated aliases of these keys.
+admission-controller._alias resolves them. A deprecated key wins over the
+contract keys when it is set.
+
+The private helpers take dict "ctx" <context dict> "key" <key>.
+A key with a dot reads a nested map.
+Templates do not call the private helpers.
+*/}}
+
+{{/*
+admission-controller._levels renders a YAML list with three items:
+the value of the key in global, in common, and in the workload block.
+The other private helpers decode this list, so they work on copies of .Values.
+*/}}
+{{- define "admission-controller._levels" -}}
+{{- $values := .ctx.root.Values -}}
+{{- $blocks := list ($values.global | default dict) ($values.common | default dict) (index $values .ctx.workload | default dict) -}}
+{{- $out := list -}}
+{{- range $block := $blocks -}}
+{{- $value := $block -}}
+{{- range $part := splitList "." $.key -}}
+{{- $value = index ($value | default dict) $part -}}
+{{- end -}}
+{{- $out = append $out $value -}}
+{{- end -}}
+{{- toYaml $out -}}
+{{- end -}}
+
+{{/*
+admission-controller._legacy resolves deprecated keys. A deprecated key wins
+over the contract keys when it is set.
+It takes dict "root" <root context> "paths" <list of dotted paths> "mode" <mode>.
+It renders "value: <value>" with the first deprecated key that is set,
+or {} when no deprecated key is set.
+Callers test the result with hasKey, so 0 and false count as set.
+The modes:
+  presence: set means not null. For booleans and integers.
+  string:   set means not empty.
+*/}}
+{{- define "admission-controller._legacy" -}}
+{{- $out := dict -}}
+{{- range $path := .paths -}}
+{{- if not (hasKey $out "value") -}}
+{{- $value := $.root.Values -}}
+{{- range $part := splitList "." $path -}}
+{{- if kindIs "map" $value -}}
+{{- $value = index $value $part -}}
+{{- else -}}
+{{- $value = index (dict) "missing" -}}
+{{- end -}}
+{{- end -}}
+{{- $set := false -}}
+{{- if eq $.mode "presence" -}}
+{{- $set = not (kindIs "invalid" $value) -}}
+{{- else -}}
+{{- $set = not (empty $value) -}}
+{{- end -}}
+{{- if $set -}}
+{{- $_ := set $out "value" $value -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $out -}}
+{{- end -}}
+
+{{/*
+admission-controller._aliases lists the deprecated keys of each workload key.
+*/}}
+{{- define "admission-controller._aliases" -}}
+controller:
+  imagePullPolicy: {paths: [image.pullPolicy], mode: string}
+{{- end -}}
+
+{{/*
+admission-controller._alias resolves the deprecated keys of one workload key
+with admission-controller._legacy.
+It takes dict "ctx" <context dict> "key" <key>.
+It renders {} when the key has no deprecated alias.
+*/}}
+{{- define "admission-controller._alias" -}}
+{{- $table := include "admission-controller._aliases" . | fromYaml -}}
+{{- $alias := index (index $table .ctx.workload | default dict) .key | default dict -}}
+{{- if $alias -}}
+{{- include "admission-controller._legacy" (dict "root" .ctx.root "paths" $alias.paths "mode" $alias.mode) -}}
+{{- else -}}
+{}
+{{- end -}}
+{{- end -}}
+
+{{/* Public helpers that render a bare value. */}}
+
+{{- define "admission-controller.imagePullPolicy" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "imagePullPolicy") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- $old.value -}}
+{{- else -}}
+{{- $l := include "admission-controller._levels" (dict "ctx" . "key" "imagePullPolicy") | fromYamlArray -}}
+{{- (include "admission-controller._image" . | fromYaml).pullPolicy | default (index $l 1) | default (index $l 0) | default "" -}}
+{{- end -}}
+{{- end -}}

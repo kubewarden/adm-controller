@@ -1,0 +1,34 @@
+suite: "Values contract: common"
+templates:
+  - "templates/controller/deployment.yaml"
+  - "templates/controller/audit-scanner.yaml"
+  - "templates/controller/pre-delete-hook.yaml"
+  - "templates/controller/pre-upgrade-hook.yaml"
+  - "templates/controller/post-install-hook.yaml"
+  - "templates/defaults/defaults-configmap.yaml"
+  - "templates/controller/controller-serviceaccount.yaml"
+  - "templates/controller/audit-scanner-serviceaccount.yaml"
+  - "templates/defaults/policy-server-rbac.yaml"
+# The post-install Job renders only with the deprecated telemetry sidecar mode.
+set:
+  telemetry:
+    metrics: true
+tests:
+  - it: "should render common.imagePullPolicy on every workload"
+    set:
+      common:
+        imagePullPolicy: Never
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/post-install-hook.yaml"

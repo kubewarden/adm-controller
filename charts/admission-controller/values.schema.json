@@ -120,6 +120,9 @@
                 "image": {
                     "type": "object",
                     "properties": {
+                        "pullPolicy": {
+                            "type": "string"
+                        },
                         "registry": {
                             "type": "string"
                         },
@@ -145,6 +148,9 @@
                 "affinity": {
                     "type": "object"
                 },
+                "imagePullPolicy": {
+                    "type": "string"
+                },
                 "imageRegistry": {
                     "type": "string"
                 },
@@ -163,9 +169,11 @@
             "type": "boolean"
         },
         "image": {
+            "deprecated": true,
             "type": "object",
             "properties": {
                 "pullPolicy": {
+                    "deprecated": true,
                     "type": "string"
                 },
                 "repository": {
@@ -449,6 +457,9 @@
                 "image": {
                     "type": "object",
                     "properties": {
+                        "pullPolicy": {
+                            "type": "string"
+                        },
                         "registry": {
                             "type": "string"
                         },

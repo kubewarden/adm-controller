@@ -63,7 +63,7 @@ spec:
       initContainers:
       - name: init
         image: '{{ template "system_default_registry" $ctx }}{{ $legacyImage.repository | default $wImage.repository }}:{{ $legacyImage.tag | default $wImage.tag }}'
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        imagePullPolicy: {{ include "admission-controller.imagePullPolicy" $ctx }}
         command:
         - /controller
         args:
@@ -168,7 +168,7 @@ spec:
         {{- end }}
 
         image: '{{ template "system_default_registry" $ctx }}{{ $legacyImage.repository | default $wImage.repository }}:{{ $legacyImage.tag | default $wImage.tag }}'
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        imagePullPolicy: {{ include "admission-controller.imagePullPolicy" $ctx }}
         livenessProbe:
           httpGet:
             path: /healthz

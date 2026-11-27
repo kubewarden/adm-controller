@@ -52,6 +52,9 @@ spec:
       containers:
         - name: post-install-job
           image: '{{ template "system_default_registry" $ctx }}{{ $legacyImage.repository | default $kubectlImage.repository }}:{{ $legacyImage.tag | default $kubectlImage.tag }}'
+          {{- with include "admission-controller.imagePullPolicy" $ctx }}
+          imagePullPolicy: {{ . }}
+          {{- end }}
           command: ["kubectl", "--namespace", "{{ include "admission-controller.namespace" . }}", "rollout", "restart", "deployment", {{ include "admission-controller.fullname" . }}]
           env:
             - name: KUBERLR_ALLOWDOWNLOAD

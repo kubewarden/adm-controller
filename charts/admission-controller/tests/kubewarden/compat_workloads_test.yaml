@@ -71,6 +71,35 @@ tests:
           value: ghcr.io/new/repo:v2
         template: controller/pre-delete-hook.yaml
 
+  # image.pullPolicy
+  - it: "image.pullPolicy alone renders on the controller and the pre-delete Job as on main"
+    set:
+      image.pullPolicy: Always
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: controller/pre-delete-hook.yaml
+
+  - it: "image.pullPolicy wins over controller.image.pullPolicy and global.imagePullPolicy"
+    set:
+      image.pullPolicy: Always
+      controller.image.pullPolicy: IfNotPresent
+      global.imagePullPolicy: Never
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
+        template: controller/pre-delete-hook.yaml
+
   # preDeleteJob.image.repository and preDeleteJob.image.tag
   - it: "preDeleteJob.image.repository and preDeleteJob.image.tag alone render on the post-install Job as on main"
     set:

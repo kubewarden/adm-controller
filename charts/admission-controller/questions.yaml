@@ -11,6 +11,18 @@ questions:
       Registry for all chart images and for the recommended policies.
       Leave it empty to use the default registry of each image.
     group: "Global settings"
+  - variable: "global.imagePullPolicy"
+    type: enum
+    options:
+      - "IfNotPresent"
+      - "Always"
+      - "Never"
+    default: "IfNotPresent"
+    required: false
+    label: Image pull policy
+    description: |
+      Pull policy for all chart images.
+    group: "Global settings"
   # Audit checks:
   - variable: "auditScanner.enable"
     type: boolean

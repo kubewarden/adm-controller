@@ -58,7 +58,7 @@ spec:
           containers:
           - name: audit-scanner
             image: '{{ template "system_default_registry" $ctx }}{{ .Values.auditScanner.image.repository }}:{{ .Values.auditScanner.image.tag }}'
-            imagePullPolicy: {{ .Values.auditScanner.image.pullPolicy }}
+            imagePullPolicy: {{ include "admission-controller.imagePullPolicy" $ctx }}
             command:
               {{- include "audit-scanner.command" . | nindent 14 }}
             volumeMounts:

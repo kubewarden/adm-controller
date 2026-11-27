@@ -14,6 +14,25 @@ set:
   telemetry:
     metrics: true
 tests:
+  - it: "should render global.imagePullPolicy on every workload"
+    set:
+      global:
+        imagePullPolicy: Always
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/post-install-hook.yaml"
+
   - it: "should render global.imageRegistry on every workload and on the recommended policies"
     set:
       global:

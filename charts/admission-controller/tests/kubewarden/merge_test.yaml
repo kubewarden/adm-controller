@@ -103,6 +103,79 @@ tests:
       - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  image: kubewarden/adm-controller/policy-server:'}
         template: "templates/defaults/defaults-configmap.yaml"
 
+  # The pre-delete Job runs the controller image, so it uses
+  # controller.image.pullPolicy.
+  - it: "should prefer the image.pullPolicy of each workload over common and global"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        imagePullPolicy: IfNotPresent
+      common:
+        imagePullPolicy: Never
+      controller:
+        image:
+          pullPolicy: Always
+      auditScanner:
+        image:
+          pullPolicy: Always
+      postInstallJob:
+        image:
+          pullPolicy: Always
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should prefer the image.pullPolicy of each workload over global.imagePullPolicy"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        imagePullPolicy: Never
+      controller:
+        image:
+          pullPolicy: Always
+      auditScanner:
+        image:
+          pullPolicy: IfNotPresent
+      postInstallJob:
+        image:
+          pullPolicy: Always
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should render the image.pullPolicy of a workload on that workload only"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        imagePullPolicy: Never
+      auditScanner:
+        image:
+          pullPolicy: Always
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Always}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/post-install-hook.yaml"
+
   - it: "should prefer recommendedPolicies.defaultPoliciesRegistry over global.imageRegistry for the policies"
     set:
       recommendedPolicies:
