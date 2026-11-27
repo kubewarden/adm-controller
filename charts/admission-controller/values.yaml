@@ -10,9 +10,10 @@ fullnameOverride: ""
 # Leave empty to use the release namespace.
 namespaceOverride: ""
 
-# Common settings across multiple charts. These settings will be used
-# by more than one chart and they ideally need to match during the
-# installation of the charts consuming this values.
+# global holds the settings for all workloads.
+# A parent chart can also set these keys.
+# The workloads are: controller, auditScanner, policyServer (the default
+# PolicyServer), preDeleteJob and postInstallJob (the Helm hook Jobs).
 global:
   # Registry for all chart images and for the recommended policies.
   # If you set it, it replaces the image.registry of every workload block.
@@ -147,6 +148,12 @@ otel:
   # This secret must contain `tls.crt` and `tls.key` keys.
   clientCertificateSecretName: ""
 
+# Each workload block also accepts every key of global,
+# except imageRegistry and imagePullPolicy: a workload block sets them in image.registry and image.pullPolicy.
+# A value in a workload block replaces the value in global.
+# Exception: global.imageRegistry wins over the image.registry of a workload block.
+# policyServer.image has no pullPolicy, because the PolicyServer CRD has no pull policy field.
+# The otel key has an effect in the controller block only.
 controller:
   # The init container of the controller pod, and the pre-delete and
   # pre-upgrade Jobs, run this image too.
@@ -425,6 +432,10 @@ image: # @schema deprecated:true
   repository: "" # @schema deprecated:true
   tag: "" # @schema deprecated:true
   pullPolicy: "" # @schema deprecated:true
+# The Helm hook Jobs. The pre-delete and pre-upgrade Jobs run the controller
+# image in cleanup and pre-upgrade mode, so they use controller.image. Both
+# Jobs use the values of preDeleteJob. The post-install Job restarts the
+# controller when the deprecated telemetry sidecar mode is active.
 preDeleteJob:
   # Deprecated: use postInstallJob.image.repository and postInstallJob.image.tag.
   # When both are set, this key wins.
@@ -628,6 +639,14 @@ installPolicyReportCRDs: null # @schema type:[boolean, null]; deprecated:true
 installOpenReportsCRDs: null # @schema type:[boolean, null]; deprecated:true
 
 # default Policy Server settings
+# The default PolicyServer takes the keys of global that its CRD supports:
+# imageRegistry, imagePullSecrets (through the controller), logLevel, labels,
+# annotations, podLabels, podAnnotations, tolerations, affinity,
+# priorityClassName, extraEnv, and
+# serviceAccount.annotations.
+# It does not take nodeSelector, topologySpreadConstraints, extraEnvFrom,
+# extraVolumes, or extraVolumeMounts, because the PolicyServer CRD has no
+# fields for them.
 policyServer:
   enabled: true
   replicas: 1
