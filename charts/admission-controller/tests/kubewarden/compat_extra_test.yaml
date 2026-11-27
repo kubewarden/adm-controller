@@ -45,6 +45,53 @@ tests:
 
   # The tests with hostile additionalLabels are in compat_labels_test.yaml.
 
+  # global.skipNamespaces in the recommended policies
+  - it: "global.skipNamespaces alone renders in the recommended policies namespace selector as on main"
+    set:
+      recommendedPolicies.enabled: true
+      global.skipNamespaces: [ns-a, ns-b]
+    asserts:
+      - matchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: '(?m)^      values:\n      - ns-a\n      - ns-b\n  settings:'
+        template: defaults/defaults-configmap.yaml
+
+  - it: "global.skipNamespaces wins over skipNamespaces in the recommended policies"
+    set:
+      recommendedPolicies.enabled: true
+      global.skipNamespaces: [ns-a]
+      skipNamespaces: [ns-new]
+    asserts:
+      - matchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: '(?m)^      values:\n      - ns-a\n  settings:'
+        template: defaults/defaults-configmap.yaml
+      - notMatchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: 'ns-new'
+        template: defaults/defaults-configmap.yaml
+
+  - it: "global.skipNamespaces as an empty list skips no namespace in the recommended policies, as on main"
+    set:
+      recommendedPolicies.enabled: true
+      global.skipNamespaces: []
+      skipNamespaces: [ns-new]
+    asserts:
+      - notMatchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: 'kube-system|ns-new'
+        template: defaults/defaults-configmap.yaml
+
+  - it: "skipNamespaces alone in the recommended policies"
+    set:
+      recommendedPolicies.enabled: true
+      skipNamespaces: [ns-new]
+    asserts:
+      - matchRegex:
+          path: data["allow-privilege-escalation.yaml"]
+          pattern: '(?m)^      values:\n      - ns-new\n  settings:'
+        template: defaults/defaults-configmap.yaml
+
   # NOTES.txt and the defaults ConfigMap use the same policy registry.
   - it: "NOTES.txt lists the recommended policies from global.imageRegistry, as the defaults ConfigMap"
     set:

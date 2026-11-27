@@ -127,50 +127,9 @@ global:
     # Name of secret containing the client certificate and key used to authenticate to the collector (mTLS).
     # This secret must contain `tls.crt` and `tls.key` keys.
     clientCertificateSecretName: ""
-  skipNamespaces:
-    - calico-apiserver
-    - calico-system
-    - capi-system
-    - cattle-capi-system
-    - cattle-alerting
-    - cattle-csp-adapter-system
-    - cattle-elemental-system
-    - cattle-epinio-system
-    - cattle-externalip-system
-    - cattle-fleet-local-system
-    - cattle-fleet-system
-    - cattle-gatekeeper-system
-    - cattle-global-data
-    - cattle-global-nt
-    - cattle-impersonation-system
-    - cattle-istio
-    - cattle-istio-system
-    - cattle-logging
-    - cattle-logging-system
-    - cattle-monitoring-system
-    - cattle-neuvector-system
-    - cattle-prometheus
-    - cattle-provisioning-capi-system
-    - cattle-resources-system
-    - cattle-sriov-system
-    - cattle-system
-    - cattle-turtles-system
-    - cattle-ui-plugin-system
-    - cattle-windows-gmsa-system
-    - cattle-sbomscanner-system
-    - cattle-runtime-enforcer-system
-    - cert-manager
-    - cis-operator-system
-    - fleet-default
-    - ingress-nginx
-    - istio-system
-    - kube-node-lease
-    - kube-public
-    - kube-system
-    - longhorn-system
-    - rancher-alerting-drivers
-    - security-scan
-    - tigera-operator
+  # Deprecated: use skipNamespaces. When this key is not null, it wins.
+  # An empty list skips no namespace.
+  skipNamespaces: null # @schema type:[array, null]; item:string; deprecated:true
 
 # Telemetry export configuration for this chart.
 # The controller exports telemetry, and it configures every PolicyServer to
@@ -226,6 +185,53 @@ controller:
   # PodDisruptionBudget for the pods.
   # If you set minAvailable or maxUnavailable, the chart creates the PodDisruptionBudget.
   podDisruptionBudget: {}
+
+# skipNamespaces lists the namespaces that the audit scanner and the
+# recommended policies skip.
+skipNamespaces:
+  - calico-apiserver
+  - calico-system
+  - capi-system
+  - cattle-capi-system
+  - cattle-alerting
+  - cattle-csp-adapter-system
+  - cattle-elemental-system
+  - cattle-epinio-system
+  - cattle-externalip-system
+  - cattle-fleet-local-system
+  - cattle-fleet-system
+  - cattle-gatekeeper-system
+  - cattle-global-data
+  - cattle-global-nt
+  - cattle-impersonation-system
+  - cattle-istio
+  - cattle-istio-system
+  - cattle-logging
+  - cattle-logging-system
+  - cattle-monitoring-system
+  - cattle-neuvector-system
+  - cattle-prometheus
+  - cattle-provisioning-capi-system
+  - cattle-resources-system
+  - cattle-sriov-system
+  - cattle-system
+  - cattle-turtles-system
+  - cattle-ui-plugin-system
+  - cattle-windows-gmsa-system
+  - cattle-sbomscanner-system
+  - cattle-runtime-enforcer-system
+  - cert-manager
+  - cis-operator-system
+  - fleet-default
+  - ingress-nginx
+  - istio-system
+  - kube-node-lease
+  - kube-public
+  - kube-system
+  - longhorn-system
+  - rancher-alerting-drivers
+  - security-scan
+  - tigera-operator
 
 # Deprecated: use global.imagePullSecrets or the imagePullSecrets of a workload
 # block. The chart adds these secrets after global.imagePullSecrets, on every

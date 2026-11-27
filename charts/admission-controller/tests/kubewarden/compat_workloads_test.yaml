@@ -970,3 +970,74 @@ tests:
       - hasDocuments:
           count: 1
         template: controller/audit-scanner.yaml
+
+  # global.skipNamespaces (audit scanner part, the policies part is in compat_extra_test.yaml)
+  - it: "global.skipNamespaces alone renders in the audit scanner -i args as on main"
+    set:
+      global.skipNamespaces: [ns-a, ns-b]
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-a
+        template: controller/audit-scanner.yaml
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-b
+        template: controller/audit-scanner.yaml
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: kube-system
+        template: controller/audit-scanner.yaml
+
+  - it: "global.skipNamespaces wins over skipNamespaces in the audit scanner"
+    set:
+      global.skipNamespaces: [ns-a]
+      skipNamespaces: [ns-new]
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-a
+        template: controller/audit-scanner.yaml
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-new
+        template: controller/audit-scanner.yaml
+
+  - it: "global.skipNamespaces as an empty list skips no namespace in the audit scanner, as on main"
+    set:
+      global.skipNamespaces: []
+      skipNamespaces: [ns-new]
+    asserts:
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: "-i"
+        template: controller/audit-scanner.yaml
+
+  - it: "global.skipNamespaces set to null falls back to skipNamespaces in the audit scanner"
+    values:
+      - values/main-values.yaml
+    set:
+      global.skipNamespaces: null
+      skipNamespaces: [ns-new]
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-new
+        template: controller/audit-scanner.yaml
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: calico-system
+        template: controller/audit-scanner.yaml
+
+  - it: "skipNamespaces alone in the audit scanner"
+    set:
+      skipNamespaces: [ns-new]
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: ns-new
+        template: controller/audit-scanner.yaml
+      - notContains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: kube-system
+        template: controller/audit-scanner.yaml

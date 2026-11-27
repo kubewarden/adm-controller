@@ -222,6 +222,21 @@ It takes the context dict of the workload helpers.
 {{- toYaml ($block.image | default dict) -}}
 {{- end -}}
 
+{{/*
+admission-controller.skipNamespaces renders the YAML list of the namespaces
+that the audit scanner and the recommended policies skip.
+The deprecated global.skipNamespaces wins when it is not null.
+An empty list is a value: it skips no namespace, as the new key does.
+*/}}
+{{- define "admission-controller.skipNamespaces" -}}
+{{- $old := include "admission-controller._legacy" (dict "root" . "paths" (list "global.skipNamespaces") "mode" "presence") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- toYaml $old.value -}}
+{{- else -}}
+{{- toYaml (.Values.skipNamespaces | default list) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "audit-scanner.command" -}}
 {{- $ctx := dict "root" . "workload" "auditScanner" "component" "audit-scanner" -}}
 {{- $parallelNamespaces := .Values.auditScanner.parallelNamespaces | int -}}
@@ -263,7 +278,7 @@ It takes the context dict of the workload helpers.
 {{- if .Values.auditScanner.outputScan }}
 - --output-scan
 {{- end }}
-{{- range .Values.global.skipNamespaces }}
+{{- range include "admission-controller.skipNamespaces" . | fromYamlArray }}
 - {{ printf "-i" }}
 - {{ printf "%s" . }}
 {{- end -}}
@@ -310,7 +325,7 @@ namespaceSelector:
   - key: "kubernetes.io/metadata.name"
     operator: NotIn
     values:
-{{- with .Values.global.skipNamespaces }}
+{{- with include "admission-controller.skipNamespaces" . | fromYamlArray }}
       {{- toYaml . | nindent 4 }}
 {{- end }}
 {{- with .Values.recommendedPolicies.skipAdditionalNamespaces }}

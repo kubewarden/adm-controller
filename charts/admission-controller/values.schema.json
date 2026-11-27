@@ -337,7 +337,11 @@
                     }
                 },
                 "skipNamespaces": {
-                    "type": "array",
+                    "deprecated": true,
+                    "type": [
+                        "array",
+                        "null"
+                    ],
                     "items": {
                         "type": "string"
                     }
@@ -1104,6 +1108,12 @@
         "resources": {
             "deprecated": true,
             "type": "object"
+        },
+        "skipNamespaces": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
         },
         "telemetry": {
             "deprecated": true,
