@@ -513,3 +513,29 @@ tests:
         template: "templates/defaults/defaults-configmap.yaml"
       - matchRegex: {path: 'data["user-group.yaml"]', pattern: '(?m)^  module: registry\.example\.com/kubewarden/policies/'}
         template: "templates/defaults/defaults-configmap.yaml"
+
+  # The otel keys have an effect on the controller only. otel_test.yaml covers
+  # the details.
+  - it: "should render global.otel on the controller only"
+    set:
+      telemetry:
+        metrics: false
+      global:
+        otel:
+          endpoint: "https://otel-collector:4317"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "https://otel-collector:4317"}}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.initContainers[0].env"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.containers[0].env"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - hasDocuments: {count: 0}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "OTEL|otel"}
+        template: "templates/defaults/defaults-configmap.yaml"

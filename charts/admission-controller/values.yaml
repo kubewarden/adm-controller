@@ -113,6 +113,20 @@ global:
   serviceAccount:
     # Annotations for the ServiceAccounts of the workloads.
     annotations: {}
+  # Telemetry export configuration.
+  # The controller exports telemetry, and it configures every PolicyServer to
+  # export telemetry to the same endpoint.
+  otel:
+    # OTLP gRPC endpoint to export telemetry to, e.g. https://otel-collector:4317.
+    # TLS is enabled by the https:// scheme.
+    # Leave empty to disable telemetry export.
+    endpoint: ""
+    # Name of secret containing the CA certificate used to verify the collector server certificate.
+    # This secret must contain a `ca.crt` key with the CA certificate in PEM format.
+    caSecretName: ""
+    # Name of secret containing the client certificate and key used to authenticate to the collector (mTLS).
+    # This secret must contain `tls.crt` and `tls.key` keys.
+    clientCertificateSecretName: ""
   skipNamespaces:
     - calico-apiserver
     - calico-system
@@ -157,6 +171,22 @@ global:
     - rancher-alerting-drivers
     - security-scan
     - tigera-operator
+
+# Telemetry export configuration for this chart.
+# The controller exports telemetry, and it configures every PolicyServer to
+# export telemetry to the same endpoint.
+# When a key is set here, it wins over the workload otel and global.otel.
+otel:
+  # OTLP gRPC endpoint to export telemetry to, e.g. https://otel-collector:4317.
+  # TLS is enabled by the https:// scheme.
+  # Leave empty to disable telemetry export.
+  endpoint: ""
+  # Name of secret containing the CA certificate used to verify the collector server certificate.
+  # This secret must contain a `ca.crt` key with the CA certificate in PEM format.
+  caSecretName: ""
+  # Name of secret containing the client certificate and key used to authenticate to the collector (mTLS).
+  # This secret must contain `tls.crt` and `tls.key` keys.
+  clientCertificateSecretName: ""
 
 controller:
   # The init container of the controller pod, and the pre-delete and
@@ -308,15 +338,19 @@ ports:
   webhook: 9443 # @schema minimum:1;maximum:65535
   # Port for the controller liveness and readiness probes.
   healthProbe: 8081 # @schema minimum:1;maximum:65535
-  # Port for the controller Prometheus metrics endpoint.
+  # Deprecated: the controller exports metrics through otel.
+  # Port for the controller Prometheus metrics endpoint. The chart uses it
+  # only when telemetry.metrics is true.
   # Note: This is only used for the Service port; the pod-side metrics endpoint
   # is not bound to the host network interface even when hostNetwork is enabled.
-  metrics: 8088 # @schema minimum:1;maximum:65535
+  metrics: 8088 # @schema minimum:1;maximum:65535; deprecated:true
 # Deprecated: use controller.logLevel and preDeleteJob.logLevel, or
 # global.logLevel. When both are set, this key wins.
 logLevel: "" # @schema deprecated:true
-# open-telemetry options
-telemetry:
+# Deprecated: use otel.
+# The chart renders this telemetry configuration when telemetry.metrics or
+# telemetry.tracing is true. Then it ignores otel.
+telemetry: # @schema deprecated:true
   # Kubewarden controller telemetry configuration allow two OpenTelemetry
   # collector communication options:
   # - sidecar: It will create a Otel collector sidecar and configure the

@@ -147,95 +147,36 @@ questions:
       the audit scanner, the default PolicyServer, and the hook Jobs.
     group: "Controller HA"
   # OpenTelemetry:
-  - variable: "telemetry.mode"
-    type: enum
-    options:
-      - "sidecar"
-      - "custom"
-    default: "sidecar"
-    required: true
-    label: Telemetry mode
-    description: |
-      Choose the telemetry mode.
-      Sidecar mode will deploy an OpenTelemetry Collector as a sidecar container in the Kubewarden Controller pod.
-      Custom mode will allow you to configure the OpenTelemetry Collector by your own and Kubewarden will send data to it.
-    group: "OpenTelemetry"
-  - variable: "telemetry.metrics"
-    type: boolean
-    default: false
-    required: true
-    label: Enable Metrics
-    description: |
-      Enable metrics collection for all Policy Servers and the Kubewarden Controller.
-      Important: Requires OpenTelemetry CRDs available.
-    group: "OpenTelemetry"
-  - variable: "telemetry.sidecar.metrics.port"
-    type: string
-    default: "8080"
-    label: Port
-    description: |
-      Port of the Prometheus exporter and PolicyServer metrics service.
-    group: "OpenTelemetry"
-    show_if: "telemetry.mode=sidecar && telemetry.metrics=true"
-  - variable: "telemetry.tracing"
-    type: boolean
-    default: false
-    required: true
-    label: Enable Tracing
-    description: |
-      Enable tracing collection for all PolicyServers.
-      Important: Requires OpenTelemetry CRDs available.
-    group: "OpenTelemetry"
-  - variable: "telemetry.sidecar.tracing.jaeger.endpoint"
-    type: string
-    default: my-open-telemetry-collector.jaeger.svc.cluster.local:4317
-    label: Jaeger endpoint configuration
-    description: |
-      Configuration of the OTLP/Jaeger exporter.
-    group: "OpenTelemetry"
-    show_if: "telemetry.mode=sidecar && telemetry.tracing=true"
-  - variable: "telemetry.sidecar.tracing.jaeger.tls.insecure"
-    type: boolean
-    default: false
-    label: Jaeger endpoint insecure TLS configuration
-    description: |
-      Important: Insecure, not for production usage.
-    group: "OpenTelemetry"
-    show_if: "telemetry.mode=sidecar && telemetry.tracing=true"
-  - variable: "telemetry.custom.endpoint"
+  - variable: "global.otel.endpoint"
     type: string
     default: ""
+    required: false
     label: OpenTelemetry endpoint
     description: |
-      Endpoint of the OpenTelemetry collector.
+      OTLP gRPC endpoint of the OpenTelemetry collector, for example
+      https://otel-collector:4317. The https:// scheme enables TLS.
+      The controller exports metrics and traces to this endpoint, and it
+      configures every PolicyServer to do the same.
+      Leave it empty to disable the export.
     group: "OpenTelemetry"
-    show_if: "telemetry.mode=custom"
-  - variable: "telemetry.custom.insecure"
-    type: boolean
-    default: false
-    label: Insecure communication
-    description: |
-      Disable TLS verification for the OpenTelemetry collector.
-    group: "OpenTelemetry"
-    show_if: "telemetry.mode=custom"
-  - variable: "telemetry.custom.otelCollectorCertificateSecret"
+  - variable: "global.otel.caSecretName"
     type: string
     default: ""
-    label: Certificate secret
+    required: false
+    label: CA certificate secret
     description: |
-      Secret containing the certificate for the OpenTelemetry collector.
-      The secret should contain the key `ca.crt`.
+      Secret with the CA certificate that verifies the collector certificate.
+      The secret must contain the key `ca.crt`.
     group: "OpenTelemetry"
-    show_if: "telemetry.mode=custom && telemetry.custom.insecure=false"
-  - variable: "telemetry.custom.otelCollectorClientCertificateSecret"
+  - variable: "global.otel.clientCertificateSecretName"
     type: string
     default: ""
+    required: false
     label: Client certificate secret
     description: |
-      Secret containing the client certificate for the OpenTelemetry collector (mTLS).
-      The secret should contain the keys `tls.crt` and `tls.key`.
+      Secret with the client certificate and key for mTLS to the collector.
+      The secret must contain the keys `tls.crt` and `tls.key`.
     group: "OpenTelemetry"
-    show_if: "telemetry.mode=custom && telemetry.custom.insecure=false"
   # CRD Settings:
   - variable: "installPolicyReportCRDs"
     type: boolean

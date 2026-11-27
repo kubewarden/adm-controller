@@ -305,6 +305,20 @@
                 "nodeSelector": {
                     "type": "object"
                 },
+                "otel": {
+                    "type": "object",
+                    "properties": {
+                        "caSecretName": {
+                            "type": "string"
+                        },
+                        "clientCertificateSecretName": {
+                            "type": "string"
+                        },
+                        "endpoint": {
+                            "type": "string"
+                        }
+                    }
+                },
                 "podAnnotations": {
                     "type": "object"
                 },
@@ -421,6 +435,20 @@
         "nodeSelector": {
             "deprecated": true,
             "type": "object"
+        },
+        "otel": {
+            "type": "object",
+            "properties": {
+                "caSecretName": {
+                    "type": "string"
+                },
+                "clientCertificateSecretName": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                }
+            }
         },
         "podAnnotations": {
             "deprecated": true,
@@ -634,6 +662,7 @@
                     "minimum": 1
                 },
                 "metrics": {
+                    "deprecated": true,
                     "type": "integer",
                     "maximum": 65535,
                     "minimum": 1
@@ -1077,6 +1106,7 @@
             "type": "object"
         },
         "telemetry": {
+            "deprecated": true,
             "type": "object",
             "properties": {
                 "custom": {

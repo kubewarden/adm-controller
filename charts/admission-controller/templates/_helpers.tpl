@@ -319,6 +319,19 @@ namespaceSelector:
 {{- end -}}
 
 {{/*
+admission-controller.legacyTelemetry renders "true" when the deprecated
+telemetry path is active: telemetry.metrics or telemetry.tracing is true.
+Then the chart renders the telemetry as in the earlier chart versions, and
+it ignores otel.
+*/}}
+{{- define "admission-controller.legacyTelemetry" -}}
+{{- $telemetry := .Values.telemetry | default dict -}}
+{{- if or $telemetry.metrics $telemetry.tracing -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
 Validate that hostNetwork and telemetry sidecar mode are not both enabled.
 They are incompatible because multiple OTel sidecars on the same node would
 cause port conflicts in host-network mode.
@@ -685,6 +698,15 @@ which has its own fields for the pod labels and annotations.
 {{- else -}}
 {{- include "admission-controller._map" (dict "ctx" . "key" "podAnnotations") -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller.otelSettings renders the YAML map of the resolved otel
+settings: endpoint, caSecretName, and clientCertificateSecretName.
+The controller passes the secret names to the PolicyServers with flags.
+*/}}
+{{- define "admission-controller.otelSettings" -}}
+{{- include "admission-controller._otel" . -}}
 {{- end -}}
 
 {{/* Public helpers that render a whole field, or nothing when the value is empty. */}}

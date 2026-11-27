@@ -1,6 +1,9 @@
 {{- include "admission-controller.validateHostNetworkSidecar" . -}}
 {{- $ctx := dict "root" $ "workload" "controller" "component" "controller" }}
-{{- if and (or .Values.telemetry.metrics .Values.telemetry.tracing) (eq .Values.telemetry.mode "sidecar") }}
+{{- $legacyTelemetry := include "admission-controller.legacyTelemetry" . }}
+{{- $otel := include "admission-controller.otelSettings" $ctx | fromYaml }}
+{{- $useOtel := and (not $legacyTelemetry) $otel.endpoint }}
+{{- if and $legacyTelemetry (eq .Values.telemetry.mode "sidecar") }}
 {{- $ctx = merge (dict "extraPodAnnotations" (dict "sidecar.opentelemetry.io/inject" "true")) $ctx }}
 {{- end }}
 {{- $w := .Values.controller | default dict }}
@@ -99,7 +102,7 @@ spec:
        {{- end }}
         - --defaults-configmap-name=kubewarden-defaults
         - --controller-configmap-name=kubewarden-controller-config
-       {{- if or .Values.telemetry.metrics .Values.telemetry.tracing }}
+       {{- if $legacyTelemetry }}
        {{- if and (eq .Values.telemetry.mode "sidecar") }}
         - --enable-otel-sidecar
        {{- end }}
@@ -115,6 +118,15 @@ spec:
         {{- if and (not .Values.telemetry.custom.insecure) .Values.telemetry.custom.otelCollectorClientCertificateSecret }}
         - --opentelemetry-client-certificate-secret={{ .Values.telemetry.custom.otelCollectorClientCertificateSecret }}
         {{- end }}
+       {{- else if $useOtel }}
+        - --enable-metrics
+        - --enable-tracing
+        {{- with $otel.caSecretName }}
+        - --opentelemetry-certificate-secret={{ . }}
+        {{- end }}
+        {{- with $otel.clientCertificateSecretName }}
+        - --opentelemetry-client-certificate-secret={{ . }}
+        {{- end }}
        {{- end }}
         command:
         - /controller
@@ -127,7 +139,7 @@ spec:
           - name: OTEL_EXPORTER_OTLP_INSECURE
             value: "true"
         {{- end }}
-        {{- if or .Values.telemetry.metrics .Values.telemetry.tracing }}
+        {{- if $legacyTelemetry }}
         {{- if eq .Values.telemetry.mode "custom" }}
           - name: OTEL_EXPORTER_OTLP_ENDPOINT
             value: {{.Values.telemetry.custom.endpoint}}
@@ -144,6 +156,8 @@ spec:
             value: /kubewarden/otel-collector-client-certs/tls.key
         {{- end }}
         {{- end }}
+        {{- else }}
+          {{- with include "admission-controller.otelEnv" $ctx }}{{ . | nindent 10 }}{{ end }}
         {{- end }}
           {{- with include "admission-controller.extraEnv" $ctx }}{{ . | nindent 10 }}{{ end }}
         {{- with .Values.additionalEnvironmentVariables }}
@@ -176,6 +190,7 @@ spec:
           name: client-ca
           readOnly: true
         {{- end }}
+        {{- if not $useOtel }}
         {{- if and (not .Values.telemetry.custom.insecure) .Values.telemetry.custom.otelCollectorCertificateSecret }}
         - mountPath: /kubewarden/otel-collector-certs
           name: otel-collector-certificate
@@ -185,6 +200,9 @@ spec:
         - mountPath: /kubewarden/otel-collector-client-certs
           name: otel-collector-client-certificate
           readOnly: true
+        {{- end }}
+        {{- else }}
+        {{- with include "admission-controller.otelVolumeMounts" $ctx }}{{ . | nindent 8 }}{{ end }}
         {{- end }}
         {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 8 }}{{ end }}
         ports:
@@ -204,6 +222,7 @@ spec:
         configMap:
           name: {{ .Values.mTLS.configMapName }}
       {{- end }}
+      {{- if not $useOtel }}
       {{- if and (not .Values.telemetry.custom.insecure) .Values.telemetry.custom.otelCollectorCertificateSecret }}
       - name: otel-collector-certificate
         secret:
@@ -223,6 +242,9 @@ spec:
               path: tls.crt
             - key: tls.key
               path: tls.key
+      {{- end }}
+      {{- else }}
+      {{- with include "admission-controller.otelVolumes" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- end }}
       {{- with include "admission-controller.extraVolumes" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 6 }}{{ end }}

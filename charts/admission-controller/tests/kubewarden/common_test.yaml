@@ -370,3 +370,27 @@ tests:
       - equal: {path: 'metadata.annotations["example.com/role"]', value: common}
         template: "templates/defaults/policy-server-rbac.yaml"
         documentIndex: 0
+
+  - it: "should render common.otel on the controller only"
+    set:
+      telemetry:
+        metrics: false
+      common:
+        otel:
+          endpoint: "http://common:4317"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://common:4317"}}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.initContainers[0].env"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.containers[0].env"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].env"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - hasDocuments: {count: 0}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "OTEL|otel"}
+        template: "templates/defaults/defaults-configmap.yaml"
