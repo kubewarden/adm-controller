@@ -27,20 +27,11 @@ spec:
     spec:
       {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
       serviceAccountName: {{ include "admission-controller.serviceAccountName" . }}
-      {{- $effectiveAffinity := include "admission-controller.effectiveAffinity" . }}
-      {{- if $effectiveAffinity }}
-      affinity: {{ $effectiveAffinity | nindent 8 }}
-      {{- end }}
-      {{- if .Values.global.tolerations }}
-      tolerations: {{ .Values.global.tolerations | toYaml | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- if .Values.global.priorityClassName }}
-      priorityClassName: {{ .Values.global.priorityClassName | toYaml | nindent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.topologySpreadConstraints" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- if .Values.hostNetwork }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet

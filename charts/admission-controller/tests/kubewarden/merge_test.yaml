@@ -11,6 +11,90 @@ release:
   name: rel
   namespace: kw
 tests:
+  - it: "should prefer the workload value, then common, then global for a scalar"
+    set:
+      global:
+        logLevel: error
+        priorityClassName: global-priority
+      common:
+        logLevel: warn
+        priorityClassName: common-priority
+      controller:
+        logLevel: debug
+        priorityClassName: controller-priority
+      auditScanner:
+        logLevel: debug
+        priorityClassName: audit-priority
+      preDeleteJob:
+        logLevel: debug
+        priorityClassName: pre-delete-priority
+      policyServer:
+        logLevel: debug
+        priorityClassName: policy-server-priority
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: controller-priority}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: debug}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.priorityClassName", value: audit-priority}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: pre-delete-priority}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '- name: "KUBEWARDEN_LOG_LEVEL"\n      value: "debug"'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  priorityClassName: "policy-server-priority"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should skip an empty workload scalar and use the common or global value"
+    set:
+      global:
+        logLevel: error
+        priorityClassName: global-priority
+      common:
+        logLevel: warn
+      controller:
+        logLevel: ""
+        priorityClassName: ""
+      preDeleteJob:
+        logLevel: ""
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: global-priority}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=warn"}
+        template: "templates/controller/pre-delete-hook.yaml"
+
+  - it: "should skip an empty workload list and use the common or global list"
+    set:
+      global:
+        tolerations:
+          - key: global-taint
+            operator: Exists
+      common:
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+      controller:
+        tolerations: []
+        topologySpreadConstraints: []
+    asserts:
+      - equal:
+          path: "spec.template.spec.tolerations"
+          value:
+            - key: global-taint
+              operator: Exists
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.template.spec.topologySpreadConstraints[0].topologyKey"
+          value: kubernetes.io/hostname
+        template: "templates/controller/deployment.yaml"
+
   - it: "should prefer common over global for a scalar"
     set:
       global:
@@ -42,6 +126,106 @@ tests:
     asserts:
       - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=error"}
         template: "templates/controller/deployment.yaml"
+
+  - it: "should merge maps in the order global, common, workload"
+    set:
+      global:
+        nodeSelector: {a: "1", b: "1", c: "1"}
+        labels: {a: "1", b: "1", c: "1"}
+        podAnnotations: {a: "1", b: "1", c: "1"}
+      common:
+        nodeSelector: {b: "2", c: "2"}
+        labels: {b: "2", c: "2"}
+        podAnnotations: {b: "2", c: "2"}
+      controller:
+        nodeSelector: {c: "3"}
+        labels: {c: "3"}
+        podAnnotations: {c: "3"}
+      policyServer:
+        labels: {c: "3"}
+        podAnnotations: {c: "3"}
+    asserts:
+      - equal: {path: "spec.template.spec.nodeSelector", value: {a: "1", b: "2", c: "3"}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.a", value: "1"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.b", value: "2"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.c", value: "3"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.metadata.annotations", value: {a: "1", b: "2", c: "3"}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.nodeSelector", value: {a: "1", b: "2", c: "2"}}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    a: "1"\n(.*\n)*    b: "2"\n    c: "3"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    "a": "1"\n    "b": "2"\n    "c": "3"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should deep merge affinity, with the workload value winning on a duplicate key"
+    set:
+      global:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 1
+                podAffinityTerm: {topologyKey: global}
+      common:
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 50
+                preference:
+                  matchExpressions:
+                    - {key: from-common, operator: Exists}
+      controller:
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm: {topologyKey: controller}
+      policyServer:
+        affinity:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm: {topologyKey: policy-server}
+    asserts:
+      - equal:
+          path: "spec.template.spec.affinity"
+          value:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: kubernetes.io/arch, operator: In, values: [amd64]}
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 50
+                  preference:
+                    matchExpressions:
+                      - {key: from-common, operator: Exists}
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm: {topologyKey: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.affinity.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].podAffinityTerm.topologyKey", value: global}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight", value: 50}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'key: kubernetes\.io/arch'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'key: from-common'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'topologyKey: policy-server'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'topologyKey: global'}
+        template: "templates/defaults/defaults-configmap.yaml"
 
   - it: "should append imagePullSecrets: global, common, the deprecated top-level key, then the workload"
     set:

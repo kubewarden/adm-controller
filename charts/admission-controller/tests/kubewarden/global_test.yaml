@@ -56,6 +56,25 @@ tests:
           pattern: '  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "debug"\n'
         template: "templates/defaults/defaults-configmap.yaml"
 
+  - it: "should render global.priorityClassName on every workload"
+    set:
+      global:
+        priorityClassName: system-cluster-critical
+    asserts:
+      - equal: {path: "spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.priorityClassName", value: system-cluster-critical}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  priorityClassName: "system-cluster-critical"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
   # The controller gives the image pull secrets to every PolicyServer with the
   # --image-pull-secrets flag.
   - it: "should render global.imagePullSecrets on every workload"
@@ -224,6 +243,102 @@ tests:
         template: "templates/defaults/defaults-configmap.yaml"
       - notExists: {path: 'metadata.annotations["example.com/owner"]'}
         template: "templates/controller/deployment.yaml"
+
+  # The PolicyServer CRD has no nodeSelector field.
+  - it: "should render global.nodeSelector on every workload"
+    set:
+      global:
+        nodeSelector:
+          kubernetes.io/os: linux
+    asserts:
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.nodeSelector", value: {kubernetes.io/os: linux}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "nodeSelector|kubernetes\\.io/os"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render global.affinity on every workload"
+    set:
+      global:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: kubernetes.io/arch
+                      operator: In
+                      values: [amd64]
+    asserts:
+      - equal: {path: "spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[0].matchExpressions[0].key", value: kubernetes.io/arch}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  affinity:\n    nodeAffinity:\n      requiredDuringSchedulingIgnoredDuringExecution:\n        nodeSelectorTerms:\n        - matchExpressions:\n          - key: kubernetes\.io/arch$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render global.tolerations on every workload"
+    set:
+      global:
+        tolerations:
+          - key: dedicated
+            operator: Exists
+            effect: NoSchedule
+    asserts:
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: dedicated, operator: Exists, effect: NoSchedule}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  tolerations:\n    - effect: NoSchedule\n      key: dedicated\n      operator: Exists$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The PolicyServer CRD has no topologySpreadConstraints field.
+  - it: "should render global.topologySpreadConstraints on every workload"
+    set:
+      global:
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+    asserts:
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "topologySpreadConstraints|maxSkew"}
+        template: "templates/defaults/defaults-configmap.yaml"
 
   - it: "should render global.imageRegistry on every workload and on the recommended policies"
     set:

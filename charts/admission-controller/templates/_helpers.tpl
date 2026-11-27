@@ -266,23 +266,6 @@ It takes the context dict of the workload helpers.
 {{- end -}}
 
 {{/*
-Compute the effective affinity for the controller deployment.
-Uses the controller-specific affinity if set, otherwise falls back to
-global.affinity for backward compatibility.
-
-NOTE: When hostNetwork is enabled, users are responsible for setting
-appropriate podAntiAffinity rules to prevent host-port conflicts between
-controller replicas on the same node.
-*/}}
-{{- define "admission-controller.effectiveAffinity" -}}
-{{- if .Values.affinity -}}
-  {{- toYaml .Values.affinity -}}
-{{- else if .Values.global.affinity -}}
-  {{- toYaml .Values.global.affinity -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
 Annotations for defaults resources.
 */}}
 {{- define "admission-controller.defaults.annotations" -}}
@@ -323,14 +306,6 @@ namespaceSelector:
 {{- end }}
 {{- end -}}
 
-{{- define "admission-controller.defaults.effectiveAffinity" -}}
-{{- if .Values.policyServer.affinity -}}
-  {{- toYaml .Values.policyServer.affinity -}}
-{{- else if .Values.global.affinity -}}
-  {{- toYaml .Values.global.affinity -}}
-{{- end -}}
-{{- end -}}
-
 {{/*
 Validate that hostNetwork and telemetry sidecar mode are not both enabled.
 They are incompatible because multiple OTel sidecars on the same node would
@@ -357,6 +332,7 @@ A template builds the context dict once:
 
 Each public helper reads one key with one private helper. The private helper sets the rule:
   admission-controller._scalar: the workload value, else the common value, else the global value.
+  admission-controller._list:   the same rule as admission-controller._scalar, for a list.
   admission-controller._map:    the global, common, and workload maps merged. The workload wins on a duplicate key.
 An empty value ("", [] or {}) counts as unset.
 The image registry and the pull policy of a workload are in its image map:
@@ -395,6 +371,11 @@ The other private helpers decode this list, so they work on copies of .Values.
 {{- define "admission-controller._scalar" -}}
 {{- $l := include "admission-controller._levels" . | fromYamlArray -}}
 {{- index $l 2 | default (index $l 1) | default (index $l 0) | default "" -}}
+{{- end -}}
+
+{{- define "admission-controller._list" -}}
+{{- $l := include "admission-controller._levels" . | fromYamlArray -}}
+{{- toYaml (index $l 2 | default (index $l 1) | default (index $l 0) | default list) -}}
 {{- end -}}
 
 {{- define "admission-controller._map" -}}
@@ -522,20 +503,25 @@ controller:
   logLevel: {paths: [logLevel], mode: string}
   replicas: {paths: [replicas], mode: presence}
   podAnnotations: {paths: [podAnnotations], mode: replace}
+  affinity: {paths: [affinity], mode: replace}
+  nodeSelector: {paths: [nodeSelector], mode: replace}
   resources: {paths: [resources.controller], mode: map}
   podSecurityContext: {paths: [podSecurityContext], mode: map}
   containerSecurityContext: {paths: [containerSecurityContext], mode: map}
 auditScanner:
   enabled: {paths: [auditScanner.enable], mode: presence}
+  nodeSelector: {paths: [nodeSelector], mode: replace}
   resources: {paths: [resources.auditScanner], mode: map}
   podSecurityContext: {paths: [podSecurityContext], mode: map}
   containerSecurityContext: {paths: [containerSecurityContext], mode: map}
 preDeleteJob:
   logLevel: {paths: [logLevel], mode: string}
+  nodeSelector: {paths: [nodeSelector], mode: replace}
   resources: {paths: [resources.preDeleteJob], mode: map}
   podSecurityContext: {paths: [preDeleteHook.podSecurityContext], mode: map}
   containerSecurityContext: {paths: [preDeleteHook.containerSecurityContext], mode: map}
 postInstallJob:
+  nodeSelector: {paths: [nodeSelector], mode: replace}
   resources: {paths: [resources.postInstallJob], mode: map}
   podSecurityContext: {paths: [preDeleteHook.podSecurityContext], mode: map}
   containerSecurityContext: {paths: [preDeleteHook.containerSecurityContext], mode: map}
@@ -684,6 +670,38 @@ which has its own fields for the pod labels and annotations.
 {{- end -}}
 
 {{/* Public helpers that render a whole field, or nothing when the value is empty. */}}
+
+{{- define "admission-controller.priorityClassName" -}}
+{{- with include "admission-controller._scalar" (dict "ctx" . "key" "priorityClassName") -}}
+priorityClassName: {{ . | quote }}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.tolerations" -}}
+{{- include "admission-controller._field" (dict "name" "tolerations" "value" (include "admission-controller._list" (dict "ctx" . "key" "tolerations") | fromYamlArray)) -}}
+{{- end -}}
+
+{{- define "admission-controller.topologySpreadConstraints" -}}
+{{- include "admission-controller._field" (dict "name" "topologySpreadConstraints" "value" (include "admission-controller._list" (dict "ctx" . "key" "topologySpreadConstraints") | fromYamlArray)) -}}
+{{- end -}}
+
+{{- define "admission-controller.nodeSelector" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "nodeSelector") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- include "admission-controller._field" (dict "name" "nodeSelector" "value" $old.value) -}}
+{{- else -}}
+{{- include "admission-controller._field" (dict "name" "nodeSelector" "value" (include "admission-controller._map" (dict "ctx" . "key" "nodeSelector") | fromYaml)) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.affinity" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "affinity") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- include "admission-controller._field" (dict "name" "affinity" "value" $old.value) -}}
+{{- else -}}
+{{- include "admission-controller._field" (dict "name" "affinity" "value" (include "admission-controller._map" (dict "ctx" . "key" "affinity") | fromYaml)) -}}
+{{- end -}}
+{{- end -}}
 
 {{/*
 The annotation helpers add additionalAnnotations on top of the contract map.

@@ -143,7 +143,8 @@ questions:
     required: false
     label: Name of priorityClass
     description: |
-      Name of the priorityClass to apply to the Kubewarden controller.
+      Name of the priorityClass to apply to all Kubewarden pods: the controller,
+      the audit scanner, the default PolicyServer, and the hook Jobs.
     group: "Controller HA"
   # OpenTelemetry:
   - variable: "telemetry.mode"
@@ -300,7 +301,8 @@ questions:
     required: false
     label: Name of priorityClass associated to the PolicyServer Pods
     description: |
-      Name of the priorityClass to apply to default PolicyServer Pods.
+      Name of the priorityClass to apply to all Kubewarden pods: the controller,
+      the audit scanner, the default PolicyServer, and the hook Jobs.
     group: "Default PolicyServer HA"
   # Recommended policies questions:
   - variable: "recommendedPolicies.enabled"

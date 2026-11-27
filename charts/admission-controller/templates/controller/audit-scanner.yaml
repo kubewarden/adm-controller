@@ -40,16 +40,11 @@ spec:
                 path: "tls.crt"
               - key: tls.key
                 path: "tls.key"
-          {{- if .Values.global.affinity }}
-          affinity: {{ .Values.global.affinity | toYaml | nindent 14 }}
-          {{- end }}
-          {{- if .Values.global.tolerations }}
-          tolerations: {{ .Values.global.tolerations | toYaml | nindent 14 }}
-          {{- end }}
-          {{- with .Values.nodeSelector }}
-          nodeSelector:
-            {{- toYaml . | nindent 14 }}
-          {{- end }}
+          {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.topologySpreadConstraints" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 10 }}{{ end }}
           containers:
           - name: audit-scanner
             image: '{{ template "system_default_registry" $ctx }}{{ .Values.auditScanner.image.repository }}:{{ .Values.auditScanner.image.tag }}'

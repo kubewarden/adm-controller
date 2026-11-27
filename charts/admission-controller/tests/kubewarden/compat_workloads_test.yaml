@@ -339,6 +339,87 @@ tests:
               drop: [ALL]
         template: controller/post-install-hook.yaml
 
+  # affinity
+  - it: "affinity alone renders on the controller as on main"
+    set:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: old, operator: Exists}
+    asserts:
+      - equal:
+          path: spec.template.spec.affinity
+          value:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: old, operator: Exists}
+        template: controller/deployment.yaml
+
+  - it: "affinity wins verbatim over controller.affinity and is not merged with global.affinity"
+    set:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - {key: old, operator: Exists}
+      controller.affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+      global.affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 2
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+    asserts:
+      - equal:
+          path: spec.template.spec.affinity
+          value:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - {key: old, operator: Exists}
+        template: controller/deployment.yaml
+
+  - it: "controller.affinity alone merges with global.affinity"
+    set:
+      controller.affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+      global.affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 2
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+    asserts:
+      - equal:
+          path: spec.template.spec.affinity
+          value:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 1
+                  podAffinityTerm:
+                    topologyKey: kubernetes.io/hostname
+            podAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 2
+                  podAffinityTerm:
+                    topologyKey: kubernetes.io/hostname
+        template: controller/deployment.yaml
+
   # logLevel
   - it: "logLevel alone renders on the controller and the pre-delete Job as on main"
     set:
@@ -550,6 +631,55 @@ tests:
           value:
             foo: new
         template: controller/deployment.yaml
+
+  # nodeSelector
+  - it: "nodeSelector alone renders on the controller and the audit scanner as on main"
+    set:
+      nodeSelector:
+        disk: ssd
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value: {disk: ssd}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.nodeSelector
+          value: {disk: ssd}
+        template: controller/audit-scanner.yaml
+
+  - it: "nodeSelector wins over controller.nodeSelector and auditScanner.nodeSelector"
+    set:
+      nodeSelector:
+        disk: ssd
+      controller.nodeSelector:
+        zone: a
+      auditScanner.nodeSelector:
+        zone: b
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value: {disk: ssd}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.nodeSelector
+          value: {disk: ssd}
+        template: controller/audit-scanner.yaml
+
+  - it: "controller.nodeSelector and auditScanner.nodeSelector alone"
+    set:
+      controller.nodeSelector:
+        zone: a
+      auditScanner.nodeSelector:
+        zone: b
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value: {zone: a}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.nodeSelector
+          value: {zone: b}
+        template: controller/audit-scanner.yaml
 
   # resources.<workload>
   - it: "resources.<workload> alone renders on each workload as on main"

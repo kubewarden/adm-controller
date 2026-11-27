@@ -158,15 +158,13 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ $name }}
-      {{- if .Values.global.tolerations }}
-      tolerations: {{ .Values.global.tolerations | toYaml | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.topologySpreadConstraints" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 6 }}{{ end }}
       containers:
         - name: kubewarden-pre-upgrade
           image: '{{ template "system_default_registry" $controllerCtx }}{{ $legacyImage.repository | default $controllerImage.repository }}:{{ $legacyImage.tag | default $controllerImage.tag }}'

@@ -25,16 +25,9 @@ spec:
   {{- if $ps.maxUnavailable }}
   maxUnavailable: {{ $ps.maxUnavailable }}
   {{- end }}
-  {{- $affinity := include "admission-controller.defaults.effectiveAffinity" . -}}
-  {{- if $affinity }}
-  affinity: {{ $affinity | nindent 4 }}
-  {{- end }}
-  {{- if .Values.global.tolerations }}
-  tolerations: {{ .Values.global.tolerations | toYaml | nindent 4 }}
-  {{- end }}
-  {{- if .Values.global.priorityClassName }}
-  priorityClassName: {{ .Values.global.priorityClassName | toYaml | nindent 4 }}
-  {{- end }}
+  {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 2 }}{{ end }}
+  {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 2 }}{{ end }}
+  {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 2 }}{{ end }}
   {{- with $ps.limits | default $resources.limits }}
   limits: {{ . | toYaml | nindent 4 }}
   {{- end }}
