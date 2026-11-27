@@ -111,6 +111,22 @@
                 }
             }
         },
+        "controller": {
+            "type": "object",
+            "properties": {
+                "image": {
+                    "type": "object",
+                    "properties": {
+                        "repository": {
+                            "type": "string"
+                        },
+                        "tag": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "crdVersion": {
             "type": "string"
         },
@@ -152,9 +168,11 @@
                     "type": "string"
                 },
                 "repository": {
+                    "deprecated": true,
                     "type": "string"
                 },
                 "tag": {
+                    "deprecated": true,
                     "type": "string"
                 }
             }
@@ -421,6 +439,22 @@
                 }
             }
         },
+        "postInstallJob": {
+            "type": "object",
+            "properties": {
+                "image": {
+                    "type": "object",
+                    "properties": {
+                        "repository": {
+                            "type": "string"
+                        },
+                        "tag": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "preDeleteHook": {
             "type": "object",
             "properties": {
@@ -468,12 +502,15 @@
             "type": "object",
             "properties": {
                 "image": {
+                    "deprecated": true,
                     "type": "object",
                     "properties": {
                         "repository": {
+                            "deprecated": true,
                             "type": "string"
                         },
                         "tag": {
+                            "deprecated": true,
                             "type": "string"
                         }
                     }

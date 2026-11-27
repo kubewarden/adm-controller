@@ -75,7 +75,7 @@ echo "=================================="
 echo
 
 # Validate controller image
-CONTROLLER_CHART_VERSION=$(yq eval '.image.tag' "$CONTROLLER_VALUES")
+CONTROLLER_CHART_VERSION=$(yq eval '.controller.image.tag' "$CONTROLLER_VALUES")
 CONTROLLER_HAULER_VERSION=$(get_hauler_image_version "adm-controller/controller")
 compare_version "controller" "$CONTROLLER_CHART_VERSION" "$CONTROLLER_HAULER_VERSION" "$CONTROLLER_VALUES"
 
@@ -90,7 +90,7 @@ POLICY_SERVER_HAULER_VERSION=$(get_hauler_image_version "adm-controller/policy-s
 compare_version "policy-server" "$POLICY_SERVER_CHART_VERSION" "$POLICY_SERVER_HAULER_VERSION" "$CONTROLLER_VALUES"
 
 # Validate kuberlr-kubectl image
-KUBERLR_CHART_VERSION=$(yq eval '.preDeleteJob.image.tag' "$CONTROLLER_VALUES")
+KUBERLR_CHART_VERSION=$(yq eval '.postInstallJob.image.tag' "$CONTROLLER_VALUES")
 KUBERLR_HAULER_VERSION=$(get_hauler_image_version "rancher/kuberlr-kubectl")
 compare_version "kuberlr-kubectl" "$KUBERLR_CHART_VERSION" "$KUBERLR_HAULER_VERSION" "$CONTROLLER_VALUES"
 

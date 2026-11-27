@@ -3,7 +3,7 @@
 # to be updated in the manifest
 ociArtifacts:
   - file: "charts/admission-controller/values.yaml"
-    key: "$.image.tag"
+    key: "$.controller.image.tag"
     image: "ghcr.io/kubewarden/adm-controller/controller"
   - file: "charts/admission-controller/values.yaml"
     key: "$.auditScanner.image.tag"

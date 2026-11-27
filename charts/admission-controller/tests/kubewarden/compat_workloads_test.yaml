@@ -1,0 +1,108 @@
+# Compatibility of the deprecated top-level keys with the workload blocks.
+# For each deprecated key: the key alone renders as in the main branch,
+# the deprecated key wins over the new key, and the new key alone works.
+suite: compat - deprecated workload keys
+templates:
+  - controller/deployment.yaml
+  - controller/audit-scanner.yaml
+  - controller/pre-delete-hook.yaml
+  - controller/post-install-hook.yaml
+release:
+  name: t
+  namespace: kw
+tests:
+  # imagePullSecrets
+  # image.repository and image.tag
+  - it: "image.repository and image.tag alone render on the controller and the pre-delete Job as on main"
+    set:
+      image.repository: my/ctrl
+      image.tag: v9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/my/ctrl:v9
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/my/ctrl:v9
+        template: controller/pre-delete-hook.yaml
+
+  - it: "image.repository wins over controller.image.repository, controller.image.tag fills the tag"
+    set:
+      image.repository: old/repo
+      controller.image.repository: new/repo
+      controller.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/old/repo:v2
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/old/repo:v2
+        template: controller/pre-delete-hook.yaml
+
+  - it: "image.tag wins over controller.image.tag, controller.image.repository fills the repository"
+    set:
+      image.tag: v1
+      controller.image.repository: new/repo
+      controller.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/repo:v1
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/repo:v1
+        template: controller/pre-delete-hook.yaml
+
+  - it: "controller.image alone, the pre-delete Job uses the same image"
+    set:
+      controller.image.repository: new/repo
+      controller.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/repo:v2
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/repo:v2
+        template: controller/pre-delete-hook.yaml
+
+  # preDeleteJob.image.repository and preDeleteJob.image.tag
+  - it: "preDeleteJob.image.repository and preDeleteJob.image.tag alone render on the post-install Job as on main"
+    set:
+      telemetry.metrics: true
+      preDeleteJob.image.repository: my/kubectl
+      preDeleteJob.image.tag: v9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/my/kubectl:v9
+        template: controller/post-install-hook.yaml
+
+  - it: "preDeleteJob.image.repository wins over postInstallJob.image.repository, postInstallJob.image.tag fills the tag"
+    set:
+      telemetry.metrics: true
+      preDeleteJob.image.repository: old/kubectl
+      postInstallJob.image.repository: new/kubectl
+      postInstallJob.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/old/kubectl:v2
+        template: controller/post-install-hook.yaml
+
+  - it: "preDeleteJob.image.tag wins over postInstallJob.image.tag, postInstallJob.image.repository fills the repository"
+    set:
+      telemetry.metrics: true
+      preDeleteJob.image.tag: v1
+      postInstallJob.image.repository: new/kubectl
+      postInstallJob.image.tag: v2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/new/kubectl:v1
+        template: controller/post-install-hook.yaml

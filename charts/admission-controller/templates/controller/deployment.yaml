@@ -1,4 +1,7 @@
 {{- include "admission-controller.validateHostNetworkSidecar" . -}}
+{{- $w := .Values.controller | default dict }}
+{{- $legacyImage := .Values.image | default dict }}
+{{- $wImage := $w.image | default dict }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -58,7 +61,7 @@ spec:
       # controller container finds the certificate when it starts.
       initContainers:
       - name: init
-        image: '{{ template "system_default_registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}'
+        image: '{{ template "system_default_registry" . }}{{ $legacyImage.repository | default $wImage.repository }}:{{ $legacyImage.tag | default $wImage.tag }}'
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
         - /controller
@@ -163,7 +166,7 @@ spec:
         {{- toYaml . | nindent 10 }}
         {{- end }}
 
-        image: '{{ template "system_default_registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}'
+        image: '{{ template "system_default_registry" . }}{{ $legacyImage.repository | default $wImage.repository }}:{{ $legacyImage.tag | default $wImage.tag }}'
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         livenessProbe:
           httpGet:

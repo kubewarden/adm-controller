@@ -8,6 +8,8 @@
 # In custom telemetry mode there is no sidecar injection, and forcing a restart
 # can deadlock single-node hostNetwork rollouts due to hostPort conflicts.
 {{ if and (or .Values.telemetry.metrics .Values.telemetry.tracing) (eq .Values.telemetry.mode "sidecar") }}
+{{- $legacyImage := (.Values.preDeleteJob | default dict).image | default dict }}
+{{- $kubectlImage := (.Values.postInstallJob | default dict).image | default dict }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -48,7 +50,7 @@ spec:
       {{- end }}
       containers:
         - name: post-install-job
-          image: '{{ template "system_default_registry" . }}{{ .Values.preDeleteJob.image.repository }}:{{ .Values.preDeleteJob.image.tag }}'
+          image: '{{ template "system_default_registry" . }}{{ $legacyImage.repository | default $kubectlImage.repository }}:{{ $legacyImage.tag | default $kubectlImage.tag }}'
           command: ["kubectl", "--namespace", "{{ include "admission-controller.namespace" . }}", "rollout", "restart", "deployment", {{ include "admission-controller.fullname" . }}]
           env:
             - name: KUBERLR_ALLOWDOWNLOAD

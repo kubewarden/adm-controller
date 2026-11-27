@@ -32,6 +32,8 @@ The Job runs the controller image in cleanup mode, which:
      a new installation must not reuse it. Helm does not delete them: the
      controller creates them, and the chart does not render them.
 */}}
+{{- $legacyImage := .Values.image | default dict }}
+{{- $controllerImage := (.Values.controller | default dict).image | default dict }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -72,7 +74,7 @@ spec:
       {{- end }}
       containers:
         - name: kubewarden-cleanup
-          image: '{{ template "system_default_registry" . }}{{ .Values.image.repository }}:{{ .Values.image.tag }}'
+          image: '{{ template "system_default_registry" . }}{{ $legacyImage.repository | default $controllerImage.repository }}:{{ $legacyImage.tag | default $controllerImage.tag }}'
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - /controller

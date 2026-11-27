@@ -105,7 +105,7 @@ func TestUpgradeKeepsTheControllerObjects(t *testing.T) {
 				helm.WithWait(),
 				helm.WithTimeout("10m"),
 				helm.WithArgs(
-					"--set", "image.tag=dev",
+					"--set", "controller.image.tag=dev",
 					"--set", "auditScanner.image.tag=dev",
 					"--set", "policyServer.image.tag=dev",
 					"--set", "logLevel=debug",
