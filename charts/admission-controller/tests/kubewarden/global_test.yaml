@@ -14,6 +14,54 @@ set:
   telemetry:
     metrics: true
 tests:
+  - it: "should render the defaults on every workload"
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: info}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n'
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.template.spec.initContainers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: "spec.jobTemplate.spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/audit-scanner:'}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/kubewarden/adm-controller/controller:'}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - matchRegex: {path: "spec.template.spec.containers[0].image", pattern: '^ghcr\.io/rancher/kuberlr-kubectl:'}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  image: ghcr\.io/kubewarden/adm-controller/policy-server:'
+        template: "templates/defaults/defaults-configmap.yaml"
+
   - it: "should render global.imagePullPolicy on every workload"
     set:
       global:

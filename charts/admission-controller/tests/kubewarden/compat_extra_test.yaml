@@ -92,6 +92,183 @@ tests:
           pattern: '(?m)^      values:\n      - ns-new\n  settings:'
         template: defaults/defaults-configmap.yaml
 
+  # The full values file of the main branch.
+  - it: "the values file of main renders with the defaults of main"
+    values:
+      - values/main-values.yaml
+    set:
+      telemetry.metrics: true
+    asserts:
+      - notFailedTemplate: {}
+        template: controller/deployment.yaml
+      - notFailedTemplate: {}
+        template: defaults/defaults-configmap.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/adm-controller/controller:v1.39.0
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=info
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.replicas
+          value: 1
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 500m, memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: ghcr.io/kubewarden/adm-controller/controller:v1.39.0
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.initContainers[0].args
+          content: --zap-log-level=info
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].resources
+          value:
+            limits: {cpu: 500m, memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/adm-controller/controller:v1.39.0
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=info
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 100m, memory: 128Mi}
+            requests: {cpu: 50m, memory: 64Mi}
+        template: controller/pre-upgrade-hook.yaml
+        documentSelector: {path: kind, value: Job}
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/adm-controller/audit-scanner:v1.39.0
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/audit-scanner.yaml
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          content: kube-system
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kubewarden/adm-controller/controller:v1.39.0
+        template: controller/pre-delete-hook.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --zap-log-level=info
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.securityContext
+          value:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/rancher/kuberlr-kubectl:v9.0.2
+        template: controller/post-install-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            capabilities:
+              drop: [ALL]
+        template: controller/post-install-hook.yaml
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  image: ghcr.io/kubewarden/adm-controller/policy-server:v1.39.0$'
+        template: defaults/defaults-configmap.yaml
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  replicas: 1$'
+        template: defaults/defaults-configmap.yaml
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n  [a-zA-Z]'
+        template: defaults/defaults-configmap.yaml
+
   # NOTES.txt and the defaults ConfigMap use the same policy registry.
   - it: "NOTES.txt lists the recommended policies from global.imageRegistry, as the defaults ConfigMap"
     set:

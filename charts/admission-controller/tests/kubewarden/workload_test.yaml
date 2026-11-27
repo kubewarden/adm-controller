@@ -56,6 +56,361 @@ tests:
         template: "templates/controller/pre-upgrade-hook.yaml"
         documentSelector: {path: kind, value: Job}
 
+  - it: "should render the controller block on the controller only"
+    set:
+      controller:
+        logLevel: debug
+        image:
+          pullPolicy: Never
+        priorityClassName: only-ctrl
+        labels: {only: only-ctrl}
+        podLabels: {pod-only: only-ctrl}
+        annotations: {only: only-ctrl}
+        podAnnotations: {pod-only: only-ctrl}
+        nodeSelector: {only: only-ctrl}
+        tolerations: [{key: only-ctrl, operator: Exists}]
+        extraEnv: [{name: ONLY, value: only-ctrl}]
+        imagePullSecrets: [only-ctrl]
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: only-ctrl}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.only", value: only-ctrl}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["pod-only"]', value: only-ctrl}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.annotations.only", value: only-ctrl}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["pod-only"]', value: only-ctrl}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.nodeSelector", value: {only: only-ctrl}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: only-ctrl, operator: Exists}]}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: ONLY, value: only-ctrl}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].env", content: {name: ONLY, value: only-ctrl}}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: only-ctrl}]}
+        template: "templates/controller/deployment.yaml"
+      # The controller does not give its own pull secrets to the PolicyServers.
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=only-ctrl"}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: info}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.priorityClassName"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.nodeSelector"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      # The pre-delete Job runs the controller image, so it uses controller.image.pullPolicy.
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.priorityClassName"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.tolerations"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      # The pre-upgrade Job runs the controller image, so it uses controller.image.pullPolicy.
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "spec.template.spec.priorityClassName"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "spec.template.spec.tolerations"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/post-install-hook.yaml"
+      - notExists: {path: "spec.template.spec.priorityClassName"}
+        template: "templates/controller/post-install-hook.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].env", content: {name: ONLY, value: only-ctrl}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "only-ctrl"}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '- name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render the auditScanner block on the audit scanner only"
+    set:
+      auditScanner:
+        logLevel: debug
+        image:
+          pullPolicy: Never
+        priorityClassName: only-audit
+        labels: {only: only-audit}
+        podLabels: {pod-only: only-audit}
+        nodeSelector: {only: only-audit}
+        tolerations: [{key: only-audit, operator: Exists}]
+        extraEnv: [{name: ONLY, value: only-audit}]
+        extraVolumes: [{name: only-audit, emptyDir: {}}]
+        imagePullSecrets: [only-audit]
+    asserts:
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].command[4]", value: debug}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.priorityClassName", value: only-audit}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "metadata.labels.only", value: only-audit}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.labels["pod-only"]', value: only-audit}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.nodeSelector", value: {only: only-audit}}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.tolerations", value: [{key: only-audit, operator: Exists}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.containers[0].env", content: {name: ONLY, value: only-audit}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.volumes", content: {name: only-audit, emptyDir: {}}}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: only-audit}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.priorityClassName"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/deployment.yaml"
+      - notContains: {path: "spec.template.spec.volumes", content: {name: only-audit, emptyDir: {}}}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.volumes"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "spec.template.spec.volumes"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "only-audit"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  # The pre-upgrade Job uses the values of the preDeleteJob block.
+  - it: "should render the preDeleteJob block on the pre-delete and pre-upgrade Jobs only"
+    set:
+      preDeleteJob:
+        logLevel: debug
+        priorityClassName: only-pre
+        labels: {only: only-pre}
+        podAnnotations: {pod-only: only-pre}
+        affinity: {podAffinity: {preferredDuringSchedulingIgnoredDuringExecution: [{weight: 1, podAffinityTerm: {topologyKey: only-pre}}]}}
+        topologySpreadConstraints: [{maxSkew: 1, topologyKey: only-pre, whenUnsatisfiable: ScheduleAnyway}]
+        extraEnv: [{name: ONLY, value: only-pre}]
+        extraEnvFrom: [{configMapRef: {name: only-pre}}]
+        extraVolumeMounts: [{name: only-pre, mountPath: /only-pre}]
+        imagePullSecrets: [only-pre]
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: only-pre}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "metadata.labels.only", value: only-pre}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["pod-only"]', value: only-pre}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.affinity.podAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].podAffinityTerm.topologyKey", value: only-pre}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints[0].topologyKey", value: only-pre}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: ONLY, value: only-pre}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: only-pre}}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: only-pre, mountPath: /only-pre}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: only-pre}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=debug"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.priorityClassName", value: only-pre}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "metadata.labels.only", value: only-pre}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'spec.template.metadata.annotations["pod-only"]', value: only-pre}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.affinity.podAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].podAffinityTerm.topologyKey", value: only-pre}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.topologySpreadConstraints[0].topologyKey", value: only-pre}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: ONLY, value: only-pre}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: only-pre}}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: only-pre, mountPath: /only-pre}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: only-pre}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.affinity"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].envFrom"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.initContainers[0].envFrom"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.topologySpreadConstraints"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/post-install-hook.yaml"
+      - notExists: {path: "spec.template.spec.containers[0].envFrom"}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "only-pre"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render the postInstallJob block on the post-install Job only"
+    set:
+      postInstallJob:
+        image:
+          pullPolicy: Never
+        priorityClassName: only-post
+        labels: {only: only-post}
+        podLabels: {pod-only: only-post}
+        nodeSelector: {only: only-post}
+        extraEnv: [{name: ONLY, value: only-post}]
+        extraVolumes: [{name: only-post, emptyDir: {}}]
+        imagePullSecrets: [only-post]
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "spec.template.spec.priorityClassName", value: only-post}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "metadata.labels.only", value: only-post}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["pod-only"]', value: only-post}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "spec.template.spec.nodeSelector", value: {only: only-post}}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: ONLY, value: only-post}}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: only-post, emptyDir: {}}}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: only-post}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.nodeSelector"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.volumes"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: IfNotPresent}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "spec.template.spec.volumes"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "only-post"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render the policyServer block on the default PolicyServer only"
+    set:
+      policyServer:
+        logLevel: debug
+        priorityClassName: only-ps
+        labels: {only: only-ps}
+        podLabels: {pod-only: only-ps}
+        tolerations: [{key: only-ps, operator: Exists}]
+        extraEnv: [{name: ONLY, value: only-ps}]
+        imagePullSecrets: [only-ps]
+        # The PolicyServer CRD has no fields for these keys.
+        nodeSelector: {only: only-ps}
+        topologySpreadConstraints: [{maxSkew: 1, topologyKey: only-ps, whenUnsatisfiable: ScheduleAnyway}]
+        extraEnvFrom: [{configMapRef: {name: only-ps}}]
+        extraVolumes: [{name: only-ps, emptyDir: {}}]
+        extraVolumeMounts: [{name: only-ps, mountPath: /only-ps}]
+    asserts:
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '- name: "KUBEWARDEN_LOG_LEVEL"\n      value: "debug"'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  priorityClassName: "only-ps"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    only: only-ps$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    "pod-only": "only-ps"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  tolerations:\n    - key: only-ps$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    - name: "ONLY"\n      value: "only-ps"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "nodeSelector|topologySpreadConstraints|envFrom|volumes|volumeMounts|/only-ps"}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=only-ps"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].args", content: "--zap-log-level=info"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.priorityClassName"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.template.spec.nodeSelector"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.tolerations"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "metadata.labels.only"}
+        template: "templates/controller/post-install-hook.yaml"
+
   - it: "should render the resources and security contexts of each workload block on its own workload"
     set:
       controller:
