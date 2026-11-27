@@ -133,22 +133,6 @@ app.kubernetes.io/managed-by: kubewarden-controller
 {{- end }}
 
 {{/*
-Print the image pull secrets in the expected format (an array of objects with one possible field, "name").
-*/}}
-{{- define "imagePullSecrets" }}
-    {{- $imagePullSecrets := list }}
-    {{- range . }}
-        {{- if kindIs "string" . }}
-            {{- $imagePullSecrets = append $imagePullSecrets (dict "name" .) }}
-        {{- else }}
-            {{- $imagePullSecrets = append $imagePullSecrets . }}
-        {{- end }}
-    {{- end }}
-    {{- toYaml $imagePullSecrets }}
-{{- end }}
-
-
-{{/*
 Annotations
 */}}
 {{- define "admission-controller.annotations" -}}
@@ -212,24 +196,6 @@ It takes the context dict of the workload helpers.
 {{- define "admission-controller._image" -}}
 {{- $block := index .root.Values .workload | default dict -}}
 {{- toYaml ($block.image | default dict) -}}
-{{- end -}}
-
-{{/*
-Build a comma-separated list of Secret names from .Values.imagePullSecrets,
-for use with the controller --image-pull-secrets flag. Handles both string
-entries and {name: ...} objects. Returns an empty string when no secrets
-are configured.
-*/}}
-{{- define "policyServerImagePullSecretNames" -}}
-{{- $names := list -}}
-{{- range .Values.imagePullSecrets -}}
-  {{- if kindIs "string" . -}}
-    {{- $names = append $names . -}}
-  {{- else -}}
-    {{- $names = append $names .name -}}
-  {{- end -}}
-{{- end -}}
-{{- join "," $names -}}
 {{- end -}}
 
 {{- define "audit-scanner.command" -}}
@@ -408,6 +374,18 @@ The other private helpers decode this list, so they work on copies of .Values.
 {{- end -}}
 
 {{/*
+admission-controller._field renders "<name>:" and the value as YAML.
+It renders nothing when the value is empty.
+It takes dict "name" <field name> "value" <value>.
+*/}}
+{{- define "admission-controller._field" -}}
+{{- with .value -}}
+{{ $.name }}:
+  {{- toYaml . | nindent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 admission-controller._legacy resolves deprecated keys. A deprecated key wins
 over the contract keys when it is set.
 It takes dict "root" <root context> "paths" <list of dotted paths> "mode" <mode>.
@@ -468,6 +446,33 @@ It renders {} when the key has no deprecated alias.
 {{- end -}}
 {{- end -}}
 
+{{/*
+admission-controller._pullSecrets renders the YAML list of the image pull
+secrets: global, common, the deprecated top-level imagePullSecrets, and the
+workload, in this order.
+Each item is a Secret name or a map with a name key. The helper renders a
+name as a map. It skips an item with an empty or missing name.
+It keeps an item of any other type, and Kubernetes rejects it.
+*/}}
+{{- define "admission-controller._pullSecrets" -}}
+{{- $l := include "admission-controller._levels" (dict "ctx" . "key" "imagePullSecrets") | fromYamlArray -}}
+{{- $secrets := list -}}
+{{- range concat (index $l 0 | default list) (index $l 1 | default list) (.root.Values.imagePullSecrets | default list) (index $l 2 | default list) -}}
+{{- if kindIs "string" . -}}
+{{- if . -}}
+{{- $secrets = append $secrets (dict "name" .) -}}
+{{- end -}}
+{{- else if kindIs "map" . -}}
+{{- if .name -}}
+{{- $secrets = append $secrets . -}}
+{{- end -}}
+{{- else -}}
+{{- $secrets = append $secrets . -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $secrets -}}
+{{- end -}}
+
 {{/* Public helpers that render a bare value. */}}
 
 {{- define "admission-controller.imagePullPolicy" -}}
@@ -478,4 +483,31 @@ It renders {} when the key has no deprecated alias.
 {{- $l := include "admission-controller._levels" (dict "ctx" . "key" "imagePullPolicy") | fromYamlArray -}}
 {{- (include "admission-controller._image" . | fromYaml).pullPolicy | default (index $l 1) | default (index $l 0) | default "" -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller.policyServerImagePullSecretNames renders the
+comma-separated names of the image pull secrets of the policy servers,
+for the controller --image-pull-secrets flag.
+It reads global, common, the deprecated top-level imagePullSecrets, and
+policyServer. It takes the root context ($).
+*/}}
+{{- define "admission-controller.policyServerImagePullSecretNames" -}}
+{{- $names := list -}}
+{{- range include "admission-controller._pullSecrets" (dict "root" . "workload" "policyServer" "component" "policy-server") | fromYamlArray -}}
+{{- if kindIs "map" . -}}
+{{- $names = append $names .name -}}
+{{- end -}}
+{{- end -}}
+{{- join "," $names -}}
+{{- end -}}
+
+{{/* Public helpers that render a whole field, or nothing when the value is empty. */}}
+
+{{/*
+admission-controller.imagePullSecrets renders "imagePullSecrets:" with the
+list of admission-controller._pullSecrets.
+*/}}
+{{- define "admission-controller.imagePullSecrets" -}}
+{{- include "admission-controller._field" (dict "name" "imagePullSecrets" "value" (include "admission-controller._pullSecrets" . | fromYamlArray)) -}}
 {{- end -}}

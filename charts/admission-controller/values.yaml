@@ -17,6 +17,13 @@ global:
   # Registry for all chart images and for the recommended policies.
   # If you set it, it replaces the image.registry of every workload block.
   imageRegistry: ""
+  # Secrets that the kubelet uses to pull the chart images.
+  # Each item is a Secret name or a map with a name key,
+  # for example [my-secret] or [{name: my-secret}].
+  # The chart adds the items of global and of the workload block, in this order.
+  # The controller also gives the secrets of global and policyServer to every
+  # PolicyServer.
+  imagePullSecrets: []
   # Pull policy for the chart images: Always, IfNotPresent, or Never.
   # The image.pullPolicy of a workload block replaces it.
   imagePullPolicy: IfNotPresent
@@ -134,8 +141,10 @@ controller:
     # Pull policy for the image. If it is empty, the chart uses common.imagePullPolicy, then global.imagePullPolicy.
     pullPolicy: ""
 
-# Secrets to pull container images from private registries
-imagePullSecrets: []
+# Deprecated: use global.imagePullSecrets or the imagePullSecrets of a workload
+# block. The chart adds these secrets after global.imagePullSecrets, on every
+# workload and on every PolicyServer.
+imagePullSecrets: [] # @schema deprecated:true
 # -- Additional labels to add to all resources
 additionalLabels: {}
 #   app: kubewarden-controller

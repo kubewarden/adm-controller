@@ -12,6 +12,92 @@ release:
   namespace: kw
 tests:
   # imagePullSecrets
+  - it: "imagePullSecrets alone renders on every workload and in --image-pull-secrets as on main"
+    set:
+      telemetry.metrics: true
+      imagePullSecrets:
+        - name: old-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: old-secret}]
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --image-pull-secrets=old-secret
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.imagePullSecrets
+          value: [{name: old-secret}]
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: old-secret}]
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: old-secret}]
+        template: controller/post-install-hook.yaml
+
+  - it: "imagePullSecrets with the new keys: global first, then the deprecated key, then the workload"
+    set:
+      telemetry.metrics: true
+      imagePullSecrets:
+        - name: old-secret
+      global.imagePullSecrets:
+        - g-secret
+      controller.imagePullSecrets:
+        - c-secret
+      auditScanner.imagePullSecrets:
+        - a-secret
+      preDeleteJob.imagePullSecrets:
+        - d-secret
+      postInstallJob.imagePullSecrets:
+        - p-secret
+      policyServer.imagePullSecrets:
+        - ps-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: old-secret}, {name: c-secret}]
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --image-pull-secrets=g-secret,old-secret,ps-secret
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: old-secret}, {name: a-secret}]
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: old-secret}, {name: d-secret}]
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: old-secret}, {name: p-secret}]
+        template: controller/post-install-hook.yaml
+
+  - it: "imagePullSecrets new keys alone"
+    set:
+      global.imagePullSecrets:
+        - g-secret
+      controller.imagePullSecrets:
+        - c-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}, {name: c-secret}]
+        template: controller/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --image-pull-secrets=g-secret
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.imagePullSecrets
+          value: [{name: g-secret}]
+        template: controller/audit-scanner.yaml
+
   # image.repository and image.tag
   - it: "image.repository and image.tag alone render on the controller and the pre-delete Job as on main"
     set:

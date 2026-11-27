@@ -11,6 +11,37 @@ release:
   name: rel
   namespace: kw
 tests:
+  - it: "should append imagePullSecrets: global, common, the deprecated top-level key, then the workload"
+    set:
+      global:
+        imagePullSecrets: [global-secret]
+      common:
+        imagePullSecrets: [{name: common-secret}, common-name]
+      imagePullSecrets: [{name: legacy-secret}]
+      controller:
+        imagePullSecrets: [controller-secret]
+      auditScanner:
+        imagePullSecrets: [audit-secret]
+      policyServer:
+        imagePullSecrets: [policy-server-secret]
+    asserts:
+      - equal:
+          path: "spec.template.spec.imagePullSecrets"
+          value: [{name: global-secret}, {name: common-secret}, {name: common-name}, {name: legacy-secret}, {name: controller-secret}]
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.jobTemplate.spec.template.spec.imagePullSecrets"
+          value: [{name: global-secret}, {name: common-secret}, {name: common-name}, {name: legacy-secret}, {name: audit-secret}]
+        template: "templates/controller/audit-scanner.yaml"
+      - equal:
+          path: "spec.template.spec.imagePullSecrets"
+          value: [{name: global-secret}, {name: common-secret}, {name: common-name}, {name: legacy-secret}]
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains:
+          path: "spec.template.spec.containers[0].args"
+          content: "--image-pull-secrets=global-secret,common-secret,common-name,legacy-secret,policy-server-secret"
+        template: "templates/controller/deployment.yaml"
+
   - it: "should prefer global.imageRegistry over the image.registry of every workload"
     set:
       telemetry:

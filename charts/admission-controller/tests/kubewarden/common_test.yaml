@@ -32,3 +32,23 @@ tests:
         documentSelector: {path: kind, value: Job}
       - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Never}
         template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should render common.imagePullSecrets on every workload"
+    set:
+      common:
+        imagePullSecrets:
+          - common-secret
+    asserts:
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: common-secret}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=common-secret"}
+        template: "templates/controller/deployment.yaml"

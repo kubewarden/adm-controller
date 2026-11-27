@@ -151,6 +151,9 @@
                 "imagePullPolicy": {
                     "type": "string"
                 },
+                "imagePullSecrets": {
+                    "type": "array"
+                },
                 "imageRegistry": {
                     "type": "string"
                 },
@@ -187,6 +190,7 @@
             }
         },
         "imagePullSecrets": {
+            "deprecated": true,
             "type": "array"
         },
         "installOpenReportsCRDs": {

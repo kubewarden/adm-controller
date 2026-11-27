@@ -45,10 +45,7 @@ spec:
       securityContext:
 {{ toYaml .Values.preDeleteHook.podSecurityContext | indent 8 }}
       {{- end }}
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-      {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
       containers:
         - name: post-install-job
           image: '{{ template "system_default_registry" $ctx }}{{ $legacyImage.repository | default $kubectlImage.repository }}:{{ $legacyImage.tag | default $kubectlImage.tag }}'

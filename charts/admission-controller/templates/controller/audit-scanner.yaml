@@ -23,10 +23,7 @@ spec:
           securityContext:
           {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if .Values.imagePullSecrets }}
-          imagePullSecrets:
-          {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 12 }}
-          {{- end }}
+          {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 10 }}{{ end }}
           restartPolicy: {{ .Values.auditScanner.containerRestartPolicy }}
           volumes:
           - name: kubewarden-ca

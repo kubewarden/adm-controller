@@ -32,10 +32,7 @@ spec:
       labels:
         {{- include "admission-controller.labels" . | nindent 8 }}
     spec:
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-      {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
       serviceAccountName: {{ include "admission-controller.serviceAccountName" . }}
       {{- $effectiveAffinity := include "admission-controller.effectiveAffinity" . }}
       {{- if $effectiveAffinity }}
@@ -108,7 +105,7 @@ spec:
        {{- if .Values.mTLS.enable }}
         - --client-ca-configmap-name={{ .Values.mTLS.configMapName }}
        {{- end }}
-       {{- $imagePullSecretNames := include "policyServerImagePullSecretNames" . }}
+       {{- $imagePullSecretNames := include "admission-controller.policyServerImagePullSecretNames" . }}
        {{- if $imagePullSecretNames }}
         - --image-pull-secrets={{ $imagePullSecretNames }}
        {{- end }}

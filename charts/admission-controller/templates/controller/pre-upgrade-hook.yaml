@@ -14,6 +14,8 @@ Argo CD runs this hook on every sync, also on the first one, before the
 ServiceAccount of the controller exists. So the Job has its own ServiceAccount,
 with rules for these objects only.
 
+The Job uses the values of the preDeleteJob block.
+
 The hook is a no-op after the first upgrade from a chart that rendered these
 objects. It can be removed once the chart no longer supports an upgrade from
 such a chart, some releases after it shipped.
@@ -25,6 +27,7 @@ than 63 characters. So the full name is cut at 51 characters.
 */}}
 {{- $name := printf "%s-pre-upgrade" (include "admission-controller.fullname" . | trunc 51 | trimSuffix "-") }}
 {{- $namespace := include "admission-controller.namespace" . }}
+{{- $ctx := dict "root" $ "workload" "preDeleteJob" "component" "pre-upgrade-job" }}
 {{- $controllerCtx := dict "root" $ "workload" "controller" "component" "controller" }}
 {{- $legacyImage := .Values.image | default dict }}
 {{- $controllerImage := (.Values.controller | default dict).image | default dict }}
@@ -172,10 +175,7 @@ spec:
       securityContext:
 {{ toYaml .Values.preDeleteHook.podSecurityContext | indent 8 }}
       {{- end }}
-      {{- if .Values.imagePullSecrets }}
-      imagePullSecrets:
-      {{- include "imagePullSecrets" .Values.imagePullSecrets | nindent 8 }}
-      {{- end }}
+      {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
       containers:
         - name: kubewarden-pre-upgrade
           image: '{{ template "system_default_registry" $controllerCtx }}{{ $legacyImage.repository | default $controllerImage.repository }}:{{ $legacyImage.tag | default $controllerImage.tag }}'

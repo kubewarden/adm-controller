@@ -33,6 +33,87 @@ tests:
       - equal: {path: "spec.template.spec.containers[0].imagePullPolicy", value: Always}
         template: "templates/controller/post-install-hook.yaml"
 
+  # The controller gives the image pull secrets to every PolicyServer with the
+  # --image-pull-secrets flag.
+  - it: "should render global.imagePullSecrets on every workload"
+    set:
+      global:
+        imagePullSecrets:
+          - name: registry-credentials
+    asserts:
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=registry-credentials"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should accept plain Secret names in global.imagePullSecrets"
+    set:
+      global:
+        imagePullSecrets:
+          - registry-credentials
+    asserts:
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: registry-credentials}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=registry-credentials"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should skip empty names in imagePullSecrets"
+    set:
+      global:
+        imagePullSecrets:
+          - ""
+          - {}
+          - name: ""
+          - other: x
+          - name: real-secret
+    asserts:
+      - equal: {path: "spec.template.spec.imagePullSecrets", value: [{name: real-secret}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets", value: [{name: real-secret}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=real-secret"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should omit imagePullSecrets when all names are empty"
+    set:
+      global:
+        imagePullSecrets:
+          - ""
+          - {}
+          - name: ""
+    asserts:
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/deployment.yaml"
+      - notExists: {path: "spec.jobTemplate.spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/audit-scanner.yaml"
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - notExists: {path: "spec.template.spec.imagePullSecrets"}
+        template: "templates/controller/post-install-hook.yaml"
+      - notContains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets="}
+        template: "templates/controller/deployment.yaml"
+
   - it: "should render global.imageRegistry on every workload and on the recommended policies"
     set:
       global:
