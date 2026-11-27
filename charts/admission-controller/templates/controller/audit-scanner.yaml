@@ -5,10 +5,8 @@ kind: CronJob
 metadata:
   name: {{ include "audit-scanner.fullname" . }}
   namespace: {{ include "admission-controller.namespace" . | quote }}
-  labels:
-    {{- include "admission-controller.labels" . | nindent 4 }}
-  annotations:
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- with include "admission-controller.workloadAnnotations" $ctx }}{{ . | nindent 2 }}{{ end }}
 spec:
   schedule: {{ .Values.auditScanner.cronJob.schedule | quote }}
   concurrencyPolicy: Forbid
@@ -17,6 +15,9 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          {{- include "admission-controller.podLabels" $ctx | nindent 10 }}
+          {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 10 }}{{ end }}
         spec:
           serviceAccountName: {{ .Values.auditScanner.serviceAccountName }}
           {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 10 }}{{ end }}

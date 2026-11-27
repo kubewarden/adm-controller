@@ -9,6 +9,8 @@
 # can deadlock single-node hostNetwork rollouts due to hostPort conflicts.
 {{ if and (or .Values.telemetry.metrics .Values.telemetry.tracing) (eq .Values.telemetry.mode "sidecar") }}
 {{- $ctx := dict "root" $ "workload" "postInstallJob" "component" "post-install-job" }}
+{{- $hookAnnotations := dict "helm.sh/hook" "post-install,post-upgrade" "helm.sh/hook-weight" "1" "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded" }}
+{{- $metadataCtx := merge (dict "extraAnnotations" $hookAnnotations) $ctx }}
 {{- $legacyImage := (.Values.preDeleteJob | default dict).image | default dict }}
 {{- $kubectlImage := (.Values.postInstallJob | default dict).image | default dict }}
 apiVersion: batch/v1
@@ -16,21 +18,14 @@ kind: Job
 metadata:
   name: "{{ .Release.Name }}-delete-controller-job"
   namespace: {{ include "admission-controller.namespace" . | quote }}
-  labels:
-    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "1"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- include "admission-controller.workloadAnnotations" $metadataCtx | nindent 2 }}
 spec:
   template:
     metadata:
       name: "{{ .Release.Name }}-delete-controller-job"
-      labels:
-        {{- include "admission-controller.defaults.labels" . | nindent 8 }}
-      annotations:
-        {{- include "admission-controller.annotations" . | nindent 8 }}
+      {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
+      {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ end }}
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ include "admission-controller.serviceAccountName" . }}

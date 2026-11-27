@@ -67,11 +67,11 @@ policy-reporter.namespaceOverride must have the same value.
 {{- end -}}
 
 {{/*
-Base labels shared by every resource in the chart.
+Fixed labels of the chart. A user value cannot replace them.
 Does not include managed-by (varies: Helm vs kubewarden-controller)
 or component (varies per resource type).
 */}}
-{{- define "admission-controller.commonLabels" -}}
+{{- define "admission-controller.fixedLabels" -}}
 helm.sh/chart: {{ include "admission-controller.chart" . }}
 {{ include "admission-controller.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
@@ -80,9 +80,21 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/version: {{ .Chart.Version | quote }}
 {{- end }}
 app.kubernetes.io/part-of: kubewarden
-{{- if .Values.additionalLabels }}
-{{ toYaml .Values.additionalLabels }}
 {{- end }}
+
+{{/*
+Base labels shared by every resource in the chart: the fixed labels and
+additionalLabels.
+Does not include managed-by (varies: Helm vs kubewarden-controller)
+or component (varies per resource type).
+The fixed labels win over additionalLabels.
+The callers add component and managed-by,
+so additionalLabels cannot set them either.
+*/}}
+{{- define "admission-controller.commonLabels" -}}
+{{- $fixed := include "admission-controller.fixedLabels" . | fromYaml -}}
+{{- $user := omit (.Values.additionalLabels | default dict) "app.kubernetes.io/component" "app.kubernetes.io/managed-by" -}}
+{{- toYaml (merge $fixed $user) -}}
 {{- end }}
 
 {{/*
@@ -106,7 +118,7 @@ app.kubernetes.io/component: controller
 {{- end }}
 
 {{/*
-Labels for defaults resources (PolicyServer RBAC, hook Jobs, etc.)
+Labels for defaults resources (PolicyServer RBAC, etc.)
 No component label — callers add it inline when needed.
 */}}
 {{- define "admission-controller.defaults.labels" -}}
@@ -115,7 +127,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Labels for controller resources (Deployment, Services, RBAC, etc.)
+Labels for controller resources (Services, RBAC, etc.)
 */}}
 {{- define "admission-controller.labels" -}}
 {{ include "admission-controller.commonLabels" . }}
@@ -345,6 +357,7 @@ A template builds the context dict once:
 
 Each public helper reads one key with one private helper. The private helper sets the rule:
   admission-controller._scalar: the workload value, else the common value, else the global value.
+  admission-controller._map:    the global, common, and workload maps merged. The workload wins on a duplicate key.
 An empty value ("", [] or {}) counts as unset.
 The image registry and the pull policy of a workload are in its image map:
   system_default_registry (above): global.imageRegistry, else the workload image.registry, else ghcr.io when the image has no registry key.
@@ -384,6 +397,11 @@ The other private helpers decode this list, so they work on copies of .Values.
 {{- index $l 2 | default (index $l 1) | default (index $l 0) | default "" -}}
 {{- end -}}
 
+{{- define "admission-controller._map" -}}
+{{- $l := include "admission-controller._levels" . | fromYamlArray -}}
+{{- toYaml (mergeOverwrite (dict) (index $l 0 | default dict) (index $l 1 | default dict) (index $l 2 | default dict)) -}}
+{{- end -}}
+
 {{/*
 admission-controller._field renders "<name>:" and the value as YAML.
 It renders nothing when the value is empty.
@@ -394,6 +412,37 @@ It takes dict "name" <field name> "value" <value>.
 {{ $.name }}:
   {{- toYaml . | nindent 2 }}
 {{- end -}}
+{{- end -}}
+
+{{/*
+admission-controller._labels renders "labels:" with the merged map of the key,
+then additionalLabels, then the fixed chart labels.
+The fixed chart labels, managed-by and component win on a duplicate key.
+managed-by is the Helm service, or ctx.managedBy when it is set.
+*/}}
+{{- define "admission-controller._labels" -}}
+{{- $labels := include "admission-controller._map" . | fromYaml -}}
+{{- $labels = mergeOverwrite $labels (deepCopy (.ctx.root.Values.additionalLabels | default dict)) -}}
+{{- $fixed := include "admission-controller.fixedLabels" .ctx.root | fromYaml -}}
+{{- $_ := set $fixed "app.kubernetes.io/managed-by" (.ctx.managedBy | default .ctx.root.Release.Service) -}}
+{{- $_ := set $fixed "app.kubernetes.io/component" .ctx.component -}}
+labels:
+  {{- toYaml (mergeOverwrite $labels $fixed) | nindent 2 }}
+{{- end -}}
+
+{{/*
+admission-controller._annotations renders "annotations:" with the base map,
+then additionalAnnotations, then the extra map. The later map wins on a
+duplicate key. Each value is rendered as a string.
+It takes dict "ctx" <context dict> "base" <map> "extra" <map>.
+*/}}
+{{- define "admission-controller._annotations" -}}
+{{- $merged := mergeOverwrite (dict) (deepCopy (.base | default dict)) (deepCopy (.ctx.root.Values.additionalAnnotations | default dict)) (deepCopy (.extra | default dict)) -}}
+{{- $annotations := dict -}}
+{{- range $key, $value := $merged -}}
+{{- $_ := set $annotations $key (toString $value) -}}
+{{- end -}}
+{{- include "admission-controller._field" (dict "name" "annotations" "value" $annotations) -}}
 {{- end -}}
 
 {{/*
@@ -410,6 +459,7 @@ The modes:
   map:      set means a non-empty map. The value is the new value with the
             deprecated map merged on top, so the missing leaves come from the
             new key. A null leaf of the deprecated map removes the leaf.
+  replace:  set means not empty. The value is the deprecated value verbatim.
 */}}
 {{- define "admission-controller._legacy" -}}
 {{- $out := dict -}}
@@ -471,6 +521,7 @@ controller:
   imagePullPolicy: {paths: [image.pullPolicy], mode: string}
   logLevel: {paths: [logLevel], mode: string}
   replicas: {paths: [replicas], mode: presence}
+  podAnnotations: {paths: [podAnnotations], mode: replace}
   resources: {paths: [resources.controller], mode: map}
   podSecurityContext: {paths: [podSecurityContext], mode: map}
   containerSecurityContext: {paths: [containerSecurityContext], mode: map}
@@ -490,6 +541,7 @@ postInstallJob:
   containerSecurityContext: {paths: [preDeleteHook.containerSecurityContext], mode: map}
 policyServer:
   replicas: {paths: [policyServer.replicaCount], mode: presence}
+  podAnnotations: {paths: [policyServer.annotations], mode: replace}
 {{- end -}}
 
 {{/*
@@ -613,7 +665,46 @@ policyServer. It takes the root context ($).
 {{- join "," $names -}}
 {{- end -}}
 
+{{/*
+Public helpers that render a YAML map, for the PolicyServer resource,
+which has its own fields for the pod labels and annotations.
+*/}}
+
+{{- define "admission-controller.podLabelsMap" -}}
+{{- include "admission-controller._map" (dict "ctx" . "key" "podLabels") -}}
+{{- end -}}
+
+{{- define "admission-controller.podAnnotationsMap" -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" . "key" "podAnnotations") | fromYaml -}}
+{{- if hasKey $old "value" -}}
+{{- toYaml $old.value -}}
+{{- else -}}
+{{- include "admission-controller._map" (dict "ctx" . "key" "podAnnotations") -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Public helpers that render a whole field, or nothing when the value is empty. */}}
+
+{{/*
+The annotation helpers add additionalAnnotations on top of the contract map.
+admission-controller.workloadAnnotations adds ctx.extraAnnotations last, and
+admission-controller.podAnnotations adds ctx.extraPodAnnotations last.
+*/}}
+{{- define "admission-controller.workloadAnnotations" -}}
+{{- include "admission-controller._annotations" (dict "ctx" . "base" (include "admission-controller._map" (dict "ctx" . "key" "annotations") | fromYaml) "extra" .extraAnnotations) -}}
+{{- end -}}
+
+{{- define "admission-controller.podAnnotations" -}}
+{{- include "admission-controller._annotations" (dict "ctx" . "base" (include "admission-controller.podAnnotationsMap" . | fromYaml) "extra" .extraPodAnnotations) -}}
+{{- end -}}
+
+{{- define "admission-controller.workloadLabels" -}}
+{{- include "admission-controller._labels" (dict "ctx" . "key" "labels") -}}
+{{- end -}}
+
+{{- define "admission-controller.podLabels" -}}
+{{- include "admission-controller._labels" (dict "ctx" . "key" "podLabels") -}}
+{{- end -}}
 
 {{/*
 admission-controller.imagePullSecrets renders "imagePullSecrets:" with the

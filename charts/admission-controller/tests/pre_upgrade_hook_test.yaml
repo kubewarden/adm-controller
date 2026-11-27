@@ -65,13 +65,14 @@ tests:
           path: spec.template.spec.restartPolicy
           value: OnFailure
 
-  - it: "should not give the Job pod the controller component label, which the cleanup waits on"
+  - it: "should give the Job pod its own component label, not the controller one, which the cleanup waits on"
     documentSelector:
       path: kind
       value: Job
     asserts:
-      - notExists:
+      - equal:
           path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: pre-upgrade-job
 
   - it: "should let the Job read and patch only the certificate Secrets of the controller"
     documentSelector:

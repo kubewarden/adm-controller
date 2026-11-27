@@ -1,17 +1,13 @@
 {{- define "kubewarden.defaults.policyserverDefault" -}}
-{{- $ctx := dict "root" $ "workload" "policyServer" "component" "policy-server" -}}
+{{- $ctx := dict "root" $ "workload" "policyServer" "component" "policy-server" "managedBy" "kubewarden-controller" -}}
 {{- $ps := .Values.policyServer -}}
 {{- $resources := $ps.resources | default dict -}}
 apiVersion: {{ $.Values.crdVersion }}
 kind: PolicyServer
 metadata:
   name: default
-  labels:
-    {{- include "admission-controller.commonLabels" . | nindent 4 }}
-    app.kubernetes.io/component: policy-server
-    app.kubernetes.io/managed-by: kubewarden-controller
-  annotations:
-    {{- include "admission-controller.defaults.annotations" . | nindent 4 }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- with include "admission-controller.workloadAnnotations" $ctx }}{{ . | nindent 2 }}{{ end }}
   finalizers:
     - kubewarden.io/finalizer
 spec:
@@ -51,9 +47,15 @@ spec:
   {{- if $ps.sigstoreTrustConfig }}
   sigstoreTrustConfig: {{ $ps.sigstoreTrustConfig }}
   {{- end }}
-  {{- if $ps.annotations }}
+  {{- with include "admission-controller.podLabelsMap" $ctx | fromYaml }}
+  labels:
+    {{- range $key, $value := . }}
+    {{ $key | quote }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+  {{- with include "admission-controller.podAnnotationsMap" $ctx | fromYaml }}
   annotations:
-    {{- range $key, $value := $ps.annotations }}
+    {{- range $key, $value := . }}
     {{ $key | quote }}: {{ $value | quote }}
     {{- end }}
   {{- end }}

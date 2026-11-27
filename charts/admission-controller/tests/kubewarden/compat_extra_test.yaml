@@ -14,6 +14,37 @@ release:
   namespace: kw
 tests:
   # The controller Service selector does not select the pods of the other workloads.
+  - it: "the controller Service selector is the controller selector, even with hostile labels"
+    set:
+      telemetry.metrics: true
+      global.labels:
+        app.kubernetes.io/component: controller
+      global.podLabels:
+        app.kubernetes.io/component: controller
+      auditScanner.podLabels:
+        app.kubernetes.io/component: controller
+      preDeleteJob.podLabels:
+        app.kubernetes.io/component: controller
+      postInstallJob.podLabels:
+        app.kubernetes.io/component: controller
+    asserts:
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/instance: t
+            app.kubernetes.io/component: controller
+        template: controller/service.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/instance: t
+            app.kubernetes.io/component: controller
+        template: controller/service.yaml
+        documentIndex: 0
+
+  # The tests with hostile additionalLabels are in compat_labels_test.yaml.
+
   # NOTES.txt and the defaults ConfigMap use the same policy registry.
   - it: "NOTES.txt lists the recommended policies from global.imageRegistry, as the defaults ConfigMap"
     set:

@@ -77,6 +77,49 @@ tests:
           path: data["policyserver-default.yaml"]
           pattern: 'value: "info"'
 
+  # policyServer.annotations
+  - it: "policyServer.annotations alone renders in spec.annotations as on main, and in metadata.annotations"
+    set:
+      policyServer.annotations:
+        foo: bar
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^spec:(\n  .*)*\n  annotations:\n    "foo": "bar"$'
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^metadata:(\n  .*)*\n  annotations:\n    foo: bar$'
+
+  - it: "policyServer.annotations wins over policyServer.podAnnotations in spec.annotations"
+    set:
+      policyServer.annotations:
+        foo: old
+      policyServer.podAnnotations:
+        foo: new
+        other: x
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^spec:(\n  .*)*\n  annotations:\n    "foo": "old"$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '"foo": "new"'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'other'
+
+  - it: "policyServer.podAnnotations alone renders in spec.annotations only"
+    set:
+      policyServer.podAnnotations:
+        foo: new
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^spec:(\n  .*)*\n  annotations:\n    "foo": "new"$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^    foo: new$'
+
   # policyServer.limits and policyServer.requests
   - it: "policyServer.limits and policyServer.requests alone render as on main"
     set:

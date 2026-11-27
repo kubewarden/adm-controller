@@ -29,6 +29,16 @@ global:
   imagePullPolicy: IfNotPresent
   # Log level for the chart workloads: debug, info, warn, or error.
   logLevel: info
+  # Labels for the workload objects (Deployment, CronJob, Jobs, and the
+  # default PolicyServer).
+  # The policy-reporter subchart also adds these labels to its resources.
+  labels: {}
+  # Annotations for the workload objects.
+  annotations: {}
+  # Labels for the pods.
+  podLabels: {}
+  # Annotations for the pods.
+  podAnnotations: {}
   # affinity:
   #   podAffinity:
   #     requiredDuringSchedulingIgnoredDuringExecution:
@@ -406,7 +416,8 @@ postInstallJob:
     capabilities:
       drop:
         - ALL
-podAnnotations: {}
+# Deprecated: use controller.podAnnotations. When both are set, this key wins.
+podAnnotations: {} # @schema deprecated:true
 nodeSelector: {}
 # additionalEnvironmentVariables is a list of additional environment variables
 # to inject into every container that runs the controller binary: the
@@ -590,6 +601,9 @@ policyServer:
       verbs:
         - create
   env: []
+  # Annotations for the PolicyServer resource and, as in earlier chart
+  # versions, for the PolicyServer pods.
+  # For the pods, this key replaces podAnnotations when it is set.
   annotations: {}
   # Resource limits and requests of the PolicyServer pods.
   resources: {}

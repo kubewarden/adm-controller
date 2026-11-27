@@ -75,3 +75,83 @@ tests:
         template: "templates/controller/post-install-hook.yaml"
       - contains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets=common-secret"}
         template: "templates/controller/deployment.yaml"
+
+  - it: "should render common.labels on every workload"
+    set:
+      common:
+        labels:
+          team: common
+    asserts:
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "metadata.labels.team", value: common}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    team: common$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.annotations on every workload"
+    set:
+      common:
+        annotations:
+          example.com/owner: common
+    asserts:
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    example\.com/owner: common$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.podLabels on every workload"
+    set:
+      common:
+        podLabels:
+          team: common
+    asserts:
+      - equal: {path: "spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.metadata.labels.team", value: common}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  labels:\n    "team": "common"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.podAnnotations on every workload"
+    set:
+      common:
+        podAnnotations:
+          example.com/owner: common
+    asserts:
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: common}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    "example\.com/owner": "common"$'}
+        template: "templates/defaults/defaults-configmap.yaml"

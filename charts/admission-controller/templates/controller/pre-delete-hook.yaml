@@ -36,26 +36,21 @@ The Job runs the controller image in cleanup mode, which:
 {{- $controllerCtx := dict "root" $ "workload" "controller" "component" "controller" }}
 {{- $legacyImage := .Values.image | default dict }}
 {{- $controllerImage := (.Values.controller | default dict).image | default dict }}
+{{- $hookAnnotations := dict "helm.sh/hook" "pre-delete" "helm.sh/hook-weight" "1" "helm.sh/hook-delete-policy" "hook-succeeded" }}
+{{- $metadataCtx := merge (dict "extraAnnotations" $hookAnnotations) $ctx }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: "{{ .Release.Name }}"
   namespace: {{ include "admission-controller.namespace" . | quote }}
-  labels:
-    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": pre-delete
-    "helm.sh/hook-weight": "1"
-    "helm.sh/hook-delete-policy": hook-succeeded
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- include "admission-controller.workloadAnnotations" $metadataCtx | nindent 2 }}
 spec:
   template:
     metadata:
       name: "{{ .Release.Name }}"
-      labels:
-        {{- include "admission-controller.defaults.labels" . | nindent 8 }}
-      annotations:
-        {{- include "admission-controller.annotations" . | nindent 8 }}
+      {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
+      {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ end }}
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ include "admission-controller.serviceAccountName" . }}

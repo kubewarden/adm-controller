@@ -267,6 +267,9 @@
                 "affinity": {
                     "type": "object"
                 },
+                "annotations": {
+                    "type": "object"
+                },
                 "imagePullPolicy": {
                     "type": "string"
                 },
@@ -276,8 +279,17 @@
                 "imageRegistry": {
                     "type": "string"
                 },
+                "labels": {
+                    "type": "object"
+                },
                 "logLevel": {
                     "type": "string"
+                },
+                "podAnnotations": {
+                    "type": "object"
+                },
+                "podLabels": {
+                    "type": "object"
                 },
                 "skipNamespaces": {
                     "type": "array",
@@ -376,6 +388,7 @@
             "type": "object"
         },
         "podAnnotations": {
+            "deprecated": true,
             "type": "object"
         },
         "podSecurityContext": {

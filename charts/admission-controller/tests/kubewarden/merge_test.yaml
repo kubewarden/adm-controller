@@ -74,6 +74,216 @@ tests:
           content: "--image-pull-secrets=global-secret,common-secret,common-name,legacy-secret,policy-server-secret"
         template: "templates/controller/deployment.yaml"
 
+  - it: "should merge annotations: global, common, workload, then additionalAnnotations"
+    set:
+      global:
+        annotations: {a: "1", b: "1", c: "1"}
+      common:
+        annotations: {b: "2", c: "2"}
+      controller:
+        annotations: {c: "3"}
+      additionalAnnotations:
+        a: additional
+    asserts:
+      - equal: {path: "metadata.annotations", value: {a: additional, b: "2", c: "3"}}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should keep the Helm hook annotations of the hook Jobs"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        annotations:
+          helm.sh/hook: test
+          helm.sh/hook-delete-policy: never
+      additionalAnnotations:
+        helm.sh/hook-weight: "-5"
+    asserts:
+      - equal: {path: 'metadata.annotations["helm.sh/hook"]', value: pre-delete}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook-delete-policy"]', value: hook-succeeded}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook-weight"]', value: "1"}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook"]', value: "post-install,post-upgrade"}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook-delete-policy"]', value: "before-hook-creation,hook-succeeded"}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'metadata.annotations["helm.sh/hook-weight"]', value: "1"}
+        template: "templates/controller/post-install-hook.yaml"
+
+  - it: "should prefer additionalLabels over the label keys"
+    set:
+      global:
+        labels: {team: from-global}
+        podLabels: {team: from-global}
+      controller:
+        labels: {team: from-controller}
+      additionalLabels:
+        team: additional
+    asserts:
+      - equal: {path: "metadata.labels.team", value: additional}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: additional}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.team", value: additional}
+        template: "templates/controller/audit-scanner.yaml"
+
+  - it: "should keep the fixed chart labels and the selector"
+    set:
+      telemetry:
+        metrics: true
+      global:
+        labels: &override
+          app.kubernetes.io/name: other
+          app.kubernetes.io/instance: other
+          app.kubernetes.io/component: other
+          app.kubernetes.io/managed-by: other
+          app.kubernetes.io/part-of: other
+          helm.sh/chart: other
+        podLabels: *override
+      common:
+        labels: *override
+        podLabels: *override
+      controller:
+        labels: *override
+        podLabels: *override
+      auditScanner:
+        labels: *override
+        podLabels: *override
+      preDeleteJob:
+        labels: *override
+        podLabels: *override
+      postInstallJob:
+        labels: *override
+        podLabels: *override
+      policyServer:
+        labels: *override
+    asserts:
+      # controller
+      - equal: {path: 'metadata.labels["app.kubernetes.io/name"]', value: admission-controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/managed-by"]', value: Helm}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/part-of"]', value: kubewarden}
+        template: "templates/controller/deployment.yaml"
+      - matchRegex: {path: 'metadata.labels["helm.sh/chart"]', pattern: '^admission-controller-'}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/name"]', value: admission-controller}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.selector.matchLabels"
+          value:
+            app.kubernetes.io/instance: rel
+            app.kubernetes.io/component: controller
+        template: "templates/controller/deployment.yaml"
+      # audit scanner
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: audit-scanner}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.labels["app.kubernetes.io/component"]', value: audit-scanner}
+        template: "templates/controller/audit-scanner.yaml"
+      # pre-delete Job
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: pre-delete-job}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/component"]', value: pre-delete-job}
+        template: "templates/controller/pre-delete-hook.yaml"
+      # post-install Job
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: post-install-job}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/post-install-hook.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/component"]', value: post-install-job}
+        template: "templates/controller/post-install-hook.yaml"
+      # default PolicyServer resource
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/component: policy-server$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/instance: rel$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/managed-by: kubewarden-controller$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/name: admission-controller$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    [a-z./-]+: other$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should keep the fixed chart labels when additionalLabels sets them"
+    templates:
+      - "templates/controller/deployment.yaml"
+      - "templates/controller/audit-scanner.yaml"
+      - "templates/controller/pre-delete-hook.yaml"
+      - "templates/controller/post-install-hook.yaml"
+      - "templates/defaults/defaults-configmap.yaml"
+      - "templates/controller/controller-serviceaccount.yaml"
+      - "templates/controller/service.yaml"
+    set:
+      telemetry:
+        metrics: true
+      additionalLabels:
+        app.kubernetes.io/name: other
+        app.kubernetes.io/instance: other
+        app.kubernetes.io/component: other
+        app.kubernetes.io/managed-by: other
+    asserts:
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+      - equal: {path: 'metadata.labels["app.kubernetes.io/name"]', value: admission-controller}
+      - equal: {path: 'metadata.labels["app.kubernetes.io/managed-by"]', value: Helm}
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.template.metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.selector.matchLabels"
+          value:
+            app.kubernetes.io/instance: rel
+            app.kubernetes.io/component: controller
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: audit-scanner}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: pre-delete-job}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: post-install-job}
+        template: "templates/controller/post-install-hook.yaml"
+      # The other chart objects (ConfigMaps, ServiceAccounts, Services, RBAC,
+      # webhook configurations) also carry the fixed chart labels and
+      # additionalLabels. additionalLabels must not replace a fixed label
+      # there either, and each object must stay valid YAML.
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/component"]', value: controller}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/controller-serviceaccount.yaml"
+      - equal: {path: 'metadata.labels["app.kubernetes.io/instance"]', value: rel}
+        template: "templates/controller/service.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/instance: rel$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    app\.kubernetes\.io/component: policy-server$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    [a-z./-]+: other$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
   - it: "should prefer global.imageRegistry over the image.registry of every workload"
     set:
       telemetry:

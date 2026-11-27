@@ -1,0 +1,84 @@
+# Hostile labels cannot change the controller selector or give other pods the
+# controller component.
+# Only the workload templates are selected: additionalLabels with a fixed
+# label key renders duplicate keys in the labels of the resources that use
+# admission-controller.labels, for example the Services (also on main).
+suite: compat - hostile labels
+templates:
+  - controller/deployment.yaml
+  - controller/audit-scanner.yaml
+  - controller/pre-delete-hook.yaml
+  - controller/post-install-hook.yaml
+release:
+  name: t
+  namespace: kw
+tests:
+  - it: "the audit scanner and hook Job pods do not carry the controller component, even with hostile labels"
+    set:
+      telemetry.metrics: true
+      additionalLabels:
+        app.kubernetes.io/component: controller
+      global.labels:
+        app.kubernetes.io/component: controller
+      global.podLabels:
+        app.kubernetes.io/component: controller
+      auditScanner.podLabels:
+        app.kubernetes.io/component: controller
+      auditScanner.labels:
+        app.kubernetes.io/component: controller
+      preDeleteJob.podLabels:
+        app.kubernetes.io/component: controller
+      postInstallJob.podLabels:
+        app.kubernetes.io/component: controller
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: audit-scanner
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: audit-scanner
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: pre-delete-job
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: post-install-job
+        template: controller/post-install-hook.yaml
+
+  - it: "the controller Deployment selector does not change with hostile labels, podLabels and additionalLabels"
+    set:
+      additionalLabels:
+        app.kubernetes.io/instance: evil
+        app.kubernetes.io/component: evil
+        extra: a
+      global.labels:
+        app.kubernetes.io/instance: evil
+        app.kubernetes.io/component: evil
+      global.podLabels:
+        app.kubernetes.io/instance: evil
+        app.kubernetes.io/component: evil
+      controller.labels:
+        app.kubernetes.io/component: evil
+      controller.podLabels:
+        app.kubernetes.io/instance: evil
+        app.kubernetes.io/component: evil
+        extra: b
+    asserts:
+      - equal:
+          path: spec.selector
+          value:
+            matchLabels:
+              app.kubernetes.io/instance: t
+              app.kubernetes.io/component: controller
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/instance"]
+          value: t
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: controller
+        template: controller/deployment.yaml

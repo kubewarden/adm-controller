@@ -31,6 +31,7 @@ than 63 characters. So the full name is cut at 51 characters.
 {{- $controllerCtx := dict "root" $ "workload" "controller" "component" "controller" }}
 {{- $legacyImage := .Values.image | default dict }}
 {{- $controllerImage := (.Values.controller | default dict).image | default dict }}
+{{- $jobHookAnnotations := dict "helm.sh/hook" "pre-upgrade" "helm.sh/hook-weight" "0" "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded" }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -146,21 +147,14 @@ kind: Job
 metadata:
   name: {{ $name }}
   namespace: {{ $namespace | quote }}
-  labels:
-    {{- include "admission-controller.defaults.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": pre-upgrade
-    "helm.sh/hook-weight": "0"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- include "admission-controller.workloadAnnotations" (merge (dict "extraAnnotations" $jobHookAnnotations) $ctx) | nindent 2 }}
 spec:
   template:
     metadata:
       name: {{ $name }}
-      labels:
-        {{- include "admission-controller.defaults.labels" . | nindent 8 }}
-      annotations:
-        {{- include "admission-controller.annotations" . | nindent 8 }}
+      {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
+      {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ end }}
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ $name }}

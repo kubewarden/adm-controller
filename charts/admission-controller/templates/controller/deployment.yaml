@@ -1,5 +1,8 @@
 {{- include "admission-controller.validateHostNetworkSidecar" . -}}
 {{- $ctx := dict "root" $ "workload" "controller" "component" "controller" }}
+{{- if and (or .Values.telemetry.metrics .Values.telemetry.tracing) (eq .Values.telemetry.mode "sidecar") }}
+{{- $ctx = merge (dict "extraPodAnnotations" (dict "sidecar.opentelemetry.io/inject" "true")) $ctx }}
+{{- end }}
 {{- $w := .Values.controller | default dict }}
 {{- $legacyImage := .Values.image | default dict }}
 {{- $wImage := $w.image | default dict }}
@@ -8,10 +11,8 @@ kind: Deployment
 metadata:
   name: {{ include "admission-controller.fullname" . }}
   namespace: {{ include "admission-controller.namespace" . | quote }}
-  labels:
-    {{- include "admission-controller.labels" . | nindent 4 }}
-  annotations:
-    {{- include "admission-controller.annotations" . | nindent 4 }}
+  {{- include "admission-controller.workloadLabels" $ctx | nindent 2 }}
+  {{- with include "admission-controller.workloadAnnotations" $ctx }}{{ . | nindent 2 }}{{ end }}
 spec:
   replicas: {{ include "admission-controller.replicas" $ctx }}
   selector:
@@ -19,18 +20,10 @@ spec:
       {{- include "admission-controller.controllerSelectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- with include "admission-controller.podAnnotations" $ctx }}{{ . | nindent 6 }}{{ else }}
       annotations:
-        {{- range keys .Values.podAnnotations }}
-        {{ . | quote }}: {{ get $.Values.podAnnotations . | quote}}
-        {{- end }}
-        {{- if or .Values.telemetry.metrics .Values.telemetry.tracing }}
-        {{- if and (eq .Values.telemetry.mode "sidecar") }}
-        "sidecar.opentelemetry.io/inject": "true"
-        {{- end }}
-        {{- end }}
-        {{- include "admission-controller.annotations" . | nindent 8 }}
-      labels:
-        {{- include "admission-controller.labels" . | nindent 8 }}
+      {{- end }}
+      {{- include "admission-controller.podLabels" $ctx | nindent 6 }}
     spec:
       {{- with include "admission-controller.imagePullSecrets" $ctx }}{{ . | nindent 6 }}{{ end }}
       serviceAccountName: {{ include "admission-controller.serviceAccountName" . }}

@@ -511,6 +511,46 @@ tests:
           value: ghcr.io/new/kubectl:v1
         template: controller/post-install-hook.yaml
 
+  # podAnnotations
+  - it: "podAnnotations alone renders on the controller pods as on main"
+    set:
+      podAnnotations:
+        foo: bar
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            foo: bar
+        template: controller/deployment.yaml
+      - notExists:
+          path: spec.jobTemplate.spec.template.metadata.annotations.foo
+        template: controller/audit-scanner.yaml
+
+  - it: "podAnnotations wins over controller.podAnnotations"
+    set:
+      podAnnotations:
+        foo: old
+      controller.podAnnotations:
+        foo: new
+        other: x
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            foo: old
+        template: controller/deployment.yaml
+
+  - it: "controller.podAnnotations alone"
+    set:
+      controller.podAnnotations:
+        foo: new
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            foo: new
+        template: controller/deployment.yaml
+
   # resources.<workload>
   - it: "resources.<workload> alone renders on each workload as on main"
     set:

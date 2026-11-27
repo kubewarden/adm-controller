@@ -137,6 +137,94 @@ tests:
       - notContains: {path: "spec.template.spec.containers[0].args", content: "--image-pull-secrets="}
         template: "templates/controller/deployment.yaml"
 
+  - it: "should render global.labels on every workload"
+    set:
+      global:
+        labels:
+          team: security
+    asserts:
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "metadata.labels.team", value: security}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    team: security$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notExists: {path: "spec.template.metadata.labels.team"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should render global.annotations on every workload"
+    set:
+      global:
+        annotations:
+          example.com/owner: security
+    asserts:
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    example\.com/owner: security$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notExists: {path: 'spec.template.metadata.annotations["example.com/owner"]'}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should render global.podLabels on every workload"
+    set:
+      global:
+        podLabels:
+          team: security
+    asserts:
+      - equal: {path: "spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.metadata.labels.team", value: security}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  labels:\n    "team": "security"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notExists: {path: "metadata.labels.team"}
+        template: "templates/controller/deployment.yaml"
+
+  - it: "should render global.podAnnotations on every workload"
+    set:
+      global:
+        podAnnotations:
+          example.com/owner: security
+    asserts:
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: 'spec.jobTemplate.spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: 'spec.template.metadata.annotations["example.com/owner"]', value: security}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  annotations:\n    "example\.com/owner": "security"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notExists: {path: 'metadata.annotations["example.com/owner"]'}
+        template: "templates/controller/deployment.yaml"
+
   - it: "should render global.imageRegistry on every workload and on the recommended policies"
     set:
       global:
