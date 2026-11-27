@@ -262,3 +262,93 @@ tests:
         template: "templates/controller/post-install-hook.yaml"
       - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "topologySpreadConstraints|maxSkew"}
         template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.extraEnv on every workload"
+    set:
+      common:
+        extraEnv:
+          - name: FROM_COMMON
+            value: "yes"
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].env", content: {name: FROM_COMMON, value: "yes"}}
+        template: "templates/controller/post-install-hook.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^    - name: "FROM_COMMON"\n      value: "yes"$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.extraEnvFrom on every workload"
+    set:
+      common:
+        extraEnvFrom:
+          - secretRef:
+              name: common-env
+    asserts:
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.initContainers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{secretRef: {name: common-env}}]}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "envFrom|common-env"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.extraVolumes on every workload"
+    set:
+      common:
+        extraVolumes:
+          - name: common-vol
+            emptyDir: {}
+    asserts:
+      - contains: {path: "spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.volumes", content: {name: common-vol, emptyDir: {}}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "volumes|common-vol"}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should render common.extraVolumeMounts on every workload"
+    set:
+      common:
+        extraVolumeMounts:
+          - name: common-vol
+            mountPath: /common
+    asserts:
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.template.spec.initContainers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/deployment.yaml"
+      - contains: {path: "spec.jobTemplate.spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/audit-scanner.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/pre-delete-hook.yaml"
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/pre-upgrade-hook.yaml"
+        documentSelector: {path: kind, value: Job}
+      - contains: {path: "spec.template.spec.containers[0].volumeMounts", content: {name: common-vol, mountPath: /common}}
+        template: "templates/controller/post-install-hook.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: "volumeMounts|/common"}
+        template: "templates/defaults/defaults-configmap.yaml"

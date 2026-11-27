@@ -448,10 +448,10 @@ function configure_policy_server() {
         --set 'policyServer.sigstoreTrustConfig'="$SIGSTORE_TRUST_CONFIGMAP" \
         --set 'policyServer.verificationConfig'="$VERIFICATION_CONFIGMAP" \
         --set 'policyServer.insecureSources[0]=registry.local:5001' \
-        --set 'policyServer.env[0].name=KUBEWARDEN_LOG_LEVEL' \
-        --set 'policyServer.env[0].value=info' \
-        --set 'policyServer.env[1].name=RUST_BACKTRACE' \
-        --set 'policyServer.env[1].value=1' \
+        --set 'policyServer.extraEnv[0].name=KUBEWARDEN_LOG_LEVEL' \
+        --set 'policyServer.extraEnv[0].value=info' \
+        --set 'policyServer.extraEnv[1].name=RUST_BACKTRACE' \
+        --set 'policyServer.extraEnv[1].value=1' \
         "${image_flags[@]}" \
         --wait
     # Policy-server readiness is confirmed when the ClusterAdmissionPolicy
@@ -468,10 +468,10 @@ function install_kubewarden_no_sigstore() {
     helm upgrade --install kubewarden-controller ./charts/admission-controller \
         -n "$KUBEWARDEN_NAMESPACE" \
         --set controller.replicas=1 \
-        --set 'policyServer.env[0].name=KUBEWARDEN_LOG_LEVEL' \
-        --set 'policyServer.env[0].value=info' \
-        --set 'policyServer.env[1].name=RUST_BACKTRACE' \
-        --set 'policyServer.env[1].value=1' \
+        --set 'policyServer.extraEnv[0].name=KUBEWARDEN_LOG_LEVEL' \
+        --set 'policyServer.extraEnv[0].value=info' \
+        --set 'policyServer.extraEnv[1].name=RUST_BACKTRACE' \
+        --set 'policyServer.extraEnv[1].value=1' \
         "${image_flags[@]}" \
         --wait
 

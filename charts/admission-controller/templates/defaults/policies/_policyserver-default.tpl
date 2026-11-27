@@ -52,7 +52,7 @@ spec:
     {{ $key | quote }}: {{ $value | quote }}
     {{- end }}
   {{- end }}
-  {{- $userEnv := $ps.env | default list }}
+  {{- $userEnv := concat (include "admission-controller.extraEnv" $ctx | fromYamlArray) ($ps.env | default list) }}
   {{- $env := list }}
   {{- $logLevel := include "admission-controller.logLevel" $ctx }}
   {{- $hasLogLevel := false }}
@@ -69,7 +69,13 @@ spec:
   env:
     {{- range $env }}
     - name: {{ .name | quote }}
+      {{- if or (hasKey . "value") (not (hasKey . "valueFrom")) }}
       value: {{ .value | quote }}
+      {{- end }}
+      {{- with .valueFrom }}
+      valueFrom:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     {{- end }}
   {{- end }}
   {{- if $ps.imagePullSecret }}

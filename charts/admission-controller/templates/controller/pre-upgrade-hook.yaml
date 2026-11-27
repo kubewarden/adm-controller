@@ -165,6 +165,10 @@ spec:
       {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- with include "admission-controller.topologySpreadConstraints" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- with include "admission-controller.priorityClassName" $ctx }}{{ . | nindent 6 }}{{ end }}
+      {{- with include "admission-controller.extraVolumes" $ctx }}
+      volumes:
+        {{- . | nindent 8 }}
+      {{- end }}
       containers:
         - name: kubewarden-pre-upgrade
           image: '{{ template "system_default_registry" $controllerCtx }}{{ $legacyImage.repository | default $controllerImage.repository }}:{{ $legacyImage.tag | default $controllerImage.tag }}'
@@ -179,9 +183,14 @@ spec:
             {{- with include "admission-controller.logLevel" $ctx }}
             - --zap-log-level={{ . }}
             {{- end }}
-          {{- with .Values.additionalEnvironmentVariables }}
+          {{- with concat (include "admission-controller.extraEnv" $ctx | fromYamlArray) (.Values.additionalEnvironmentVariables | default list) }}
           env:
-          {{- toYaml . | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 10 }}{{ end }}
+          {{- with include "admission-controller.extraVolumeMounts" $ctx }}
+          volumeMounts:
+            {{- . | nindent 12 }}
           {{- end }}
           {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 10 }}{{ end }}
           {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 10 }}{{ end }}

@@ -102,6 +102,14 @@ global:
   topologySpreadConstraints: []
   # PriorityClass for the pods.
   priorityClassName: ""
+  # Extra environment variables for all containers.
+  extraEnv: []
+  # Extra envFrom sources (ConfigMaps or Secrets) for all containers.
+  extraEnvFrom: []
+  # Extra volumes for the pods.
+  extraVolumes: []
+  # Extra volume mounts for all containers.
+  extraVolumeMounts: []
   skipNamespaces:
     - calico-apiserver
     - calico-system
@@ -431,17 +439,15 @@ podAnnotations: {} # @schema deprecated:true
 # When both are set, this key wins on the controller, the audit scanner, and
 # the hook Jobs.
 nodeSelector: {} # @schema deprecated:true
+# Deprecated: use controller.extraEnv and preDeleteJob.extraEnv.
 # additionalEnvironmentVariables is a list of additional environment variables
 # to inject into every container that runs the controller binary: the
 # controller container, its init container, and the pre-upgrade and pre-delete
 # hook Jobs. All of them connect to the Kubernetes API server, so a variable
 # that the controller needs to reach it, for example a proxy, applies to all.
+# The chart adds them after controller.extraEnv and preDeleteJob.extraEnv.
 # Each entry is a standard Kubernetes EnvVar object (name, value, valueFrom, …).
-# Example:
-#   additionalEnvironmentVariables:
-#     - name: MY_VAR
-#       value: "my-value"
-additionalEnvironmentVariables: []
+additionalEnvironmentVariables: [] # @schema deprecated:true
 # Deprecated: use controller.resources, auditScanner.resources,
 # preDeleteJob.resources, and postInstallJob.resources.
 # When both are set, this key wins. The chart merges this key on top of the
@@ -612,7 +618,14 @@ policyServer:
         - "subjectaccessreviews"
       verbs:
         - create
-  env: []
+  # Extra environment variables for the PolicyServer.
+  # Each entry is a Kubernetes EnvVar with name, and value or valueFrom.
+  # The chart sets KUBEWARDEN_LOG_LEVEL from the log level, unless an entry
+  # has this name.
+  extraEnv: []
+  # Deprecated: use policyServer.extraEnv. The chart adds these entries after
+  # policyServer.extraEnv.
+  env: [] # @schema deprecated:true
   # Annotations for the PolicyServer resource and, as in earlier chart
   # versions, for the PolicyServer pods.
   # For the pods, this key replaces podAnnotations when it is set.

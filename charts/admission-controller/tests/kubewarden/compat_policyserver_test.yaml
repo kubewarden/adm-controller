@@ -77,6 +77,29 @@ tests:
           path: data["policyserver-default.yaml"]
           pattern: 'value: "info"'
 
+  - it: "policyServer.env is appended after policyServer.extraEnv"
+    set:
+      policyServer.env:
+        - name: A
+          value: b
+      policyServer.extraEnv:
+        - name: N
+          value: "1"
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "N"\n      value: "1"\n    - name: "A"\n      value: "b"$'
+
+  - it: "policyServer.extraEnv alone"
+    set:
+      policyServer.extraEnv:
+        - name: N
+          value: "1"
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "N"\n      value: "1"$'
+
   # policyServer.annotations
   - it: "policyServer.annotations alone renders in spec.annotations as on main, and in metadata.annotations"
     set:

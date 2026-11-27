@@ -40,6 +40,7 @@ spec:
                 path: "tls.crt"
               - key: tls.key
                 path: "tls.key"
+          {{- with include "admission-controller.extraVolumes" $ctx }}{{ . | nindent 10 }}{{ end }}
           {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 10 }}{{ end }}
           {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 10 }}{{ end }}
           {{- with include "admission-controller.nodeSelector" $ctx }}{{ . | nindent 10 }}{{ end }}
@@ -51,6 +52,11 @@ spec:
             imagePullPolicy: {{ include "admission-controller.imagePullPolicy" $ctx }}
             command:
               {{- include "audit-scanner.command" . | nindent 14 }}
+            {{- with include "admission-controller.extraEnv" $ctx }}
+            env:
+              {{- . | nindent 14 }}
+            {{- end }}
+            {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 12 }}{{ end }}
             volumeMounts:
             - mountPath: "/pki"
               name: kubewarden-ca
@@ -58,6 +64,7 @@ spec:
             - mountPath: "/client-cert"
               name: kubewarden-audit-scanner-client-cert
               readOnly: true
+            {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 12 }}{{ end }}
             {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 12 }}{{ end }}
             {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 12 }}{{ end }}
 {{ end }}

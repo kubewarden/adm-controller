@@ -227,6 +227,121 @@ tests:
       - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'topologyKey: global'}
         template: "templates/defaults/defaults-configmap.yaml"
 
+  - it: "should append named lists in the order global, common, workload"
+    set:
+      global:
+        extraEnv: [{name: A, value: a}]
+        extraVolumes: [{name: vol-a, emptyDir: {}}]
+        extraVolumeMounts: [{name: vol-a, mountPath: /a}]
+      common:
+        extraEnv: [{name: C, value: c}]
+        extraVolumes: [{name: vol-c, emptyDir: {}}]
+        extraVolumeMounts: [{name: vol-c, mountPath: /c}]
+      controller:
+        extraEnv: [{name: B, value: b}]
+        extraVolumes: [{name: vol-b, emptyDir: {}}]
+        extraVolumeMounts: [{name: vol-b, mountPath: /b}]
+      auditScanner:
+        extraEnv: [{name: D, value: d}]
+      preDeleteJob:
+        extraVolumes: [{name: vol-d, emptyDir: {}}]
+        extraVolumeMounts: [{name: vol-d, mountPath: /d}]
+    asserts:
+      - equal:
+          path: "spec.template.spec.containers[0].env"
+          value: [{name: A, value: a}, {name: C, value: c}, {name: B, value: b}]
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.template.spec.volumes"
+          value:
+            - {name: cert, secret: {defaultMode: 420, secretName: kubewarden-webhook-server-cert, optional: true}}
+            - {name: vol-a, emptyDir: {}}
+            - {name: vol-c, emptyDir: {}}
+            - {name: vol-b, emptyDir: {}}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.template.spec.containers[0].volumeMounts"
+          value:
+            - {mountPath: /tmp/k8s-webhook-server/serving-certs, name: cert, readOnly: true}
+            - {name: vol-a, mountPath: /a}
+            - {name: vol-c, mountPath: /c}
+            - {name: vol-b, mountPath: /b}
+        template: "templates/controller/deployment.yaml"
+      - equal:
+          path: "spec.jobTemplate.spec.template.spec.containers[0].env"
+          value: [{name: A, value: a}, {name: C, value: c}, {name: D, value: d}]
+        template: "templates/controller/audit-scanner.yaml"
+      - equal:
+          path: "spec.template.spec.volumes"
+          value: [{name: vol-a, emptyDir: {}}, {name: vol-c, emptyDir: {}}, {name: vol-d, emptyDir: {}}]
+        template: "templates/controller/pre-delete-hook.yaml"
+      - equal:
+          path: "spec.template.spec.containers[0].volumeMounts"
+          value: [{name: vol-a, mountPath: /a}, {name: vol-c, mountPath: /c}, {name: vol-d, mountPath: /d}]
+        template: "templates/controller/pre-delete-hook.yaml"
+
+  # The PolicyServer gets KUBEWARDEN_LOG_LEVEL first, then global, common,
+  # policyServer.extraEnv, and the deprecated policyServer.env.
+  - it: "should append the PolicyServer env in the order global, common, workload, deprecated env"
+    set:
+      global:
+        extraEnv: [{name: A, value: a}]
+      common:
+        extraEnv: [{name: C, value: c}]
+      policyServer:
+        extraEnv: [{name: B, value: b}]
+        env: [{name: OLD, value: old}]
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "A"\n      value: "a"\n    - name: "C"\n      value: "c"\n    - name: "B"\n      value: "b"\n    - name: "OLD"\n      value: "old"$'
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should not add KUBEWARDEN_LOG_LEVEL to the PolicyServer when an extraEnv entry sets it"
+    set:
+      global:
+        logLevel: debug
+      policyServer:
+        extraEnv: [{name: KUBEWARDEN_LOG_LEVEL, value: trace}]
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "trace"$'
+        template: "templates/defaults/defaults-configmap.yaml"
+      - notMatchRegex: {path: 'data["policyserver-default.yaml"]', pattern: 'value: "debug"'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
+  - it: "should replace unnamed lists with the most specific value"
+    set:
+      global:
+        tolerations: [{key: from-global, operator: Exists}]
+        topologySpreadConstraints: [{maxSkew: 1, topologyKey: from-global, whenUnsatisfiable: ScheduleAnyway}]
+        extraEnvFrom: [{configMapRef: {name: from-global}}]
+      common:
+        tolerations: [{key: from-common, operator: Exists}]
+        extraEnvFrom: [{configMapRef: {name: from-common}}]
+      controller:
+        tolerations: [{key: from-controller, operator: Exists}]
+        topologySpreadConstraints: [{maxSkew: 1, topologyKey: from-controller, whenUnsatisfiable: ScheduleAnyway}]
+        extraEnvFrom: [{configMapRef: {name: from-controller}}]
+      policyServer:
+        tolerations: [{key: from-policy-server, operator: Exists}]
+    asserts:
+      - equal: {path: "spec.template.spec.tolerations", value: [{key: from-controller, operator: Exists}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: from-controller, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: from-controller}}]}
+        template: "templates/controller/deployment.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.tolerations", value: [{key: from-common, operator: Exists}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.topologySpreadConstraints", value: [{maxSkew: 1, topologyKey: from-global, whenUnsatisfiable: ScheduleAnyway}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - equal: {path: "spec.jobTemplate.spec.template.spec.containers[0].envFrom", value: [{configMapRef: {name: from-common}}]}
+        template: "templates/controller/audit-scanner.yaml"
+      - matchRegex: {path: 'data["policyserver-default.yaml"]', pattern: '(?m)^  tolerations:\n    - key: from-policy-server\n      operator: Exists$'}
+        template: "templates/defaults/defaults-configmap.yaml"
+
   - it: "should append imagePullSecrets: global, common, the deprecated top-level key, then the workload"
     set:
       global:

@@ -53,12 +53,16 @@ spec:
             # Do not split this into two separate mounts.
             - name: HOME
               value: /tmp
+            {{- with include "admission-controller.extraEnv" $ctx }}{{ . | nindent 12 }}{{ end }}
+          {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 10 }}{{ end }}
           {{- with include "admission-controller.containerSecurityContext" (merge (dict "fixedContainerSecurityContext" (dict "runAsUser" 1000 "runAsGroup" 1000)) $ctx) }}{{ . | nindent 10 }}{{ end }}
           {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 10 }}{{ end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 12 }}{{ end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- with include "admission-controller.extraVolumes" $ctx }}{{ . | nindent 8 }}{{ end }}
 {{ end }}

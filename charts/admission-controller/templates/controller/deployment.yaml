@@ -54,16 +54,19 @@ spec:
         {{- with include "admission-controller.logLevel" $ctx }}
         - --zap-log-level={{ . }}
         {{- end }}
-        {{- with .Values.additionalEnvironmentVariables }}
+        {{- $initEnv := concat (include "admission-controller.extraEnv" $ctx | fromYamlArray) (.Values.additionalEnvironmentVariables | default list) }}
+        {{- with $initEnv }}
         env:
         {{- toYaml . | nindent 10 }}
         {{- end }}
+        {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 8 }}{{ end }}
         {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 8 }}{{ end }}
         {{- with include "admission-controller.containerSecurityContext" $ctx }}{{ . | nindent 8 }}{{ end }}
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
           readOnly: true
+        {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 8 }}{{ end }}
       containers:
       - name: controller
         args:
@@ -142,9 +145,11 @@ spec:
         {{- end }}
         {{- end }}
         {{- end }}
+          {{- with include "admission-controller.extraEnv" $ctx }}{{ . | nindent 10 }}{{ end }}
         {{- with .Values.additionalEnvironmentVariables }}
         {{- toYaml . | nindent 10 }}
         {{- end }}
+        {{- with include "admission-controller.extraEnvFrom" $ctx }}{{ . | nindent 8 }}{{ end }}
 
         image: '{{ template "system_default_registry" $ctx }}{{ $legacyImage.repository | default $wImage.repository }}:{{ $legacyImage.tag | default $wImage.tag }}'
         imagePullPolicy: {{ include "admission-controller.imagePullPolicy" $ctx }}
@@ -181,6 +186,7 @@ spec:
           name: otel-collector-client-certificate
           readOnly: true
         {{- end }}
+        {{- with include "admission-controller.extraVolumeMounts" $ctx }}{{ . | nindent 8 }}{{ end }}
         ports:
         - containerPort: {{ .Values.ports.webhook }}
           name: webhook-server
@@ -218,5 +224,6 @@ spec:
             - key: tls.key
               path: tls.key
       {{- end }}
+      {{- with include "admission-controller.extraVolumes" $ctx }}{{ . | nindent 6 }}{{ end }}
       {{- with include "admission-controller.podSecurityContext" $ctx }}{{ . | nindent 6 }}{{ end }}
       terminationGracePeriodSeconds: 10

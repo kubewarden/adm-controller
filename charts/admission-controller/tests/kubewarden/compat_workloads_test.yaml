@@ -681,6 +681,56 @@ tests:
           value: {zone: b}
         template: controller/audit-scanner.yaml
 
+  # additionalEnvironmentVariables
+  - it: "additionalEnvironmentVariables alone renders in the controller env as on main"
+    set:
+      additionalEnvironmentVariables:
+        - name: FOO
+          value: bar
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: FOO
+              value: bar
+        template: controller/deployment.yaml
+
+  - it: "additionalEnvironmentVariables is appended after controller.extraEnv"
+    set:
+      additionalEnvironmentVariables:
+        - name: FOO
+          value: bar
+      global.extraEnv:
+        - name: GLOBAL
+          value: "1"
+      controller.extraEnv:
+        - name: NEW
+          value: "2"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: GLOBAL
+              value: "1"
+            - name: NEW
+              value: "2"
+            - name: FOO
+              value: bar
+        template: controller/deployment.yaml
+
+  - it: "controller.extraEnv alone"
+    set:
+      controller.extraEnv:
+        - name: NEW
+          value: "2"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env
+          value:
+            - name: NEW
+              value: "2"
+        template: controller/deployment.yaml
+
   # resources.<workload>
   - it: "resources.<workload> alone renders on each workload as on main"
     set:

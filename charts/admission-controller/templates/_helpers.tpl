@@ -334,6 +334,7 @@ Each public helper reads one key with one private helper. The private helper set
   admission-controller._scalar: the workload value, else the common value, else the global value.
   admission-controller._list:   the same rule as admission-controller._scalar, for a list.
   admission-controller._map:    the global, common, and workload maps merged. The workload wins on a duplicate key.
+  admission-controller._concat: the global, common, and workload lists, in this order.
 An empty value ("", [] or {}) counts as unset.
 The image registry and the pull policy of a workload are in its image map:
   system_default_registry (above): global.imageRegistry, else the workload image.registry, else ghcr.io when the image has no registry key.
@@ -381,6 +382,11 @@ The other private helpers decode this list, so they work on copies of .Values.
 {{- define "admission-controller._map" -}}
 {{- $l := include "admission-controller._levels" . | fromYamlArray -}}
 {{- toYaml (mergeOverwrite (dict) (index $l 0 | default dict) (index $l 1 | default dict) (index $l 2 | default dict)) -}}
+{{- end -}}
+
+{{- define "admission-controller._concat" -}}
+{{- $l := include "admission-controller._levels" . | fromYamlArray -}}
+{{- toYaml (concat (index $l 0 | default list) (index $l 1 | default list) (index $l 2 | default list)) -}}
 {{- end -}}
 
 {{/*
@@ -685,6 +691,10 @@ priorityClassName: {{ . | quote }}
 {{- include "admission-controller._field" (dict "name" "topologySpreadConstraints" "value" (include "admission-controller._list" (dict "ctx" . "key" "topologySpreadConstraints") | fromYamlArray)) -}}
 {{- end -}}
 
+{{- define "admission-controller.extraEnvFrom" -}}
+{{- include "admission-controller._field" (dict "name" "envFrom" "value" (include "admission-controller._list" (dict "ctx" . "key" "extraEnvFrom") | fromYamlArray)) -}}
+{{- end -}}
+
 {{- define "admission-controller.nodeSelector" -}}
 {{- $old := include "admission-controller._alias" (dict "ctx" . "key" "nodeSelector") | fromYaml -}}
 {{- if hasKey $old "value" -}}
@@ -756,4 +766,24 @@ set, the helper puts the fixed fields on top, so a user value cannot replace the
 {{- $value = mergeOverwrite (deepCopy $value) .fixedContainerSecurityContext -}}
 {{- end -}}
 {{- include "admission-controller._field" (dict "name" "securityContext" "value" $value) -}}
+{{- end -}}
+
+{{/* Public helpers that render list entries, or nothing when the list is empty. */}}
+
+{{- define "admission-controller.extraEnv" -}}
+{{- with include "admission-controller._concat" (dict "ctx" . "key" "extraEnv") | fromYamlArray -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.extraVolumes" -}}
+{{- with include "admission-controller._concat" (dict "ctx" . "key" "extraVolumes") | fromYamlArray -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "admission-controller.extraVolumeMounts" -}}
+{{- with include "admission-controller._concat" (dict "ctx" . "key" "extraVolumeMounts") | fromYamlArray -}}
+{{- toYaml . -}}
+{{- end -}}
 {{- end -}}

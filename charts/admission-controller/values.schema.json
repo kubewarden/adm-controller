@@ -6,6 +6,7 @@
             "type": "object"
         },
         "additionalEnvironmentVariables": {
+            "deprecated": true,
             "type": "array"
         },
         "additionalLabels": {
@@ -271,6 +272,18 @@
                 "annotations": {
                     "type": "object"
                 },
+                "extraEnv": {
+                    "type": "array"
+                },
+                "extraEnvFrom": {
+                    "type": "array"
+                },
+                "extraVolumeMounts": {
+                    "type": "array"
+                },
+                "extraVolumes": {
+                    "type": "array"
+                },
                 "imagePullPolicy": {
                     "type": "string"
                 },
@@ -467,6 +480,10 @@
                     "type": "boolean"
                 },
                 "env": {
+                    "deprecated": true,
+                    "type": "array"
+                },
+                "extraEnv": {
                     "type": "array"
                 },
                 "image": {
