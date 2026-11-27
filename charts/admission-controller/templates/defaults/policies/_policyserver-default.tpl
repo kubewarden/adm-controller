@@ -1,6 +1,7 @@
 {{- define "kubewarden.defaults.policyserverDefault" -}}
 {{- $ctx := dict "root" $ "workload" "policyServer" "component" "policy-server" -}}
 {{- $ps := .Values.policyServer -}}
+{{- $resources := $ps.resources | default dict -}}
 apiVersion: {{ $.Values.crdVersion }}
 kind: PolicyServer
 metadata:
@@ -38,11 +39,11 @@ spec:
   {{- if .Values.global.priorityClassName }}
   priorityClassName: {{ .Values.global.priorityClassName | toYaml | nindent 4 }}
   {{- end }}
-  {{- if $ps.limits }}
-  limits: {{ $ps.limits | toYaml | nindent 4 }}
+  {{- with $ps.limits | default $resources.limits }}
+  limits: {{ . | toYaml | nindent 4 }}
   {{- end }}
-  {{- if $ps.requests }}
-  requests: {{ $ps.requests | toYaml | nindent 4 }}
+  {{- with $ps.requests | default $resources.requests }}
+  requests: {{ . | toYaml | nindent 4 }}
   {{- end }}
   {{- if $ps.verificationConfig }}
   verificationConfig: {{ $ps.verificationConfig }}

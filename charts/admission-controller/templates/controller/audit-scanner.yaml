@@ -69,8 +69,5 @@ spec:
             securityContext:
 {{ toYaml .Values.containerSecurityContext | indent 14 }}
             {{- end }}
-            {{- if and .Values.resources .Values.resources.auditScanner }}
-            resources:
-{{ toYaml .Values.resources.auditScanner | indent 14 }}
-            {{- end }}
+            {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 12 }}{{ end }}
 {{ end }}

@@ -142,6 +142,15 @@ controller:
     pullPolicy: ""
   # Controller replicas
   replicas: 1
+  # Resource limits & requests
+  # Ref: https://kubernetes.io/docs/user-guide/compute-resources/
+  resources:
+    limits:
+      cpu: 500m
+      memory: 200Mi
+    requests:
+      cpu: 250m
+      memory: 70Mi
 
 # Deprecated: use global.imagePullSecrets or the imagePullSecrets of a workload
 # block. The chart adds these secrets after global.imagePullSecrets, on every
@@ -348,6 +357,13 @@ preDeleteJob:
   image: # @schema deprecated:true
     repository: "" # @schema deprecated:true
     tag: "" # @schema deprecated:true
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 postInstallJob:
   image:
     # kuberlr-kubectl image to be used
@@ -357,6 +373,13 @@ postInstallJob:
     registry: ghcr.io
     # Pull policy for the image. If it is empty, the chart uses common.imagePullPolicy, then global.imagePullPolicy.
     pullPolicy: ""
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 podAnnotations: {}
 nodeSelector: {}
 # additionalEnvironmentVariables is a list of additional environment variables
@@ -370,38 +393,12 @@ nodeSelector: {}
 #     - name: MY_VAR
 #       value: "my-value"
 additionalEnvironmentVariables: []
-# Resource limits & requests
-# Ref: https://kubernetes.io/docs/user-guide/compute-resources/
-resources:
-  controller:
-    limits:
-      cpu: 500m
-      memory: 200Mi
-    requests:
-      cpu: 250m
-      memory: 70Mi
-  auditScanner:
-    limits:
-      cpu: 500m
-      memory: 1Gi
-    requests:
-      cpu: 250m
-      memory: 300Mi
-  # Resources of the pre-delete-hook and pre-upgrade-hook jobs.
-  preDeleteJob:
-    limits:
-      cpu: 100m
-      memory: 128Mi
-    requests:
-      cpu: 50m
-      memory: 64Mi
-  postInstallJob:
-    limits:
-      cpu: 100m
-      memory: 128Mi
-    requests:
-      cpu: 50m
-      memory: 64Mi
+# Deprecated: use controller.resources, auditScanner.resources,
+# preDeleteJob.resources, and postInstallJob.resources.
+# When both are set, this key wins. The chart merges this key on top of the
+# new key. resources.preDeleteJob applies to the pre-delete and pre-upgrade
+# hook Jobs.
+resources: {} # @schema deprecated:true
 mTLS:
   # Enable mutual TLS authentication. This will require TLS connections with both
   # the server and client being authenticated, between the kubewarden
@@ -468,6 +465,13 @@ auditScanner:
   parallelPolicies: 5
   # Configures the number of resources to fetch from the Kubernetes API server when paginating
   pageSize: 100
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 300Mi
 # Values to configure the policy reporter subchart enabled by the
 # auditScanner.policyReporter flag
 policy-reporter:
@@ -551,6 +555,8 @@ policyServer:
     - name: KUBEWARDEN_LOG_LEVEL
       value: info
   annotations: {}
+  # Resource limits and requests of the PolicyServer pods.
+  resources: {}
   # follows the format of https://docs.kubewarden.io/reference/CRDs#policyserversecurity
   securityContexts: {}
   # imagePullSecret stores the secret name used to pull images from repositories.
@@ -594,9 +600,10 @@ policyServer:
   #   - "net/v1/dns_lookup_host"
   namespacedPoliciesCapabilities: # @schema type:[array, null]
     - "*" # @schema minLength:1; anyOf: [{description: "Global wildcard", const: "*"}, {description: "Category wildcard: <category>/*", pattern: "^[a-z0-9_-]+/\\*$"}, {description: "Sub-category wildcard: <category>/<path...>/*", pattern: "^[a-z0-9_-]+(/[a-z0-9_-]+)+/\\*$"}, {description: "Fully-qualified capability path: <category>/<path...>", pattern: "^[a-z0-9_-]+(/[a-z0-9_-]+)+$"}]
-  # limits and requests, see https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-  limits: {}
-  requests: {}
+  # Deprecated: use policyServer.resources.limits and
+  # policyServer.resources.requests. When it is set, this key wins.
+  limits: {} # @schema deprecated:true
+  requests: {} # @schema deprecated:true
   # Port configuration for the policy server.
   # These ports are used for the webhook, readiness probe, and metrics endpoints.
   # Important when hostNetwork is enabled or when running multiple PolicyServers

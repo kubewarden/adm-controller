@@ -72,10 +72,7 @@ spec:
         env:
         {{- toYaml . | nindent 10 }}
         {{- end }}
-        {{- if and .Values.resources .Values.resources.controller }}
-        resources:
-{{ toYaml .Values.resources.controller | indent 10 }}
-        {{- end }}
+        {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 8 }}{{ end }}
         {{- if .Values.containerSecurityContext }}
         securityContext:
 {{ toYaml .Values.containerSecurityContext | indent 10 }}
@@ -178,10 +175,7 @@ spec:
             port: {{ .Values.ports.healthProbe }}
           initialDelaySeconds: 5
           periodSeconds: 10
-        {{- if and .Values.resources .Values.resources.controller }}
-        resources:
-{{ toYaml .Values.resources.controller | indent 10 }}
-        {{- end }}
+        {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 8 }}{{ end }}
         {{- if .Values.containerSecurityContext }}
         securityContext:
 {{ toYaml .Values.containerSecurityContext | indent 10 }}

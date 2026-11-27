@@ -52,3 +52,69 @@ tests:
       - matchRegex:
           path: data["policyserver-default.yaml"]
           pattern: '(?m)^  replicas: 1$'
+
+  # policyServer.limits and policyServer.requests
+  - it: "policyServer.limits and policyServer.requests alone render as on main"
+    set:
+      policyServer.limits:
+        cpu: 1
+      policyServer.requests:
+        memory: 1Gi
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  limits: ?\n    cpu: 1$'
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  requests: ?\n    memory: 1Gi$'
+
+  - it: "policyServer.limits wins over policyServer.resources.limits, resources.requests still applies"
+    set:
+      policyServer.limits:
+        cpu: 2
+      policyServer.resources:
+        limits:
+          cpu: 3
+          memory: 4Gi
+        requests:
+          memory: 2Gi
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  limits: ?\n    cpu: 2$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'memory: 4Gi'
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  requests: ?\n    memory: 2Gi$'
+
+  - it: "policyServer.requests wins over policyServer.resources.requests"
+    set:
+      policyServer.requests:
+        memory: 1Gi
+      policyServer.resources:
+        requests:
+          memory: 2Gi
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  requests: ?\n    memory: 1Gi$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'memory: 2Gi'
+
+  - it: "policyServer.resources alone"
+    set:
+      policyServer.resources:
+        limits:
+          cpu: 3
+        requests:
+          memory: 2Gi
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  limits: ?\n    cpu: 3$'
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  requests: ?\n    memory: 2Gi$'

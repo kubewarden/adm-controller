@@ -196,7 +196,4 @@ spec:
           securityContext:
 {{ toYaml .Values.preDeleteHook.containerSecurityContext | indent 12 }}
           {{- end }}
-          {{- if and .Values.resources .Values.resources.preDeleteJob }}
-          resources:
-{{ toYaml .Values.resources.preDeleteJob | indent 12 }}
-          {{- end }}
+          {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 10 }}{{ end }}

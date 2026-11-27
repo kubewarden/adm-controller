@@ -222,6 +222,146 @@ tests:
           value: ghcr.io/new/kubectl:v1
         template: controller/post-install-hook.yaml
 
+  # resources.<workload>
+  - it: "resources.<workload> alone renders on each workload as on main"
+    set:
+      telemetry.metrics: true
+      resources:
+        controller:
+          limits:
+            cpu: 1500m
+        auditScanner:
+          limits:
+            cpu: 2500m
+        preDeleteJob:
+          limits:
+            cpu: 300m
+        postInstallJob:
+          limits:
+            cpu: 400m
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 1500m, memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 2500m, memory: 1Gi}
+            requests: {cpu: 250m, memory: 300Mi}
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 300m, memory: 128Mi}
+            requests: {cpu: 50m, memory: 64Mi}
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 400m, memory: 128Mi}
+            requests: {cpu: 50m, memory: 64Mi}
+        template: controller/post-install-hook.yaml
+
+  - it: "resources.<workload> wins over <workload>.resources, missing leaves come from the new key"
+    set:
+      telemetry.metrics: true
+      resources:
+        controller:
+          limits:
+            cpu: 1500m
+        auditScanner:
+          requests:
+            memory: 400Mi
+        preDeleteJob:
+          limits:
+            cpu: 300m
+        postInstallJob:
+          limits:
+            cpu: 400m
+      controller.resources:
+        limits:
+          cpu: 900m
+          memory: 300Mi
+      auditScanner.resources:
+        requests:
+          memory: 500Mi
+      preDeleteJob.resources:
+        limits:
+          cpu: 30m
+      postInstallJob.resources:
+        limits:
+          cpu: 40m
+          memory: 1Gi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {cpu: 1500m, memory: 300Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].resources.requests.memory
+          value: 400Mi
+        template: controller/audit-scanner.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 300m
+        template: controller/pre-delete-hook.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits
+          value: {cpu: 400m, memory: 1Gi}
+        template: controller/post-install-hook.yaml
+
+  - it: "a null leaf in resources.<workload> removes the leaf as on main"
+    set:
+      resources:
+        controller:
+          limits:
+            cpu: null
+        preDeleteJob:
+          limits:
+            cpu: null
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].resources
+          value:
+            limits: {memory: 200Mi}
+            requests: {cpu: 250m, memory: 70Mi}
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].resources
+          value:
+            limits: {memory: 128Mi}
+            requests: {cpu: 50m, memory: 64Mi}
+        template: controller/pre-delete-hook.yaml
+
+  - it: "<workload>.resources alone"
+    set:
+      controller.resources:
+        limits:
+          cpu: 900m
+      auditScanner.resources:
+        requests:
+          memory: 500Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 900m
+        template: controller/deployment.yaml
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].resources.requests.memory
+          value: 500Mi
+        template: controller/audit-scanner.yaml
+
   # replicas
   - it: "replicas alone renders as on main"
     set:

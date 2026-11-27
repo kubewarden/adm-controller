@@ -388,13 +388,17 @@ It takes dict "name" <field name> "value" <value>.
 {{/*
 admission-controller._legacy resolves deprecated keys. A deprecated key wins
 over the contract keys when it is set.
-It takes dict "root" <root context> "paths" <list of dotted paths> "mode" <mode>.
+It takes dict "root" <root context> "paths" <list of dotted paths> "mode" <mode>,
+and "new" <resolved contract value> in the map mode.
 It renders "value: <value>" with the first deprecated key that is set,
 or {} when no deprecated key is set.
 Callers test the result with hasKey, so 0 and false count as set.
 The modes:
   presence: set means not null. For booleans and integers.
   string:   set means not empty.
+  map:      set means a non-empty map. The value is the new value with the
+            deprecated map merged on top, so the missing leaves come from the
+            new key. A null leaf of the deprecated map removes the leaf.
 */}}
 {{- define "admission-controller._legacy" -}}
 {{- $out := dict -}}
@@ -411,15 +415,41 @@ The modes:
 {{- $set := false -}}
 {{- if eq $.mode "presence" -}}
 {{- $set = not (kindIs "invalid" $value) -}}
+{{- else if eq $.mode "map" -}}
+{{- $set = and (kindIs "map" $value) (not (empty $value)) -}}
 {{- else -}}
 {{- $set = not (empty $value) -}}
 {{- end -}}
 {{- if $set -}}
+{{- if eq $.mode "map" -}}
+{{- $merged := deepCopy ($.new | default dict) -}}
+{{- $_ := include "admission-controller._mergeLegacyMap" (dict "dst" $merged "src" (deepCopy $value)) -}}
+{{- $value = $merged -}}
+{{- end -}}
 {{- $_ := set $out "value" $value -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
 {{- toYaml $out -}}
+{{- end -}}
+
+{{/*
+admission-controller._mergeLegacyMap merges the map src into the map dst, in place.
+A value of src wins over the value of dst, and nested maps merge.
+A null value in src removes the key from dst,
+the same way as Helm removes a default value when the user sets it to null.
+*/}}
+{{- define "admission-controller._mergeLegacyMap" -}}
+{{- $dst := .dst -}}
+{{- range $key, $value := .src -}}
+{{- if kindIs "invalid" $value -}}
+{{- $_ := unset $dst $key -}}
+{{- else if and (kindIs "map" $value) (kindIs "map" (index $dst $key)) -}}
+{{- $_ := include "admission-controller._mergeLegacyMap" (dict "dst" (index $dst $key) "src" $value) -}}
+{{- else -}}
+{{- $_ := set $dst $key $value -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -429,6 +459,13 @@ admission-controller._aliases lists the deprecated keys of each workload key.
 controller:
   imagePullPolicy: {paths: [image.pullPolicy], mode: string}
   replicas: {paths: [replicas], mode: presence}
+  resources: {paths: [resources.controller], mode: map}
+auditScanner:
+  resources: {paths: [resources.auditScanner], mode: map}
+preDeleteJob:
+  resources: {paths: [resources.preDeleteJob], mode: map}
+postInstallJob:
+  resources: {paths: [resources.postInstallJob], mode: map}
 policyServer:
   replicas: {paths: [policyServer.replicaCount], mode: presence}
 {{- end -}}
@@ -436,14 +473,14 @@ policyServer:
 {{/*
 admission-controller._alias resolves the deprecated keys of one workload key
 with admission-controller._legacy.
-It takes dict "ctx" <context dict> "key" <key>.
+It takes dict "ctx" <context dict> "key" <key>, and "new" <value> in the map mode.
 It renders {} when the key has no deprecated alias.
 */}}
 {{- define "admission-controller._alias" -}}
 {{- $table := include "admission-controller._aliases" . | fromYaml -}}
 {{- $alias := index (index $table .ctx.workload | default dict) .key | default dict -}}
 {{- if $alias -}}
-{{- include "admission-controller._legacy" (dict "root" .ctx.root "paths" $alias.paths "mode" $alias.mode) -}}
+{{- include "admission-controller._legacy" (dict "root" .ctx.root "paths" $alias.paths "mode" $alias.mode "new" .new) -}}
 {{- else -}}
 {}
 {{- end -}}
@@ -451,13 +488,13 @@ It renders {} when the key has no deprecated alias.
 
 {{/*
 admission-controller._workload renders "value: <value>" with a key that only
-the workload block has, for example replicas.
+the workload block has, for example replicas or resources.
 A deprecated alias wins when it is set.
 */}}
 {{- define "admission-controller._workload" -}}
 {{- $block := index .ctx.root.Values .ctx.workload | default dict -}}
 {{- $new := index $block .key -}}
-{{- $old := include "admission-controller._alias" (dict "ctx" .ctx "key" .key) | fromYaml -}}
+{{- $old := include "admission-controller._alias" (dict "ctx" .ctx "key" .key "new" $new) | fromYaml -}}
 {{- if hasKey $old "value" -}}
 {{- toYaml $old -}}
 {{- else -}}
@@ -542,4 +579,13 @@ list of admission-controller._pullSecrets.
 */}}
 {{- define "admission-controller.imagePullSecrets" -}}
 {{- include "admission-controller._field" (dict "name" "imagePullSecrets" "value" (include "admission-controller._pullSecrets" . | fromYamlArray)) -}}
+{{- end -}}
+
+{{/*
+Public helpers for the keys that only the workload block has.
+A deprecated alias wins when it is set.
+*/}}
+
+{{- define "admission-controller.resources" -}}
+{{- include "admission-controller._field" (dict "name" "resources" "value" (include "admission-controller._workload" (dict "ctx" . "key" "resources") | fromYaml).value) -}}
 {{- end -}}

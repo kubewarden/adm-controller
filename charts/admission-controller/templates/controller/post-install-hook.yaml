@@ -69,10 +69,7 @@ spec:
             runAsGroup: 1000
 {{ toYaml .Values.preDeleteHook.containerSecurityContext | indent 12 }}
           {{- end }}
-          {{- if and .Values.resources .Values.resources.postInstallJob }}
-          resources:
-{{ toYaml .Values.resources.postInstallJob | indent 12 }}
-          {{- end }}
+          {{- with include "admission-controller.resources" $ctx }}{{ . | nindent 10 }}{{ end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
