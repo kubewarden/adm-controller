@@ -24,6 +24,7 @@ body:
           job run with the desired Adm Controller stack version.
           This opens an automated release PR in [kubewarden/adm-controller](https://github.com/kubewarden/adm-controller) repo.
         - [ ] Review & merge the automated PR.
+          - [ ] If needed, add `docs/migration-guides/X-to-Y.md`, drop `latest-to-main.md`.
         - [ ] Tag desired version in [kubewarden/adm-controller](https://github.com/kubewarden/adm-controller) repo.
         - [ ] Wait for images to be built, so e2e tests can work.
         - [ ] A successful GH release triggers an [update-adm-controller](https://github.com/kubewarden/helm-charts/actions/workflows/update-adm-controller.yaml)
