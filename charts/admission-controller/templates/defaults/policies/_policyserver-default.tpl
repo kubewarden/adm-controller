@@ -2,6 +2,8 @@
 {{- $ctx := dict "root" $ "workload" "policyServer" "component" "policy-server" "managedBy" "kubewarden-controller" -}}
 {{- $ps := .Values.policyServer -}}
 {{- $resources := $ps.resources | default dict -}}
+{{- $pdb := $ps.podDisruptionBudget | default dict -}}
+{{- $legacyPDB := or (not (kindIs "invalid" $ps.minAvailable)) (not (kindIs "invalid" $ps.maxUnavailable)) -}}
 apiVersion: {{ $.Values.crdVersion }}
 kind: PolicyServer
 metadata:
@@ -19,11 +21,20 @@ spec:
   {{- else }}
   replicas: {{ include "admission-controller.replicas" $ctx }}
   {{- end }}
+  {{- if $legacyPDB }}
   {{- if $ps.minAvailable }}
   minAvailable: {{ $ps.minAvailable }}
   {{- end }}
   {{- if $ps.maxUnavailable }}
   maxUnavailable: {{ $ps.maxUnavailable }}
+  {{- end }}
+  {{- else }}
+  {{- if hasKey $pdb "minAvailable" }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- end }}
+  {{- if hasKey $pdb "maxUnavailable" }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
   {{- end }}
   {{- with include "admission-controller.affinity" $ctx }}{{ . | nindent 2 }}{{ end }}
   {{- with include "admission-controller.tolerations" $ctx }}{{ . | nindent 2 }}{{ end }}

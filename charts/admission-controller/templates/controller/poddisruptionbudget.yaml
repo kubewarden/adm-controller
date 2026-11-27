@@ -1,0 +1,23 @@
+{{- with (.Values.controller | default dict).podDisruptionBudget }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "admission-controller.fullname" $ }}
+  namespace: {{ include "admission-controller.namespace" $ | quote }}
+  labels:
+    {{- include "admission-controller.labels" $ | nindent 4 }}
+  {{- with include "admission-controller.annotations" $ }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if hasKey . "minAvailable" }}
+  minAvailable: {{ .minAvailable }}
+  {{- end }}
+  {{- if hasKey . "maxUnavailable" }}
+  maxUnavailable: {{ .maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "admission-controller.controllerSelectorLabels" $ | nindent 6 }}
+{{- end }}

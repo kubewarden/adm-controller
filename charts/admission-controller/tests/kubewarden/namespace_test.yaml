@@ -9,16 +9,20 @@ templates:
   - "templates/controller/controller-config-configmap.yaml"
   - "templates/defaults/defaults-configmap.yaml"
   - "templates/controller/service.yaml"
+  - "templates/controller/poddisruptionbudget.yaml"
   - "templates/controller/opentelemetry-collector.yaml"
 release:
   name: rel
   namespace: kw
-# Render the optional objects too: the objects of
+# Render the optional objects too: the PodDisruptionBudget, and the objects of
 # the deprecated telemetry sidecar mode (metrics Service, collector, and
 # post-install Job).
 set:
   telemetry:
     metrics: true
+  controller:
+    podDisruptionBudget:
+      minAvailable: 1
 tests:
   - it: "should use the release namespace by default"
     asserts:

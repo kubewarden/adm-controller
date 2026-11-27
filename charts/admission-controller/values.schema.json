@@ -209,6 +209,9 @@
                         }
                     }
                 },
+                "podDisruptionBudget": {
+                    "type": "object"
+                },
                 "podSecurityContext": {
                     "type": "object",
                     "properties": {
@@ -521,6 +524,22 @@
                     "deprecated": true,
                     "type": "object"
                 },
+                "maxUnavailable": {
+                    "deprecated": true,
+                    "type": [
+                        "integer",
+                        "string",
+                        "null"
+                    ]
+                },
+                "minAvailable": {
+                    "deprecated": true,
+                    "type": [
+                        "integer",
+                        "string",
+                        "null"
+                    ]
+                },
                 "namespacedPoliciesCapabilities": {
                     "type": [
                         "array",
@@ -570,6 +589,9 @@
                             }
                         }
                     }
+                },
+                "podDisruptionBudget": {
+                    "type": "object"
                 },
                 "podSecurityContext": {
                     "type": "object"

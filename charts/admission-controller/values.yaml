@@ -193,6 +193,9 @@ controller:
     capabilities:
       drop:
         - ALL
+  # PodDisruptionBudget for the pods.
+  # If you set minAvailable or maxUnavailable, the chart creates the PodDisruptionBudget.
+  podDisruptionBudget: {}
 
 # Deprecated: use global.imagePullSecrets or the imagePullSecrets of a workload
 # block. The chart adds these secrets after global.imagePullSecrets, on every
@@ -584,9 +587,17 @@ policyServer:
   replicas: 1
   # Deprecated: use policyServer.replicas. When both are set, this key wins.
   replicaCount: null # @schema type:[integer, null]; deprecated:true
+  # PodDisruptionBudget of the PolicyServer pods.
   # Only one of minAvailable,maxUnavailable can be enabled:
-  # minAvailable: 30%
-  # maxUnavailable: 1
+  # podDisruptionBudget:
+  #   minAvailable: 30%
+  #   maxUnavailable: 1
+  podDisruptionBudget: {}
+  # Deprecated: use policyServer.podDisruptionBudget. When one of
+  # minAvailable and maxUnavailable is set, the chart uses these two keys and
+  # ignores policyServer.podDisruptionBudget.
+  minAvailable: null # @schema type:[integer, string, null]; deprecated:true
+  maxUnavailable: null # @schema type:[integer, string, null]; deprecated:true
   image:
     repository: "kubewarden/adm-controller/policy-server"
     tag: v1.39.0

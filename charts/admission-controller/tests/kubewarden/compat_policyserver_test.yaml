@@ -100,6 +100,67 @@ tests:
           path: data["policyserver-default.yaml"]
           pattern: '(?m)^  env:\n    - name: "KUBEWARDEN_LOG_LEVEL"\n      value: "info"\n    - name: "N"\n      value: "1"$'
 
+  # policyServer.minAvailable and policyServer.maxUnavailable
+  - it: "policyServer.minAvailable alone renders as on main"
+    set:
+      policyServer.minAvailable: 2
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  minAvailable: 2$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'maxUnavailable'
+
+  - it: "policyServer.maxUnavailable alone renders as on main"
+    set:
+      policyServer.maxUnavailable: 1
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  maxUnavailable: 1$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'minAvailable'
+
+  - it: "policyServer.minAvailable wins over policyServer.podDisruptionBudget as a unit"
+    set:
+      policyServer.minAvailable: 2
+      policyServer.podDisruptionBudget:
+        maxUnavailable: 1
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  minAvailable: 2$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'maxUnavailable'
+
+  - it: "policyServer.maxUnavailable wins over policyServer.podDisruptionBudget as a unit"
+    set:
+      policyServer.maxUnavailable: 1
+      policyServer.podDisruptionBudget:
+        minAvailable: 50%
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  maxUnavailable: 1$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'minAvailable'
+
+  - it: "policyServer.podDisruptionBudget alone"
+    set:
+      policyServer.podDisruptionBudget:
+        minAvailable: 30%
+    asserts:
+      - matchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: '(?m)^  minAvailable: 30%$'
+      - notMatchRegex:
+          path: data["policyserver-default.yaml"]
+          pattern: 'maxUnavailable'
+
   # policyServer.annotations
   - it: "policyServer.annotations alone renders in spec.annotations as on main, and in metadata.annotations"
     set:
